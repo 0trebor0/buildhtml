@@ -3,6 +3,11 @@
   "version": "1.0.0",
   "description": "Zero-dependency, ultra-fast server-side rendering (SSR) compiler.",
   "main": "index.js",
+  "files": [
+    "index.js",
+    "README.md",
+    "LICENSE.txt"
+  ],
   "scripts": {
     "start": "node example/server.js",
     "test": "echo \"No tests defined\" && exit 0"
@@ -23,5 +28,9 @@
   "license": "CC-BY-NC-4.0",
   "engines": {
     "node": ">=16.0.0"
-  }
+  },
+  "bugs": {
+    "url": "https://github.com/0trebor0/lightrender/issues"
+  },
+  "homepage": "https://github.com/0trebor0/lightrender#readme"
 }
