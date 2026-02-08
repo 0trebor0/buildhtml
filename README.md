@@ -1,5 +1,3 @@
-Here’s a polished `README.md` for **LightRender** that matches your project, tagline, and usage style:
-
 ````markdown
 # LightRender
 
