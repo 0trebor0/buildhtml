@@ -1,0 +1,27 @@
+{
+  "name": "lightrender",
+  "version": "1.0.0",
+  "description": "Zero-dependency, ultra-fast server-side rendering (SSR) compiler.",
+  "main": "index.js",
+  "scripts": {
+    "start": "node example/server.js",
+    "test": "echo \"No tests defined\" && exit 0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/0trebor0/lightrender.git"
+  },
+  "keywords": [
+    "ssr",
+    "server-side-rendering",
+    "javascript",
+    "nodejs",
+    "html-builder",
+    "lightrender"
+  ],
+  "author": "0trebor0 <webdevme@outlook.com>",
+  "license": "CC-BY-NC-4.0",
+  "engines": {
+    "node": ">=16.0.0"
+  }
+}
