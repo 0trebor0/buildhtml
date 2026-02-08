@@ -4,3 +4,7 @@ node_modules/
 .gitignore
 *.log
 .DS_Store
+test-debug.js
+test-xss-debug.js
+test-server.js
+DEBUG_REPORT.md
