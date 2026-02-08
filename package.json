@@ -1,7 +1,7 @@
 {
-  "name": "lightrender",
+  "name": "buildhtml",
   "version": "1.0.0",
-  "description": "Zero-dependency, ultra-fast server-side rendering (SSR) compiler.",
+  "description": "Zero-dependency, ultra-fast HTML builder for server-side rendering (SSR).",
   "main": "index.js",
   "files": [
     "index.js",
@@ -10,11 +10,11 @@
   ],
   "scripts": {
     "start": "node example/server.js",
-    "test": "echo \"No tests defined\" && exit 0"
+    "test": "node test-debug.js"
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/0trebor0/lightrender.git"
+    "url": "https://github.com/0trebor0/buildhtml.git"
   },
   "keywords": [
     "ssr",
@@ -22,7 +22,8 @@
     "javascript",
     "nodejs",
     "html-builder",
-    "lightrender"
+    "buildhtml",
+    "html-builder"
   ],
   "author": "0trebor0 <webdevme@outlook.com>",
   "license": "CC-BY-NC-4.0",
@@ -30,7 +31,7 @@
     "node": ">=16.0.0"
   },
   "bugs": {
-    "url": "https://github.com/0trebor0/lightrender/issues"
+    "url": "https://github.com/0trebor0/buildhtml/issues"
   },
-  "homepage": "https://github.com/0trebor0/lightrender#readme"
+  "homepage": "https://github.com/0trebor0/buildhtml#readme"
 }

@@ -79,7 +79,7 @@ function resetElement(el, tag, ridGen, stateStore) {
   el.cssText = "";
   el._state = null;
   el.hydrate = false;
-  el.computed = null;
+  el._computed = null;
   el._ridGen = ridGen;
   el._stateStore = stateStore;
 }
@@ -142,7 +142,7 @@ class Element {
     this.cssText = "";
     this._state = null;
     this.hydrate = false;
-    this.computed = null;
+    this._computed = null;
     this._ridGen = ridGen;
     this._stateStore = stateStore;
   }
@@ -183,7 +183,7 @@ class Element {
   }
 
   computed(fn) {
-    this.computed = fn;
+    this._computed = fn;
     if (!this.attrs.id) this.id();
     this.hydrate = true;
     return this;
@@ -491,8 +491,8 @@ function renderNode(n, ctx) {
     ctx.states.push({ id: n.attrs.id, value: n._state, tag: n.tag });
   }
 
-  if (n.computed) {
-    ctx.computed.push({ id: n.attrs.id, fn: n.computed.toString() });
+  if (n._computed) {
+    ctx.computed.push({ id: n.attrs.id, fn: n._computed.toString() });
   }
 
   // FIX: Properly skip children for void elements to avoid illegal HTML

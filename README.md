@@ -1,5 +1,5 @@
 ````markdown
-# LightRender
+# BuildHTML
 
 **Zero-dependency, ultra-fast server-side rendering (SSR) compiler.**  
 *“Compile your HTML at lightning speed, without the bloat.”*
@@ -8,7 +8,7 @@
 
 ## Overview
 
-LightRender is a lightweight SSR compiler for Node.js. It allows you to build HTML on the server with minimal memory usage and blazing-fast performance—without relying on heavy frameworks. Perfect for custom Node servers, static site generators, or optimized Express apps.
+BuildHTML is a lightweight SSR compiler for Node.js. It allows you to build HTML on the server with minimal memory usage and blazing-fast performance—without relying on heavy frameworks. Perfect for custom Node servers, static site generators, or optimized Express apps.
 
 - **Zero dependencies** – Only Node.js required.  
 - **Ultra-fast** – Optimized rendering and memory reuse.  
@@ -20,13 +20,13 @@ LightRender is a lightweight SSR compiler for Node.js. It allows you to build HT
 ## Installation
 
 ```bash
-npm install lightrender
+npm install buildhtml
 ````
 
 or via GitHub:
 
 ```bash
-npm install github:0trebor0/lightrender
+npm install github:0trebor0/buildhtml
 ```
 
 ---
@@ -34,7 +34,7 @@ npm install github:0trebor0/lightrender
 ## Quick Start
 
 ```javascript
-const { Document } = require('lightrender');
+const { Document } = require('buildhtml');
 
 // Create a new document
 const doc = new Document();
@@ -88,7 +88,7 @@ const {
   responseCache,
   warmupCache,
   getCacheStats
-} = require('lightrender');
+} = require('buildhtml');
 ```
 
 ---
@@ -234,13 +234,13 @@ Returns an object: `{ size, limit, usage, keys, poolStats }` for the response ca
 
 ---
 
-## Quick Express Examples
+## Quick BuildHTML Examples
 
-Here’s how to use **LightRender** in an Express server for fast SSR.
+Here’s how to use **BuildHTML** in an Express server for fast SSR.
 
 ```javascript
 const express = require('express');
-const { Document, createCachedRenderer, clearCache, enableCompression } = require('lightrender');
+const { Document, createCachedRenderer, clearCache, enableCompression } = require('buildhtml');
 
 const app = express();
 
@@ -251,7 +251,7 @@ app.get('/', (req, res) => {
   const doc = new Document();
   doc.title('Home Page');
 
-  const heading = doc.create('h1').text('Welcome to LightRender!');
+  const heading = doc.create('h1').text('Welcome to BuildHTML!');
   const subtitle = doc.create('p').text('Ultra-fast server-side rendering');
 
   doc.use(heading).use(subtitle);
@@ -324,6 +324,6 @@ app.listen(3000, () => console.log('Server running on http://localhost:3000'));
 
 ## License
 
-**[CC BY-NC 4.0](https://creativecommons.org/licenses/by-nc/4.0/)** – You are free to use and modify LightRender **for non-commercial projects**, as long as you give credit to the original author (0trebor0).
+**[CC BY-NC 4.0](https://creativecommons.org/licenses/by-nc/4.0/)** – You are free to use and modify BuildHTML **for non-commercial projects**, as long as you give credit to the original author (0trebor0).
 
 ---
