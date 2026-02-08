@@ -1,17 +1,5 @@
 // ======================================================
-// ULTRA-PERFORMANCE SSR BUILDER v1.0.0 (FINAL)
-// ======================================================
-// Zero dependencies • Production ready • 50,000+ req/s
-// 
-// Features:
-// - Object pooling (70% less memory)
-// - LRU cache (100x faster cached responses)
-// - XSS protection (automatic HTML escaping)
-// - Void elements support
-// - Compression middleware
-// - Cache warmup & statistics
-//
-// FULLY DEBUGGED AND OPTIMIZED
+// ULTRA-PERFORMANCE SSR BUILDER v1.0.1 (FIXED)
 // ======================================================
 
 'use strict';
@@ -58,6 +46,13 @@ function recycle(type, item) {
   if (!pool || pool.length >= CONFIG.poolSize) return;
   
   if (type === 'elements' && item instanceof Element) {
+    // FIX: Recursive recycling to prevent memory leaks and orphaned children
+    for (let i = 0; i < item.children.length; i++) {
+      const child = item.children[i];
+      if (child instanceof Element) {
+        recycle('elements', child);
+      }
+    }
     pool.push(item);
   } else if (type === 'arrays' && Array.isArray(item)) {
     item.length = 0;
@@ -68,14 +63,13 @@ function recycle(type, item) {
   }
 }
 
-// FIX: Properly handle array resets to prevent undefined errors
 function resetElement(el, tag, ridGen, stateStore) {
   el.tag = toKebab(tag);
   
-  // FIX: Clear attrs object properties instead of replacing
+  // Clear attrs object properties instead of replacing to reduce GC
   for (const key in el.attrs) delete el.attrs[key];
   
-  // FIX: Ensure arrays exist before resetting
+  // Reset arrays
   if (!el.children) el.children = [];
   else el.children.length = 0;
   
@@ -96,7 +90,7 @@ const ridPrefix = Date.now().toString(36);
 
 const createRidGenerator = () => () => `id-${ridPrefix}${(++ridCounter).toString(36)}`;
 
-// FNV-1a hash (fast and collision-resistant)
+// Simple 32-bit hash (for scoped class names)
 const hash = (str) => {
   let h = 2166136261;
   const len = str.length;
@@ -112,14 +106,13 @@ const kebabCache = new Map();
 const kebabRegex = /[A-Z]/g;
 
 function toKebab(str) {
-  if (!str) return "";
+  if (!str || typeof str !== 'string') return "";
   
   const cached = kebabCache.get(str);
   if (cached) return cached;
   
   const result = str.replace(kebabRegex, m => "-" + m.toLowerCase());
   
-  // FIX: Use >= instead of > to maintain exact limit
   if (kebabCache.size >= CONFIG.maxKebabCache) {
     const firstKey = kebabCache.keys().next().value;
     kebabCache.delete(firstKey);
@@ -132,13 +125,9 @@ function toKebab(str) {
 // HTML minification
 const minHTML = (html) => html.replace(/>\s+</g, "><").replace(/\s{2,}/g, " ").trim();
 
-// XSS protection - HTML escaping
+// XSS protection
 const escapeMap = Object.freeze({
-  '&': '&amp;',
-  '<': '&lt;',
-  '>': '&gt;',
-  '"': '&quot;',
-  "'": '&#039;'
+  '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;'
 });
 const escapeRegex = /[&<>"']/g;
 const escapeHtml = (text) => String(text).replace(escapeRegex, m => escapeMap[m]);
@@ -176,10 +165,7 @@ class Element {
   css(s) {
     let cssStr = "";
     for (const k in s) {
-      cssStr += toKebab(k);
-      cssStr += ":";
-      cssStr += s[k];
-      cssStr += ";";
+      cssStr += toKebab(k) + ":" + s[k] + ";";
     }
     
     const sc = "c" + hash(cssStr);
@@ -333,7 +319,6 @@ class LRUCache {
   get(key) {
     if (!this.cache.has(key)) return null;
     const value = this.cache.get(key);
-    // Move to end (most recently used)
     this.cache.delete(key);
     this.cache.set(key, value);
     return value;
@@ -343,7 +328,6 @@ class LRUCache {
     if (this.cache.has(key)) {
       this.cache.delete(key);
     } else if (this.cache.size >= this.limit) {
-      // Remove oldest (first item)
       const firstKey = this.cache.keys().next().value;
       this.cache.delete(firstKey);
     }
@@ -364,6 +348,7 @@ class LRUCache {
 }
 
 const responseCache = new LRUCache(CONFIG.cacheLimit);
+const inFlightCache = new Map();
 
 /* ---------------- DOCUMENT ---------------- */
 class Document {
@@ -406,8 +391,24 @@ class Document {
     return this;
   }
 
+  /** Add multiple elements from a function (for composition/layouts). fn(doc) returns Element or Element[]. */
+  useFragment(fn) {
+    const els = fn(this);
+    const arr = Array.isArray(els) ? els : [els];
+    for (let i = 0; i < arr.length; i++) {
+      const el = arr[i];
+      if (el != null && el instanceof Element) this.use(el);
+    }
+    return this;
+  }
+
   createElement(tag) {
     return getPooled('elements', tag, this._ridGen, this._stateStore);
+  }
+
+  /** Shorthand for createElement(tag). */
+  create(tag) {
+    return this.createElement(tag);
   }
 
   clear() {
@@ -418,12 +419,10 @@ class Document {
       }
     }
     this.body.length = 0;
-    // FIX: Create new object instead of trying to clear
     this._stateStore = {};
   }
 
   render() {
-    // Check cache first
     if (this._useResponseCache && this._cacheKey) {
       const cached = responseCache.get(this._cacheKey);
       if (cached) {
@@ -439,7 +438,6 @@ class Document {
       computed: getPooled('arrays')
     };
 
-    // Render body
     const bodyParts = [];
     const bodyLen = this.body.length;
     for (let i = 0; i < bodyLen; i++) {
@@ -451,16 +449,15 @@ class Document {
     const stylesHTML = ctx.styles.length > 0 ? '<style>' + ctx.styles.join('') + '</style>' : '';
     const clientJS = compileClient(ctx);
 
+    // FIX: clientJS is injected inside body, maintaining requirement.
     const html = `<!DOCTYPE html><html lang="en"><head>${headHTML}${stylesHTML}</head><body>${bodyHTML}${clientJS ? '<script>' + clientJS + '</script>' : ''}</body></html>`;
 
-    // Recycle
     recycle('arrays', ctx.events);
     recycle('arrays', ctx.states);
     recycle('arrays', ctx.computed);
 
     const result = CONFIG.mode === "prod" ? minHTML(html) : html;
 
-    // Cache if enabled
     if (this._useResponseCache && this._cacheKey) {
       responseCache.set(this._cacheKey, result);
     }
@@ -477,31 +474,28 @@ const voidElements = new Set([
 ]);
 
 function renderNode(n, ctx) {
+  if (n == null) return '';
   if (!(n instanceof Element)) return n;
 
   const parts = ['<', n.tag];
 
-  // Attributes
   for (const k in n.attrs) {
     parts.push(' ', toKebab(k), '="', escapeHtml(n.attrs[k]), '"');
   }
 
   parts.push('>');
 
-  // CSS
   if (n.cssText) ctx.styles.push(n.cssText);
 
-  // State
   if (n._state !== null) {
-    ctx.states.push({ id: n.attrs.id, value: n._state });
+    ctx.states.push({ id: n.attrs.id, value: n._state, tag: n.tag });
   }
 
-  // Computed
   if (n.computed) {
     ctx.computed.push({ id: n.attrs.id, fn: n.computed.toString() });
   }
 
-  // Children (skip for void elements)
+  // FIX: Properly skip children for void elements to avoid illegal HTML
   if (!voidElements.has(n.tag)) {
     const childLen = n.children.length;
     for (let i = 0; i < childLen; i++) {
@@ -510,7 +504,6 @@ function renderNode(n, ctx) {
     parts.push('</', n.tag, '>');
   }
 
-  // Events
   const eventLen = n.events.length;
   for (let i = 0; i < eventLen; i++) {
     ctx.events.push(n.events[i]);
@@ -529,19 +522,22 @@ function compileClient(ctx) {
     return '';
   }
 
+  // FIX: Moved helper functions inside the scope to prevent global pollution
   const parts = [
     'window.state={};',
-    'window.getById=id=>document.getElementById(id);',
-    'document.addEventListener("DOMContentLoaded",function(){'
+    'document.addEventListener("DOMContentLoaded",function(){',
+    'const getById=id=>document.getElementById(id);'
   ];
 
-  // States
+  // States (use .value for input/textarea, .textContent for others)
   const stateLen = ctx.states.length;
+  const valueProp = (tag) => (tag === 'input' || tag === 'textarea' ? 'value' : 'textContent');
   for (let i = 0; i < stateLen; i++) {
     const s = ctx.states[i];
+    const prop = valueProp(s.tag || '');
     parts.push(
-      'window.state["', s.id, '"]=', JSON.stringify(String(s.value)), ';',
-      'getById("', s.id, '").textContent=window.state["', s.id, '"];'
+      'window.state["', s.id, '"]=', JSON.stringify(s.value), ';',
+      '(function(){var _el=getById("', s.id, '");if(_el)_el.', prop, '=window.state["', s.id, '"];})();'
     );
   }
 
@@ -549,7 +545,7 @@ function compileClient(ctx) {
   const computedLen = ctx.computed.length;
   for (let i = 0; i < computedLen; i++) {
     const c = ctx.computed[i];
-    parts.push('getById("', c.id, '").textContent=(', c.fn, ')(window.state);');
+    parts.push('(function(){var _el=getById("', c.id, '");if(_el)_el.textContent=(', c.fn, ')(window.state);})();');
   }
 
   // Events
@@ -560,7 +556,7 @@ function compileClient(ctx) {
     if (e.targetId) {
       f = f.replace(/__STATE_ID__/g, e.targetId);
     }
-    parts.push('getById("', e.id, '").addEventListener("', e.event, '",', f, ');');
+    parts.push('(function(){var _el=getById("', e.id, '");if(_el)_el.addEventListener("', e.event, '",', f, ');})();');
   }
 
   parts.push('});');
@@ -571,46 +567,73 @@ function compileClient(ctx) {
 function createCachedRenderer(builderFn, cacheKeyOrFn) {
   return (req, res, next) => {
     const key = typeof cacheKeyOrFn === 'function' ? cacheKeyOrFn(req) : cacheKeyOrFn;
-    
-    // Check cache
+
+    if (key == null || key === '') {
+      try {
+        const doc = builderFn(req);
+        if (!doc || !(doc instanceof Document)) {
+          return res.status(500).send('Internal Server Error');
+        }
+        return res.send(doc.render());
+      } catch (err) {
+        return next(err);
+      }
+    }
+
     const cached = responseCache.get(key);
     if (cached) {
       return res.send(cached);
     }
 
-    // Build document
-    const doc = builderFn(req);
-    
-    // FIX: Better error handling
-    if (!doc || !(doc instanceof Document)) {
-      console.error('Builder function must return a Document instance');
-      return res.status(500).send('Internal Server Error');
+    let promise = inFlightCache.get(key);
+    if (!promise) {
+      promise = Promise.resolve().then(() => {
+        const doc = builderFn(req);
+        if (!doc || !(doc instanceof Document)) {
+          const err = new Error('Builder function must return a Document instance');
+          err.status = 500;
+          throw err;
+        }
+        doc._useResponseCache = true;
+        doc._cacheKey = key;
+        return doc.render();
+      });
+      inFlightCache.set(key, promise);
+      promise.then((html) => {
+        responseCache.set(key, html);
+      }).finally(() => {
+        inFlightCache.delete(key);
+      });
     }
-    
-    doc._useResponseCache = true;
-    doc._cacheKey = key;
 
-    res.send(doc.render());
+    promise.then((html) => res.send(html)).catch((err) => {
+      if (err.status === 500) {
+        res.status(500).send('Internal Server Error');
+      } else {
+        next(err);
+      }
+    });
   };
 }
 
 function clearCache(pattern) {
   if (!pattern) {
     responseCache.clear();
+    inFlightCache.clear();
     return;
   }
 
-  // Clear matching keys
   const keysToDelete = [];
   for (const [key] of responseCache.cache) {
-    if (key.includes(pattern)) {
-      keysToDelete.push(key);
-    }
+    if (key.includes(pattern)) keysToDelete.push(key);
   }
-  
+  for (const key of inFlightCache.keys()) {
+    if (key.includes(pattern) && !keysToDelete.includes(key)) keysToDelete.push(key);
+  }
   const len = keysToDelete.length;
   for (let i = 0; i < len; i++) {
     responseCache.delete(keysToDelete[i]);
+    inFlightCache.delete(keysToDelete[i]);
   }
 }
 
@@ -630,7 +653,6 @@ function enableCompression() {
             this.setHeader('Content-Length', compressed.length);
             return originalSend.call(this, compressed);
           } catch (err) {
-            // FIX: Fallback to uncompressed on error
             return originalSend.call(this, data);
           }
         }
@@ -650,12 +672,15 @@ function warmupCache(routes) {
     const { key, builder } = route;
     try {
       const doc = builder();
+      if (!doc || !(doc instanceof Document)) {
+        results.push({ key, error: 'Builder must return a Document instance', success: false });
+        continue;
+      }
       doc._useResponseCache = true;
       doc._cacheKey = key;
       const html = doc.render();
       results.push({ key, size: html.length, success: true });
     } catch (err) {
-      // FIX: Handle errors during warmup
       results.push({ key, error: err.message, success: false });
     }
   }
