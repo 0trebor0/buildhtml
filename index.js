@@ -465,17 +465,17 @@ function createCachedRenderer(builderFn, cacheKey) {
     const key = typeof cacheKey === 'function' ? cacheKey(req) : cacheKey;
     const cached = responseCache.get(key);
     
-    if (cached) {
-      return res.send(cached);
-    }
-    
-    const doc = builderFn(req);
+    if (cached) return res.send(cached);
+
+    const doc = builderFn(req, res);
+
     doc._useResponseCache = true;
     doc._cacheKey = key;
-    
+
     res.send(doc.render());
   };
 }
+
 
 function clearCache(pattern) {
   if (!pattern) {
