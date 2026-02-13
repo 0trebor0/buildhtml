@@ -1,32 +1,27 @@
-````markdown
-# BuildHTML
+# Sculptor.js
 
-**Zero-dependency, ultra-fast server-side rendering (SSR) compiler.**  
+**High-performance, server-side rendering (SSR) library for Node.js.**  
 *“Compile your HTML at lightning speed, without the bloat.”*
 
 ---
 
 ## Overview
 
-BuildHTML is a lightweight SSR compiler for Node.js. It allows you to build HTML on the server with minimal memory usage and blazing-fast performance—without relying on heavy frameworks. Perfect for custom Node servers, static site generators, or optimized Express apps.
+Sculptor.js is a lightweight SSR library for Node.js featuring object pooling, built-in state management, and CSS-in-JS capabilities. It allows you to build HTML on the server with minimal memory usage and blazing-fast performance.
 
 - **Zero dependencies** – Only Node.js required.  
-- **Ultra-fast** – Optimized rendering and memory reuse.  
+- **High Performance** – Utilizes object pooling and LRU caching.  
 - **SSR-ready** – Easily manage state, computed values, and client-side hydration.  
-- **Customizable** – Create elements, set styles, attach events, and more.  
+- **CSS-in-JS** – Scoped and global styling with automatic CSS generation.
+- **Security** – XSS protection, CSS sanitization, and CSP nonce support.
+- **Production Ready** – HTML minification, compression, and metrics.
 
 ---
 
 ## Installation
 
 ```bash
-npm install buildhtml
-````
-
-or via GitHub:
-
-```bash
-npm install github:0trebor0/buildhtml
+npm install sculptor-js
 ```
 
 ---
