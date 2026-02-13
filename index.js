@@ -5,12 +5,11 @@ const CONFIG = Object.freeze({
   mode: process.env.NODE_ENV === "production" ? "prod" : "dev",
   poolSize: 150,
   cacheLimit: 2000,
-  maxCssCache: 1000,
   maxKebabCache: 500,
   compression: true,
   enableMetrics: process.env.ENABLE_METRICS === 'true',
   cspNonce: process.env.CSP_NONCE_ENABLED === 'true',
-  maxComputedFnSize: 10000, // Prevent DOS via huge functions
+  maxComputedFnSize: 10000,
   maxEventFnSize: 5000,
   sanitizeCss: true
 });
@@ -81,8 +80,6 @@ function getPooled(type, ...args) {
       resetElement(item, ...args);
     } else if (type === 'arrays') {
       item.length = 0;
-    } else if (type === 'objects') {
-      // Object already cleared in recycle
     }
     return item;
   }
@@ -90,7 +87,12 @@ function getPooled(type, ...args) {
   metrics.increment('pool.new.' + type);
   
   switch (type) {
-    case 'elements': return new Element(...args);
+    case 'elements': {
+      const [tag, ridGen, stateStore, document] = args;
+      const el = new Element(tag, ridGen, stateStore);
+      el._document = document;
+      return el;
+    }
     case 'arrays': return [];
     case 'objects': return {};
     default: return null;
@@ -105,7 +107,6 @@ function recycle(type, item) {
   }
   
   if (type === 'elements' && item instanceof Element) {
-    // Recursive recycling to prevent memory leaks
     for (let i = 0; i < item.children.length; i++) {
       const child = item.children[i];
       if (child instanceof Element) {
@@ -113,14 +114,13 @@ function recycle(type, item) {
       }
     }
     
-    // CRITICAL FIX: Clear children array to break references
     item.children.length = 0;
     item.events.length = 0;
+    item._stateBindings.length = 0;
     item.cssText = "";
     item._state = null;
     item._computed = null;
     
-    // Clear attrs to prevent hidden class changes in V8
     for (const key in item.attrs) delete item.attrs[key];
     
     pool.push(item);
@@ -130,30 +130,24 @@ function recycle(type, item) {
     item.length = 0;
     pool.push(item);
     metrics.increment('pool.recycled.arrays');
-    
-  } else if (type === 'objects' && typeof item === 'object' && item !== null) {
-    for (const key in item) delete item[key];
-    pool.push(item);
-    metrics.increment('pool.recycled.objects');
   }
 }
 
-function resetElement(el, tag, ridGen, stateStore) {
+function resetElement(el, tag, ridGen, stateStore, document) {
   el.tag = toKebab(tag);
+  el._ridGen = ridGen;
+  el._stateStore = stateStore;
+  el._document = document;
   
-  // Attrs should already be cleared in recycle, but ensure it's initialized
   if (!el.attrs) el.attrs = {};
-  
-  // Reset arrays (should already be cleared in recycle)
   if (!el.children) el.children = [];
   if (!el.events) el.events = [];
+  if (!el._stateBindings) el._stateBindings = [];
   
   el.cssText = "";
   el._state = null;
   el.hydrate = false;
   el._computed = null;
-  el._ridGen = ridGen;
-  el._stateStore = stateStore;
 }
 
 /* ---------------- UTILITIES ---------------- */
@@ -162,7 +156,7 @@ const ridPrefix = Date.now().toString(36) + Math.random().toString(36).substring
 
 const createRidGenerator = () => () => `id-${ridPrefix}${(++ridCounter).toString(36)}`;
 
-// FNV-1a hash (better distribution than simple hash)
+// FNV-1a hash
 const hash = (str) => {
   let h = 2166136261;
   const len = str.length;
@@ -183,7 +177,6 @@ class KebabCache {
   get(key) {
     if (!this.cache.has(key)) return null;
     const value = this.cache.get(key);
-    // Move to end (most recently used)
     this.cache.delete(key);
     this.cache.set(key, value);
     return value;
@@ -193,7 +186,6 @@ class KebabCache {
     if (this.cache.has(key)) {
       this.cache.delete(key);
     } else if (this.cache.size >= this.maxSize) {
-      // Remove least recently used (first item)
       const firstKey = this.cache.keys().next().value;
       this.cache.delete(firstKey);
     }
@@ -219,7 +211,7 @@ function toKebab(str) {
   return result;
 }
 
-// HTML minification (improved)
+// HTML minification
 const minHTML = (html) => {
   return html
     .replace(/>\s+</g, "><")
@@ -229,7 +221,7 @@ const minHTML = (html) => {
     .trim();
 };
 
-// XSS protection with comprehensive escape map
+// XSS protection
 const escapeMap = Object.freeze({
   '&': '&amp;',
   '<': '&lt;',
@@ -244,19 +236,18 @@ const escapeHtml = (text) => {
   return String(text).replace(escapeRegex, m => escapeMap[m]);
 };
 
-// CSS value sanitization to prevent injection
+// CSS value sanitization
 const cssValueRegex = /[<>"'{}()]/g;
 const sanitizeCssValue = (value) => {
   if (!CONFIG.sanitizeCss) return value;
-  // Remove dangerous characters that could break out of CSS context
   return String(value)
     .replace(cssValueRegex, '')
-    .replace(/\/\*/g, '') // Remove comment starts
-    .replace(/\*\//g, '') // Remove comment ends
-    .substring(0, 1000); // Limit length to prevent DOS
+    .replace(/\/\*/g, '')
+    .replace(/\*\//g, '')
+    .substring(0, 1000);
 };
 
-// Validate and sanitize function source for client injection
+// Validate function source
 const sanitizeFunctionSource = (fn, maxSize) => {
   if (typeof fn !== 'function') {
     throw new TypeError('Expected a function');
@@ -268,7 +259,6 @@ const sanitizeFunctionSource = (fn, maxSize) => {
     throw new Error(`Function source too large: ${source.length} > ${maxSize}`);
   }
   
-  // Basic validation to prevent obvious injection attempts
   if (source.includes('</script>') || source.includes('<script')) {
     throw new Error('Function contains potentially malicious script tags');
   }
@@ -289,11 +279,31 @@ class Element {
     this._computed = null;
     this._ridGen = ridGen;
     this._stateStore = stateStore;
+    this._document = null;
+    this._stateBindings = [];
+  }
+
+  child(tag) {
+    if (!this._document) {
+      throw new Error('[Element] Cannot create child: element not associated with a document');
+    }
+    const childElement = getPooled('elements', tag, this._ridGen, this._stateStore, this._document);
+    // Automatically add to parent's children array
+    this.children.push(childElement);
+    return childElement;
+  }
+
+  create(tag) {
+    return this.child(tag);
   }
 
   attr(key, value) {
     this.attrs[toKebab(key)] = value;
     return this;
+  }
+
+  attribute(key, value) {
+    return this.attr(key, value);
   }
 
   id(v) {
@@ -308,6 +318,13 @@ class Element {
     return this;
   }
 
+  // Allow text to be set as a property
+  set textContent(c) {
+    if (c != null) {
+      this.children = [escapeHtml(c)];
+    }
+  }
+
   append(c) {
     if (c == null) return this;
     this.children.push(c instanceof Element ? c : escapeHtml(c));
@@ -315,7 +332,6 @@ class Element {
   }
 
   appendUnsafe(html) {
-    // For trusted HTML only - use with caution
     if (html != null) {
       this.children.push(String(html));
     }
@@ -343,6 +359,53 @@ class Element {
     return this;
   }
 
+  uniqueClass(rules) {
+    if (!rules || typeof rules !== 'object') return this;
+    
+    const cssRules = [];
+    for (const k in rules) {
+      const key = toKebab(k);
+      const value = sanitizeCssValue(rules[k]);
+      cssRules.push(`${key}:${value}`);
+    }
+    
+    if (cssRules.length === 0) return this;
+    
+    const cssStr = cssRules.join(';') + ';';
+    const uniqueName = "_u" + Math.random().toString(36).substring(2, 9);
+    
+    this.attrs.class = this.attrs.class ? `${this.attrs.class} ${uniqueName}` : uniqueName;
+    this.cssText += `.${uniqueName}{${cssStr}}`;
+    
+    return this;
+  }
+
+  bind(stateKey, templateFn = (val) => val) {
+    if (!this.attrs.id) this.id();
+    
+    try {
+      const fnSource = typeof templateFn === 'function' 
+        ? sanitizeFunctionSource(templateFn, CONFIG.maxComputedFnSize)
+        : '(val) => val';
+      
+      // Store binding info for client-side rendering
+      if (!this._stateBindings) this._stateBindings = [];
+      this._stateBindings.push({
+        stateKey,
+        id: this.attrs.id,
+        templateFn: fnSource
+      });
+      
+      this.hydrate = true;
+    } catch (err) {
+      if (CONFIG.mode === 'dev') {
+        console.error('[Element] Invalid bind function:', err.message);
+      }
+    }
+    
+    return this;
+  }
+
   state(v) {
     if (!this.attrs.id) this.id();
     this._state = v;
@@ -361,14 +424,27 @@ class Element {
       if (CONFIG.mode === 'dev') {
         console.error('Invalid computed function:', err.message);
       }
-      // In production, silently fail to prevent breaking the render
     }
     return this;
   }
 
   on(ev, fn) {
     try {
-      sanitizeFunctionSource(fn, CONFIG.maxEventFnSize);
+      const fnSource = sanitizeFunctionSource(fn, CONFIG.maxEventFnSize);
+      
+      // Warn about closures in dev mode
+      if (CONFIG.mode === 'dev') {
+        // Check for potential closure usage
+        const hasClosureRisk = /(?:let|const|var)\s+\w+/.test(fnSource) === false && 
+                               /\w+\s*[\+\-\*\/\=]/.test(fnSource) && 
+                               !fnSource.includes('State.');
+        
+        if (hasClosureRisk) {
+          console.warn('[Sculptor] Warning: Event handler may use closures. ' +
+                      'Closures won\'t work after serialization. Use State instead.');
+        }
+      }
+      
       if (!this.attrs.id) this.id();
       this.events.push({ event: ev, id: this.attrs.id, fn });
       this.hydrate = true;
@@ -494,7 +570,6 @@ class Head {
     parts.push('<meta charset="UTF-8">');
     parts.push('<title>', this.title, '</title>');
     
-    // Meta tags
     const metaLen = this.metas.length;
     for (let i = 0; i < metaLen; i++) {
       const m = this.metas[i];
@@ -505,13 +580,11 @@ class Head {
       parts.push('>');
     }
     
-    // Links
     const linkLen = this.links.length;
     for (let i = 0; i < linkLen; i++) {
       parts.push('<link rel="stylesheet" href="', escapeHtml(this.links[i]), '">');
     }
     
-    // Styles (with optional nonce for CSP)
     if (this.hasStyles()) {
       parts.push('<style', nonceAttr, '>');
       
@@ -532,7 +605,6 @@ class Head {
       parts.push('</style>');
     }
     
-    // Scripts
     const scriptLen = this.scripts.length;
     for (let i = 0; i < scriptLen; i++) {
       parts.push('<script', nonceAttr, ' src="', escapeHtml(this.scripts[i]), '"></script>');
@@ -563,7 +635,6 @@ class LRUCache {
     
     metrics.increment('cache.hit');
     const value = this.cache.get(key);
-    // Move to end (most recently used)
     this.cache.delete(key);
     this.cache.set(key, value);
     return value;
@@ -573,7 +644,6 @@ class LRUCache {
     if (this.cache.has(key)) {
       this.cache.delete(key);
     } else if (this.cache.size >= this.limit) {
-      // Remove least recently used (first item)
       const firstKey = this.cache.keys().next().value;
       this.cache.delete(firstKey);
       metrics.increment('cache.eviction');
@@ -602,6 +672,36 @@ class LRUCache {
 const responseCache = new LRUCache(CONFIG.cacheLimit);
 const inFlightCache = new Map();
 
+/* ---------------- ENCRYPTION ---------------- */
+// Simple Base64 obfuscation for JSON data
+// NOTE: This is obfuscation, NOT cryptographic security!
+function generateEncryptionKey() {
+  // Not needed for Base64, but kept for API compatibility
+  return 1;
+}
+
+function encryptString(str, key) {
+  // Simple Base64 encoding with optional character scrambling
+  const scramble = key !== false; // If key provided, scramble
+  
+  if (scramble) {
+    // Reverse the string before encoding for extra obfuscation
+    str = str.split('').reverse().join('');
+  }
+  
+  // Base64 encode
+  if (typeof Buffer !== 'undefined') {
+    return Buffer.from(str, 'utf-8').toString('base64');
+  } else {
+    return btoa(unescape(encodeURIComponent(str)));
+  }
+}
+
+function getDecryptScript() {
+  // Minimal client-side decryption - just Base64 decode and reverse
+  return `function _decrypt(e){try{var d=atob(e);return d.split('').reverse().join('');}catch(err){return atob(e);}}`;
+}
+
 /* ---------------- DOCUMENT ---------------- */
 class Document {
   constructor(options = {}) {
@@ -609,13 +709,21 @@ class Document {
     this.head = new Head();
     this._ridGen = createRidGenerator();
     this._stateStore = {};
+    this._globalState = {};
     this._useResponseCache = options.cache ?? false;
     this._cacheKey = options.cacheKey || null;
     this._nonce = options.nonce || null;
+    this._oncreateCallbacks = [];
+    this._lastRendered = "";
     
     if (this._nonce) {
       this.head.setNonce(this._nonce);
     }
+  }
+
+  state(key, value) {
+    this._globalState[key] = value;
+    return this;
   }
 
   title(t) {
@@ -643,6 +751,57 @@ class Document {
     return this;
   }
 
+  globalStyle(selector, rules) {
+    this.head.globalCss(selector, rules);
+    return this;
+  }
+
+  sharedClass(name, rules) {
+    this.head.addClass(name, rules);
+    return this;
+  }
+
+  defineClass(selector, rules, isRawSelector = false) {
+    if (!rules || typeof rules !== 'object') return this;
+    
+    const cssRules = [];
+    for (const prop in rules) {
+      const key = toKebab(prop);
+      const val = sanitizeCssValue(rules[prop]);
+      cssRules.push(`${key}:${val}`);
+    }
+    
+    if (cssRules.length > 0) {
+      const cssString = cssRules.join(';') + ';';
+      const finalSelector = isRawSelector ? selector : `.${selector}`;
+      
+      if (isRawSelector) {
+        this.head.globalStyles.push(`${finalSelector}{${cssString}}`);
+      } else {
+        this.head.classStyles[selector] = cssString;
+      }
+    }
+    
+    return this;
+  }
+
+  oncreate(fn) {
+    if (typeof fn !== 'function') {
+      throw new Error('[Document] .oncreate() expects a function.');
+    }
+    
+    try {
+      sanitizeFunctionSource(fn, CONFIG.maxEventFnSize);
+      this._oncreateCallbacks.push(fn);
+    } catch (err) {
+      if (CONFIG.mode === 'dev') {
+        console.error('[Document] Invalid oncreate function:', err.message);
+      }
+    }
+    
+    return this;
+  }
+
   use(el) {
     if (el != null) {
       this.body.push(el);
@@ -650,7 +809,6 @@ class Document {
     return this;
   }
 
-  /** Add multiple elements from a function (for composition/layouts). */
   useFragment(fn) {
     if (typeof fn !== 'function') return this;
     
@@ -677,16 +835,31 @@ class Document {
     if (!tag || typeof tag !== 'string') {
       throw new TypeError('Element tag must be a non-empty string');
     }
-    return getPooled('elements', tag, this._ridGen, this._stateStore);
+    const element = getPooled('elements', tag, this._ridGen, this._stateStore, this);
+    // Automatically add to document body when created from document
+    this.use(element);
+    return element;
   }
 
-  /** Shorthand for createElement(tag). */
   create(tag) {
     return this.createElement(tag);
   }
 
+  child(tag) {
+    return this.createElement(tag);
+  }
+
+  output() {
+    return this._lastRendered;
+  }
+
+  save(path) {
+    const fs = require('fs');
+    fs.writeFileSync(path, this._lastRendered);
+    return this;
+  }
+
   clear() {
-    // Recycle all body elements
     const bodyLen = this.body.length;
     for (let i = 0; i < bodyLen; i++) {
       if (this.body[i] instanceof Element) {
@@ -695,16 +868,200 @@ class Document {
     }
     this.body.length = 0;
     
-    // Clear state store properties instead of replacing object
     for (const key in this._stateStore) {
       delete this._stateStore[key];
     }
   }
 
+  toJSON() {
+    const serializeElement = (el) => {
+      if (!(el instanceof Element)) {
+        return { type: 'text', content: String(el) };
+      }
+
+      const serialized = {
+        type: 'element',
+        tag: el.tag,
+        attrs: { ...el.attrs },
+        children: el.children.map(serializeElement),
+        cssText: el.cssText,
+        hydrate: el.hydrate
+      };
+
+      if (el._state !== null) {
+        serialized.state = el._state;
+      }
+
+      if (el._stateBindings && el._stateBindings.length > 0) {
+        serialized.stateBindings = el._stateBindings;
+      }
+
+      if (el.events && el.events.length > 0) {
+        serialized.events = el.events.map(e => ({
+          event: e.event,
+          id: e.id,
+          targetId: e.targetId,
+          fn: e.fn.toString()
+        }));
+      }
+
+      if (el._computed) {
+        serialized.computed = el._computed.toString();
+      }
+
+      return serialized;
+    };
+
+    return {
+      version: '1.0',
+      title: this.head.title,
+      metas: this.head.metas,
+      links: this.head.links,
+      styles: this.head.styles,
+      scripts: this.head.scripts,
+      globalStyles: this.head.globalStyles,
+      classStyles: this.head.classStyles,
+      globalState: this._globalState,
+      oncreateCallbacks: this._oncreateCallbacks.map(fn => fn.toString()),
+      body: this.body.map(serializeElement)
+    };
+  }
+
+  static fromJSON(json) {
+    const doc = new Document();
+    
+    if (typeof json === 'string') {
+      try {
+        json = JSON.parse(json);
+      } catch (e) {
+        throw new Error('[Sculptor] Invalid JSON string provided to fromJSON');
+      }
+    }
+    
+    if (!json || typeof json !== 'object') {
+      throw new Error('[Sculptor] fromJSON requires a valid JSON object');
+    }
+    
+    // Validate minimum required fields
+    if (!json.version) {
+      throw new Error('[Sculptor] Invalid JSON: missing version field');
+    }
+    
+    if (!Array.isArray(json.body)) {
+      throw new Error('[Sculptor] Invalid JSON: body must be an array');
+    }
+
+    // Restore head
+    doc.head.title = json.title || 'Document';
+    doc.head.metas = json.metas || [];
+    doc.head.links = json.links || [];
+    doc.head.styles = json.styles || [];
+    doc.head.scripts = json.scripts || [];
+    doc.head.globalStyles = json.globalStyles || [];
+    doc.head.classStyles = json.classStyles || {};
+
+    // Restore global state
+    doc._globalState = json.globalState || {};
+
+    // Restore oncreate callbacks
+    if (json.oncreateCallbacks && Array.isArray(json.oncreateCallbacks)) {
+      for (const fnStr of json.oncreateCallbacks) {
+        try {
+          // eslint-disable-next-line no-eval
+          const fn = eval(`(${fnStr})`);
+          doc._oncreateCallbacks.push(fn);
+        } catch (err) {
+          if (CONFIG.mode === 'dev') {
+            console.error('Failed to restore oncreate callback:', err);
+          }
+        }
+      }
+    }
+
+    // Restore body
+    const deserializeElement = (node) => {
+      if (node.type === 'text') {
+        return node.content;
+      }
+
+      const el = getPooled('elements', node.tag, doc._ridGen, doc._stateStore, doc);
+      
+      if (node.attrs) {
+        for (const key in node.attrs) {
+          el.attrs[key] = node.attrs[key];
+        }
+      }
+
+      if (node.cssText) {
+        el.cssText = node.cssText;
+      }
+
+      if (node.state !== undefined) {
+        el._state = node.state;
+        if (el.attrs.id) {
+          doc._stateStore[el.attrs.id] = node.state;
+        }
+      }
+
+      if (node.stateBindings) {
+        el._stateBindings = node.stateBindings;
+      }
+
+      if (node.computed) {
+        try {
+          // eslint-disable-next-line no-eval
+          el._computed = eval(`(${node.computed})`);
+        } catch (err) {
+          if (CONFIG.mode === 'dev') {
+            console.error('Failed to restore computed function:', err);
+          }
+        }
+      }
+
+      if (node.events && Array.isArray(node.events)) {
+        for (const evt of node.events) {
+          try {
+            // eslint-disable-next-line no-eval
+            const fn = eval(`(${evt.fn})`);
+            el.events.push({
+              event: evt.event,
+              id: evt.id,
+              targetId: evt.targetId,
+              fn: fn
+            });
+          } catch (err) {
+            if (CONFIG.mode === 'dev') {
+              console.error('Failed to restore event handler:', err);
+            }
+          }
+        }
+      }
+
+      el.hydrate = node.hydrate || false;
+
+      if (node.children && Array.isArray(node.children)) {
+        for (const child of node.children) {
+          const childEl = deserializeElement(child);
+          el.children.push(childEl);
+        }
+      }
+
+      return el;
+    };
+
+    if (json.body && Array.isArray(json.body)) {
+      for (const node of json.body) {
+        const el = deserializeElement(node);
+        doc.body.push(el);
+      }
+    }
+
+    return doc;
+  }
+
   render() {
     const startTime = CONFIG.enableMetrics ? Date.now() : 0;
     
-    // Check cache first
     if (this._useResponseCache && this._cacheKey) {
       const cached = responseCache.get(this._cacheKey);
       if (cached) {
@@ -712,6 +1069,7 @@ class Document {
         if (CONFIG.enableMetrics) {
           metrics.timing('render.cached', Date.now() - startTime);
         }
+        this._lastRendered = cached;
         return cached;
       }
     }
@@ -721,10 +1079,12 @@ class Document {
       states: getPooled('arrays'),
       styles: [],
       computed: getPooled('arrays'),
+      stateBindings: getPooled('arrays'),
+      oncreates: this._oncreateCallbacks,
+      globalState: this._globalState,
       nonce: this._nonce
     };
 
-    // Render body
     const bodyParts = [];
     const bodyLen = this.body.length;
     for (let i = 0; i < bodyLen; i++) {
@@ -739,7 +1099,6 @@ class Document {
       '';
     const clientJS = compileClient(ctx);
 
-    // Build final HTML
     const html = [
       '<!DOCTYPE html><html lang="en"><head>',
       headHTML,
@@ -750,18 +1109,139 @@ class Document {
       '</body></html>'
     ].join('');
 
-    // Recycle context arrays
     recycle('arrays', ctx.events);
     recycle('arrays', ctx.states);
     recycle('arrays', ctx.computed);
+    recycle('arrays', ctx.stateBindings);
 
     const result = CONFIG.mode === "prod" ? minHTML(html) : html;
 
-    // Cache if enabled
     if (this._useResponseCache && this._cacheKey) {
       responseCache.set(this._cacheKey, result);
     }
 
+    this._lastRendered = result;
+    this.clear();
+    
+    if (CONFIG.enableMetrics) {
+      metrics.timing('render.total', Date.now() - startTime);
+      metrics.increment('render.count');
+    }
+    
+    return result;
+  }
+
+  renderJSON(varNameOrOptions, options) {
+    // Handle both signatures:
+    // renderJSON() 
+    // renderJSON('varName')
+    // renderJSON({ encrypt: true })
+    // renderJSON('varName', { encrypt: true })
+    
+    let jsonVarName = '__SCULPTOR_DATA__';
+    let opts = {};
+    
+    if (typeof varNameOrOptions === 'string') {
+      // First param is variable name
+      jsonVarName = varNameOrOptions;
+      opts = options || {};
+    } else if (typeof varNameOrOptions === 'object' && varNameOrOptions !== null) {
+      // First param is options object
+      opts = varNameOrOptions;
+      jsonVarName = opts.varName || '__SCULPTOR_DATA__';
+    }
+    
+    const startTime = CONFIG.enableMetrics ? Date.now() : 0;
+    
+    if (this._useResponseCache && this._cacheKey) {
+      const cached = responseCache.get(this._cacheKey);
+      if (cached) {
+        this.clear();
+        if (CONFIG.enableMetrics) {
+          metrics.timing('render.cached', Date.now() - startTime);
+        }
+        this._lastRendered = cached;
+        return cached;
+      }
+    }
+
+    const ctx = {
+      events: getPooled('arrays'),
+      states: getPooled('arrays'),
+      styles: [],
+      computed: getPooled('arrays'),
+      stateBindings: getPooled('arrays'),
+      oncreates: this._oncreateCallbacks,
+      globalState: this._globalState,
+      nonce: this._nonce
+    };
+
+    const bodyParts = [];
+    const bodyLen = this.body.length;
+    for (let i = 0; i < bodyLen; i++) {
+      const rendered = renderNode(this.body[i], ctx);
+      if (rendered) bodyParts.push(rendered);
+    }
+
+    const bodyHTML = bodyParts.join('');
+    const headHTML = this.head.render();
+    const stylesHTML = ctx.styles.length > 0 ? 
+      `<style${this._nonce ? ` nonce="${escapeHtml(this._nonce)}"` : ''}>${ctx.styles.join('')}</style>` : 
+      '';
+    const clientJS = compileClient(ctx);
+
+    const parts = [
+      '<!DOCTYPE html><html lang="en"><head>',
+      headHTML,
+      stylesHTML
+    ];
+
+    // Embed JSON data
+    const jsonData = this.toJSON();
+    const jsonStr = JSON.stringify(jsonData);
+    
+    // Encrypt/obfuscate if requested
+    const encrypt = opts.encrypt === true;
+    
+    if (encrypt) {
+      const encrypted = encryptString(jsonStr, true);
+      const decryptScript = getDecryptScript();
+      
+      parts.push(
+        `<script${this._nonce ? ` nonce="${escapeHtml(this._nonce)}"` : ''}>`,
+        decryptScript,
+        `window.${jsonVarName}=JSON.parse(_decrypt("${encrypted}"));`,
+        '</script>'
+      );
+    } else {
+      parts.push(
+        `<script${this._nonce ? ` nonce="${escapeHtml(this._nonce)}"` : ''}>`,
+        `window.${jsonVarName}=${jsonStr};`,
+        '</script>'
+      );
+    }
+
+    parts.push(
+      '</head><body>',
+      bodyHTML,
+      clientJS ? `<script${this._nonce ? ` nonce="${escapeHtml(this._nonce)}"` : ''}>${clientJS}</script>` : '',
+      '</body></html>'
+    );
+
+    const html = parts.join('');
+
+    recycle('arrays', ctx.events);
+    recycle('arrays', ctx.states);
+    recycle('arrays', ctx.computed);
+    recycle('arrays', ctx.stateBindings);
+
+    const result = CONFIG.mode === "prod" ? minHTML(html) : html;
+
+    if (this._useResponseCache && this._cacheKey) {
+      responseCache.set(this._cacheKey, result);
+    }
+
+    this._lastRendered = result;
     this.clear();
     
     if (CONFIG.enableMetrics) {
@@ -785,7 +1265,6 @@ function renderNode(n, ctx) {
 
   const parts = ['<', n.tag];
 
-  // Render attributes
   for (const k in n.attrs) {
     const value = n.attrs[k];
     if (value != null) {
@@ -795,15 +1274,12 @@ function renderNode(n, ctx) {
 
   parts.push('>');
 
-  // Add scoped styles
   if (n.cssText) ctx.styles.push(n.cssText);
 
-  // Track state
   if (n._state !== null) {
     ctx.states.push({ id: n.attrs.id, value: n._state, tag: n.tag });
   }
 
-  // Track computed
   if (n._computed) {
     try {
       const fnSource = sanitizeFunctionSource(n._computed, CONFIG.maxComputedFnSize);
@@ -815,7 +1291,11 @@ function renderNode(n, ctx) {
     }
   }
 
-  // Render children (skip for void elements)
+  // Collect state bindings
+  if (n._stateBindings && n._stateBindings.length > 0) {
+    ctx.stateBindings.push(...n._stateBindings);
+  }
+
   if (!voidElements.has(n.tag)) {
     const childLen = n.children.length;
     for (let i = 0; i < childLen; i++) {
@@ -825,7 +1305,6 @@ function renderNode(n, ctx) {
     parts.push('</', n.tag, '>');
   }
 
-  // Track events
   const eventLen = n.events.length;
   for (let i = 0; i < eventLen; i++) {
     ctx.events.push(n.events[i]);
@@ -839,12 +1318,14 @@ function compileClient(ctx) {
   const hasStates = ctx.states.length > 0;
   const hasComputed = ctx.computed.length > 0;
   const hasEvents = ctx.events.length > 0;
+  const hasOncreates = ctx.oncreates && ctx.oncreates.length > 0;
+  const hasGlobalState = ctx.globalState && Object.keys(ctx.globalState).length > 0;
+  const hasStateBindings = ctx.stateBindings && ctx.stateBindings.length > 0;
 
-  if (!hasStates && !hasComputed && !hasEvents) {
+  if (!hasStates && !hasComputed && !hasEvents && !hasOncreates && !hasGlobalState && !hasStateBindings) {
     return '';
   }
 
-  // Use a unique namespace to avoid conflicts with multiple renders
   const namespace = '_ssr' + Date.now().toString(36);
   
   const parts = [
@@ -853,7 +1334,22 @@ function compileClient(ctx) {
     'var getById=function(id){return document.getElementById(id);};'
   ];
 
-  // States initialization
+  // Initialize global reactive state with callbacks
+  if (hasGlobalState || hasStateBindings) {
+    parts.push(
+      'var _cbs={};',
+      'window.watchState=function(k,f){(_cbs[k]=_cbs[k]||[]).push(f);};',
+      'window.State=new Proxy(' + JSON.stringify(ctx.globalState || {}) + ',{',
+      'set:function(t,k,v){',
+      'if(t[k]===v)return true;',
+      't[k]=v;',
+      'if(_cbs[k])_cbs[k].forEach(function(f){f(v);});',
+      'return true;',
+      '}',
+      '});'
+    );
+  }
+
   const stateLen = ctx.states.length;
   if (stateLen > 0) {
     parts.push('var initStates=function(){');
@@ -872,7 +1368,6 @@ function compileClient(ctx) {
     parts.push('};');
   }
 
-  // Computed functions
   const computedLen = ctx.computed.length;
   if (computedLen > 0) {
     parts.push('var initComputed=function(){');
@@ -889,7 +1384,32 @@ function compileClient(ctx) {
     parts.push('};');
   }
 
-  // Event handlers
+  // State bindings - use watchState
+  if (hasStateBindings) {
+    parts.push('var initBindings=function(){');
+    
+    for (let i = 0; i < ctx.stateBindings.length; i++) {
+      const b = ctx.stateBindings[i];
+      parts.push(
+        `window.watchState('${b.stateKey}',function(val){`,
+        `var el=getById('${b.id}');`,
+        `if(el)try{el.textContent=(${b.templateFn})(val);}catch(e){console.error('Binding error:',e);}`,
+        '});'
+      );
+      
+      // Initialize with current value
+      parts.push(
+        `(function(){`,
+        `var el=getById('${b.id}');`,
+        `if(el&&window.State['${b.stateKey}']!==undefined)`,
+        `try{el.textContent=(${b.templateFn})(window.State['${b.stateKey}']);}catch(e){}`,
+        '})();'
+      );
+    }
+    
+    parts.push('};');
+  }
+
   const eventLen = ctx.events.length;
   if (eventLen > 0) {
     parts.push('var initEvents=function(){');
@@ -898,7 +1418,6 @@ function compileClient(ctx) {
       const e = ctx.events[i];
       let fnSource = e.fn.toString();
       
-      // Replace state ID placeholder if present
       if (e.targetId) {
         fnSource = fnSource.replace(/__STATE_ID__/g, e.targetId);
       }
@@ -913,7 +1432,25 @@ function compileClient(ctx) {
     parts.push('};');
   }
 
-  // Initialize everything on DOMContentLoaded
+  // Add oncreate callbacks
+  if (hasOncreates) {
+    parts.push('var initOncreate=function(){');
+    
+    for (let i = 0; i < ctx.oncreates.length; i++) {
+      const fn = ctx.oncreates[i];
+      try {
+        const fnSource = sanitizeFunctionSource(fn, CONFIG.maxEventFnSize);
+        parts.push(`(${fnSource})();`);
+      } catch (err) {
+        if (CONFIG.mode === 'dev') {
+          console.error('Oncreate validation failed:', err);
+        }
+      }
+    }
+    
+    parts.push('};');
+  }
+
   parts.push(
     'if(document.readyState==="loading"){',
     'document.addEventListener("DOMContentLoaded",function(){'
@@ -921,7 +1458,9 @@ function compileClient(ctx) {
   
   if (stateLen > 0) parts.push('initStates();');
   if (computedLen > 0) parts.push('initComputed();');
+  if (hasStateBindings) parts.push('initBindings();');
   if (eventLen > 0) parts.push('initEvents();');
+  if (hasOncreates) parts.push('initOncreate();');
   
   parts.push(
     '});',
@@ -930,11 +1469,11 @@ function compileClient(ctx) {
   
   if (stateLen > 0) parts.push('initStates();');
   if (computedLen > 0) parts.push('initComputed();');
+  if (hasStateBindings) parts.push('initBindings();');
   if (eventLen > 0) parts.push('initEvents();');
+  if (hasOncreates) parts.push('initOncreate();');
   
   parts.push('}');
-  
-  // Expose state globally for convenience (optional)
   parts.push(`window.${namespace}=${namespace};`);
   parts.push('})();');
 
@@ -951,7 +1490,6 @@ function createCachedRenderer(builderFn, cacheKeyOrFn, options = {}) {
     try {
       const key = typeof cacheKeyOrFn === 'function' ? cacheKeyOrFn(req) : cacheKeyOrFn;
 
-      // No caching
       if (key == null || key === '') {
         const doc = await Promise.resolve(builderFn(req));
         
@@ -962,7 +1500,6 @@ function createCachedRenderer(builderFn, cacheKeyOrFn, options = {}) {
         return res.send(doc.render());
       }
 
-      // Check cache
       const cached = responseCache.get(key);
       if (cached) {
         metrics.increment('middleware.cache.hit');
@@ -971,7 +1508,6 @@ function createCachedRenderer(builderFn, cacheKeyOrFn, options = {}) {
 
       metrics.increment('middleware.cache.miss');
 
-      // Check in-flight cache (prevent stampede)
       let promise = inFlightCache.get(key);
       
       if (!promise) {
@@ -987,7 +1523,6 @@ function createCachedRenderer(builderFn, cacheKeyOrFn, options = {}) {
             doc._useResponseCache = true;
             doc._cacheKey = key;
             
-            // Pass CSP nonce if available
             if (options.nonce && typeof options.nonce === 'function') {
               doc._nonce = options.nonce(req);
             }
@@ -1003,7 +1538,6 @@ function createCachedRenderer(builderFn, cacheKeyOrFn, options = {}) {
             metrics.increment('middleware.cache.set');
           })
           .catch((err) => {
-            // Remove from in-flight on error
             if (CONFIG.mode === 'dev') {
               console.error('Render error:', err);
             }
@@ -1038,21 +1572,18 @@ function clearCache(pattern) {
 
   const keysToDelete = new Set();
   
-  // Collect keys from response cache
   for (const [key] of responseCache.cache) {
     if (key.includes(pattern)) {
       keysToDelete.add(key);
     }
   }
   
-  // Collect keys from in-flight cache
   for (const key of inFlightCache.keys()) {
     if (key.includes(pattern)) {
       keysToDelete.add(key);
     }
   }
   
-  // Delete collected keys
   for (const key of keysToDelete) {
     responseCache.delete(key);
     inFlightCache.delete(key);
@@ -1061,7 +1592,6 @@ function clearCache(pattern) {
   metrics.increment('cache.clear.pattern', keysToDelete.size);
 }
 
-// Improved compression middleware with async support
 function enableCompression() {
   return (req, res, next) => {
     const acceptEncoding = req.headers['accept-encoding'];
@@ -1073,7 +1603,6 @@ function enableCompression() {
     const originalSend = res.send;
     
     res.send = function(data) {
-      // Restore original send first to prevent infinite loops
       res.send = originalSend;
       
       const contentType = this.getHeader('Content-Type') || '';
@@ -1093,7 +1622,6 @@ function enableCompression() {
         try {
           const zlib = require('zlib');
           
-          // Use async compression to avoid blocking
           zlib.gzip(data, (err, compressed) => {
             if (err) {
               metrics.increment('compression.error');
@@ -1109,7 +1637,7 @@ function enableCompression() {
             return originalSend.call(this, compressed);
           });
           
-          return; // Wait for async callback
+          return;
           
         } catch (err) {
           metrics.increment('compression.error');
@@ -1124,7 +1652,6 @@ function enableCompression() {
   };
 }
 
-// Warmup cache helper with error handling
 async function warmupCache(routes) {
   if (!Array.isArray(routes)) {
     throw new TypeError('Routes must be an array');
@@ -1161,7 +1688,7 @@ async function warmupCache(routes) {
       results.push({ 
         key, 
         size: html.length, 
-        compressed: Math.floor(html.length * 0.3), // Estimate
+        compressed: Math.floor(html.length * 0.3),
         success: true 
       });
       
@@ -1173,7 +1700,6 @@ async function warmupCache(routes) {
   return results;
 }
 
-// Stats helper with detailed metrics
 function getCacheStats() {
   return {
     cache: {
@@ -1195,7 +1721,6 @@ function getCacheStats() {
   };
 }
 
-// Reset all pools (useful for testing)
 function resetPools() {
   pools.elements.length = 0;
   pools.arrays.length = 0;
@@ -1203,7 +1728,6 @@ function resetPools() {
   metrics.increment('pools.reset');
 }
 
-// Health check helper
 function healthCheck() {
   return {
     status: 'ok',
