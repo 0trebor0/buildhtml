@@ -389,11 +389,6 @@ app.get('/spa', (req, res) => {
 | `renderJSON()` | 2-8 KB |
 | `renderJSON({ obfuscate: true })` | 1-4 KB (50% smaller!) |
 
-**Comparison with other solutions:**
-- 2-4x faster than EJS/Pug/Handlebars
-- 10-50x faster than React SSR
-- 50-200x less memory than Next.js
-
 ---
 
 ## Configuration
@@ -478,7 +473,7 @@ const html = doc.render();
 
 ```javascript
 // Render with JSON embedded in HTML
-const html = doc.renderJSON({ encrypt: true });
+const html = doc.renderJSON({ obfuscate: true });
 
 // In browser:
 console.log(window.__SCULPTOR_DATA__);
@@ -489,30 +484,91 @@ console.log(window.__SCULPTOR_DATA__);
 
 ## Security
 
-### XSS Protection
+### Built-in Security Features
 
-All text is automatically escaped:
-
+**Automatic XSS Protection**
 ```javascript
 doc.create('div').text('<script>alert("XSS")</script>');
 // Output: &lt;script&gt;alert("XSS")&lt;/script&gt;
 ```
 
-### CSS Injection Protection
-
-Dangerous CSS characters are sanitized:
-
+**CSS Injection Prevention**
 ```javascript
 el.css({ background: 'red; } body { display: none; }' });
 // Sanitized automatically
 ```
 
-### CSP Nonce Support
-
+**CSP Nonce Support**
 ```javascript
 const doc = new Document({ nonce: 'abc123' });
 // All inline scripts/styles get nonce attribute
 ```
+
+### Enhanced Security Features (NEW!)
+
+**Security Headers Middleware**
+```javascript
+const { securityHeaders } = require('@trebor/buildhtml');
+
+app.use(securityHeaders({
+  enableCSP: true,
+  enableHSTS: true,
+  enableXFrameOptions: true,
+  cspNonce: (req) => req.nonce
+}));
+```
+
+**Input Sanitization**
+```javascript
+const { sanitize } = require('@trebor/buildhtml');
+
+// Text sanitization
+const safe = sanitize.text('<script>bad</script>');
+
+// URL sanitization (blocks javascript:, data:, vbscript:)
+const url = sanitize.url('javascript:alert(1)'); // Returns ''
+
+// Email validation
+const email = sanitize.email('user@example.com');
+
+// Filename sanitization (prevents path traversal)
+const filename = sanitize.filename('../../../etc/passwd');
+```
+
+**CSRF Protection**
+```javascript
+const { csrf } = require('@trebor/buildhtml');
+
+app.use(csrf.middleware());
+
+app.post('/submit', (req, res) => {
+  // CSRF token automatically validated
+  // Request blocked if invalid
+});
+```
+
+**Rate Limiting**
+```javascript
+const { createRateLimiter } = require('@trebor/buildhtml');
+
+app.use('/api', createRateLimiter({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  maxRequests: 100
+}));
+```
+
+**CSP Header Generation**
+```javascript
+const { generateCSP } = require('@trebor/buildhtml');
+
+const csp = generateCSP({
+  scriptSrc: ["'self'", "'nonce-abc123'"],
+  styleSrc: ["'self'"],
+  imgSrc: ["'self'", 'data:', 'https:']
+});
+```
+
+📖 **See [SECURITY.md](./SECURITY.md) for complete security documentation**
 
 ---
 
@@ -623,38 +679,6 @@ doc.state('dom', document.getElementById('x')); // DOM nodes
 ```
 
 ---
-
-## Migration from Other Libraries
-
-### From EJS/Pug/Handlebars
-
-```javascript
-// EJS/Pug
-res.render('template', { data })
-
-// BuildHTML
-const doc = new Document();
-doc.create('div').text(data);
-res.send(doc.render());
-```
-
-### From React SSR
-
-```javascript
-// React SSR
-const html = renderToString(<App />);
-
-// BuildHTML  
-const doc = new Document();
-// ... build UI ...
-const html = doc.render();
-```
-
-**Benefits:**
-- 2-4x faster
-- 50-200x less memory
-- No build step required
-- Built-in state management
 
 ---
 
