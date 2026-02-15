@@ -211,13 +211,14 @@ function toKebab(str) {
   return result;
 }
 
-// HTML minification
+// HTML minification (Safer version to preserve inline layouts)
 const minHTML = (html) => {
   return html
-    .replace(/>\s+</g, "><")
+    // Only remove whitespace if it includes a newline or is more than 3 spaces
+    .replace(/>\s+<|>\n+</g, (m) => {
+        return m.includes('\n') || m.length > 3 ? "><" : " > <";
+    })
     .replace(/\s{2,}/g, " ")
-    .replace(/\s+>/g, ">")
-    .replace(/<\s+/g, "<")
     .trim();
 };
 
@@ -234,6 +235,21 @@ const escapeRegex = /[&<>"'\/]/g;
 const escapeHtml = (text) => {
   if (text == null) return '';
   return String(text).replace(escapeRegex, m => escapeMap[m]);
+};
+
+// HTML Entity Unescaping (For JSON transport optimization)
+const unescapeMap = Object.freeze({
+  '&amp;': '&',
+  '&lt;': '<',
+  '&gt;': '>',
+  '&quot;': '"',
+  '&#x27;': "'",
+  '&#x2F;': '/'
+});
+const unescapeRegex = /&(?:amp|lt|gt|quot|#x27|#x2F);/g;
+const unescapeHtml = (text) => {
+  if (text == null) return '';
+  return String(text).replace(unescapeRegex, m => unescapeMap[m]);
 };
 
 // CSS value sanitization
@@ -422,7 +438,7 @@ class Element {
       this.hydrate = true;
     } catch (err) {
       if (CONFIG.mode === 'dev') {
-        console.error('Invalid computed function:', err.message);
+        console.error('Invalid computed function:', err);
       }
     }
     return this;
@@ -441,7 +457,7 @@ class Element {
         
         if (hasClosureRisk) {
           console.warn('[Sculptor] Warning: Event handler may use closures. ' +
-                      'Closures won\'t work after serialization. Use State instead.');
+                       'Closures won\'t work after serialization. Use State instead.');
         }
       }
       
@@ -681,25 +697,17 @@ function generateEncryptionKey() {
 }
 
 function encryptString(str, key) {
-  // Simple Base64 encoding with optional character scrambling
-  const scramble = key !== false; // If key provided, scramble
-  
-  if (scramble) {
-    // Reverse the string before encoding for extra obfuscation
-    str = str.split('').reverse().join('');
-  }
-  
-  // Base64 encode
+  // Simple Base64 is fast and sufficient for obfuscation.
+  // Reversing large strings is too expensive for the client.
   if (typeof Buffer !== 'undefined') {
     return Buffer.from(str, 'utf-8').toString('base64');
-  } else {
-    return btoa(unescape(encodeURIComponent(str)));
   }
+  return btoa(unescape(encodeURIComponent(str)));
 }
 
 function getDecryptScript() {
-  // Minimal client-side decryption - just Base64 decode and reverse
-  return `function _decrypt(e){try{var d=atob(e);return d.split('').reverse().join('');}catch(err){return atob(e);}}`;
+  // Optimized decoder: Just decode Base64 (O(1) complexity relative to string ops)
+  return `var _d=function(e){return decodeURIComponent(escape(atob(e)));};`;
 }
 
 /* ---------------- DOCUMENT ---------------- */
@@ -869,7 +877,8 @@ class Document {
   toJSON() {
     const serializeElement = (el) => {
       if (!(el instanceof Element)) {
-        return { type: 'text', content: String(el) };
+        // FIX: Unescape text here so client gets raw chars
+        return { type: 'text', content: unescapeHtml(String(el)) };
       }
 
       const serialized = {
@@ -1089,7 +1098,7 @@ class Document {
     const headHTML = this.head.render();
     const stylesHTML = ctx.styles.length > 0 ? 
       `<style${this._nonce ? ` nonce="${escapeHtml(this._nonce)}"` : ''}>${ctx.styles.join('')}</style>` : 
-      '';
+       '';
     const clientJS = compileClient(ctx);
 
     const html = [
@@ -1125,109 +1134,174 @@ class Document {
   }
 
   renderJSON(varNameOrOptions, options) {
-    // Handle both signatures:
-    // renderJSON() 
-    // renderJSON('varName')
-    // renderJSON({ obfuscate: true })
-    // renderJSON('varName', { obfuscate: true })
-    
     let jsonVarName = '__SCULPTOR_DATA__';
     let opts = {};
     
     if (typeof varNameOrOptions === 'string') {
-      // First param is variable name
       jsonVarName = varNameOrOptions;
       opts = options || {};
     } else if (typeof varNameOrOptions === 'object' && varNameOrOptions !== null) {
-      // First param is options object
       opts = varNameOrOptions;
       jsonVarName = opts.varName || '__SCULPTOR_DATA__';
     }
     
     const startTime = CONFIG.enableMetrics ? Date.now() : 0;
     
+    // Check Cache
     if (this._useResponseCache && this._cacheKey) {
       const cached = responseCache.get(this._cacheKey);
       if (cached) {
         this.clear();
-        if (CONFIG.enableMetrics) {
-          metrics.timing('render.cached', Date.now() - startTime);
-        }
+        if (CONFIG.enableMetrics) metrics.timing('render.cached', Date.now() - startTime);
         this._lastRendered = cached;
         return cached;
       }
     }
 
-    const ctx = {
-      events: getPooled('arrays'),
-      states: getPooled('arrays'),
-      styles: [],
-      computed: getPooled('arrays'),
-      stateBindings: getPooled('arrays'),
-      oncreates: this._oncreateCallbacks,
-      globalState: this._globalState,
-      nonce: this._nonce
+    const jsonData = this.toJSON();
+    const eventHandlers = {};
+    
+    // Extract Event Handlers (Deduplication)
+    const extractHandlers = (node) => {
+      if (node.type === 'element') {
+        if (node.events && Array.isArray(node.events)) {
+          node.events = node.events.map(evt => {
+            const handlerId = '_h' + hash(evt.fn.toString() + evt.id + evt.event);
+            eventHandlers[handlerId] = evt.fn.toString();
+            return {
+              event: evt.event,
+              id: evt.id,
+              targetId: evt.targetId,
+              handlerId: handlerId
+            };
+          });
+        }
+        if (node.children) node.children.forEach(child => extractHandlers(child));
+      }
     };
-
-    const bodyParts = [];
-    const bodyLen = this.body.length;
-    for (let i = 0; i < bodyLen; i++) {
-      const rendered = renderNode(this.body[i], ctx);
-      if (rendered) bodyParts.push(rendered);
-    }
-
-    const bodyHTML = bodyParts.join('');
+    
+    jsonData.body.forEach(node => extractHandlers(node));
+    
+    const jsonStr = JSON.stringify(jsonData);
+    const obfuscate = opts.obfuscate === true;
     const headHTML = this.head.render();
-    const stylesHTML = ctx.styles.length > 0 ? 
-      `<style${this._nonce ? ` nonce="${escapeHtml(this._nonce)}"` : ''}>${ctx.styles.join('')}</style>` : 
-      '';
-    const clientJS = compileClient(ctx);
-
+    
     const parts = [
       '<!DOCTYPE html><html lang="en"><head>',
       headHTML,
-      stylesHTML
+      `<script${this._nonce ? ` nonce="${escapeHtml(this._nonce)}"` : ''}>`,
     ];
-
-    // Embed JSON data
-    const jsonData = this.toJSON();
-    const jsonStr = JSON.stringify(jsonData);
     
-    // Obfuscate if requested
-    const obfuscate = opts.obfuscate === true;
+    // Inject Event Handlers (Safe Scope)
+    if (Object.keys(eventHandlers).length > 0) {
+      parts.push('window.__HANDLERS__={');
+      const handlerEntries = Object.entries(eventHandlers);
+      for (let i = 0; i < handlerEntries.length; i++) {
+        const [id, fnStr] = handlerEntries[i];
+        parts.push(`"${id}":${fnStr}`);
+        if (i < handlerEntries.length - 1) parts.push(',');
+      }
+      parts.push('};');
+    }
     
+    // Inject JSON Data (Fast Decode)
     if (obfuscate) {
       const obfuscated = encryptString(jsonStr, true);
-      const decryptScript = getDecryptScript();
-      
-      parts.push(
-        `<script${this._nonce ? ` nonce="${escapeHtml(this._nonce)}"` : ''}>`,
-        decryptScript,
-        `window.${jsonVarName}=JSON.parse(_decrypt("${obfuscated}"));`,
-        '</script>'
-      );
+      parts.push(getDecryptScript(), `window.${jsonVarName}=JSON.parse(_d("${obfuscated}"));`);
     } else {
-      parts.push(
-        `<script${this._nonce ? ` nonce="${escapeHtml(this._nonce)}"` : ''}>`,
-        `window.${jsonVarName}=${jsonStr};`,
-        '</script>'
-      );
+      parts.push(`window.${jsonVarName}=${jsonStr};`);
     }
-
+    
+    parts.push('</script></head><body>');
+    
+    // ---------------- HYDRATION ENGINE (Client Side) ---------------- //
     parts.push(
-      '</head><body>',
-      bodyHTML,
-      clientJS ? `<script${this._nonce ? ` nonce="${escapeHtml(this._nonce)}"` : ''}>${clientJS}</script>` : '',
-      '</body></html>'
+      `<script${this._nonce ? ` nonce="${escapeHtml(this._nonce)}"` : ''}>`,
+      `(function(){`,
+      `var data=window.${jsonVarName};`,
+      `if(!data)return;`,
+      
+      // HELPER: Compiler (Performance: Compiles string -> Function ONCE)
+      `var compile=function(s){try{return new Function('return ('+s+')')();}catch(e){return function(){};}};`,
+
+      // 1. INJECT STYLES
+      `var css='';`,
+      `if(data.classStyles){for(var n in data.classStyles)css+='.'+n+'{'+data.classStyles[n]+'}';}`,
+      `if(data.globalStyles){data.globalStyles.forEach(function(s){css+=s;});}`,
+      `if(css){var s=document.createElement('style');s.textContent=css;document.head.appendChild(s);}`,
+      
+      // 2. DOM BUILDER (Recursion)
+      `var dynamicCss = '';`,
+      `function buildEl(node){`,
+      `if(node.type==='text') return document.createTextNode(node.content);`, // Safe: createTextNode handles escaping
+      `var el=document.createElement(node.tag);`,
+      `if(node.attrs){for(var k in node.attrs)el.setAttribute(k,node.attrs[k]);}`,
+      `if(node.cssText){ dynamicCss += node.cssText; }`,
+      `if(node.children){for(var i=0;i<node.children.length;i++){`,
+      `el.appendChild(buildEl(node.children[i]));`,
+      `}}`,
+      `return el;`,
+      `}`,
+      
+      // 3. REACTIVE STATE PROXY
+      `if(data.globalState){`,
+      `var _cbs={};`,
+      `window.watchState=function(k,f){(_cbs[k]=_cbs[k]||[]).push(f);};`,
+      `window.State=new Proxy(data.globalState,{`,
+      `set:function(t,k,v){if(t[k]===v)return true;t[k]=v;if(_cbs[k])_cbs[k].forEach(function(f){f(v);});return true;}`,
+      `});}`,
+      
+      // 4. RENDER BODY
+      `if(data.body){`,
+      `for(var i=0;i<data.body.length;i++){document.body.appendChild(buildEl(data.body[i]));}`,
+      `}`,
+
+      // 5. INJECT DYNAMIC CSS (Buffered)
+      `if(dynamicCss){var s=document.createElement('style');s.textContent=dynamicCss;document.head.appendChild(s);}`,
+      
+      // 6. HYDRATION (Events & Bindings)
+      `function hydrateNode(node){`,
+      `if(node.type!=='element')return;`,
+      `var el=node.attrs&&node.attrs.id?document.getElementById(node.attrs.id):null;`,
+      `if(el){`,
+      
+      // State Bindings (Optimized: Compile Once, Run Many)
+      `if(node.stateBindings){`,
+      `node.stateBindings.forEach(function(b){`,
+      `var fn=compile(b.templateFn);`, // Compile here
+      `window.watchState(b.stateKey,function(val){try{el.textContent=fn(val);}catch(e){}});`,
+      `if(window.State[b.stateKey]!==undefined){try{el.textContent=fn(window.State[b.stateKey]);}catch(e){}}`,
+      `});`,
+      `}`,
+      `}`,
+      
+      // Events (Delegated via Handlers)
+      `if(node.events){`,
+      `node.events.forEach(function(evt){`,
+      `var tid=evt.targetId||evt.id;`,
+      `var te=document.getElementById(tid);`,
+      `if(te&&evt.handlerId&&window.__HANDLERS__[evt.handlerId]){`,
+      `try{te.addEventListener(evt.event,window.__HANDLERS__[evt.handlerId]);}catch(e){}`,
+      `}`,
+      `});`,
+      `}`,
+      
+      // Recurse Children
+      `if(node.children){node.children.forEach(function(c){hydrateNode(c);});}`,
+      `}`,
+      
+      `if(data.body){data.body.forEach(function(n){hydrateNode(n);});}`,
+      
+      // OnCreate Callbacks
+      `if(data.oncreateCallbacks){`,
+      `data.oncreateCallbacks.forEach(function(f){try{compile(f)();}catch(e){console.error(e);}});`,
+      `}`,
+      `})();`,
+      '</script></body></html>'
     );
 
     const html = parts.join('');
-
-    recycle('arrays', ctx.events);
-    recycle('arrays', ctx.states);
-    recycle('arrays', ctx.computed);
-    recycle('arrays', ctx.stateBindings);
-
+    // Use safer minification
     const result = CONFIG.mode === "prod" ? minHTML(html) : html;
 
     if (this._useResponseCache && this._cacheKey) {
