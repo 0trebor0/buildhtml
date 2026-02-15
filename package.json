@@ -1,6 +1,6 @@
 {
   "name": "@trebor/buildhtml",
-  "version": "1.0.4",
+  "version": "1.0.3",
   "description": "Zero-dependency, ultra-fast HTML builder for server-side rendering (SSR).",
   "main": "index.js",
   "files": [
