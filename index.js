@@ -688,25 +688,20 @@ class LRUCache {
 const responseCache = new LRUCache(CONFIG.cacheLimit);
 const inFlightCache = new Map();
 
-/* ---------------- ENCRYPTION ---------------- */
+/* ---------------- OBFUSCATION (NOT ENCRYPTION) ---------------- */
 // Simple Base64 obfuscation for JSON data
-// NOTE: This is obfuscation, NOT cryptographic security!
-function generateEncryptionKey() {
-  // Not needed for Base64, but kept for API compatibility
-  return 1;
-}
-
-function encryptString(str, key) {
+// WARNING: This is obfuscation ONLY, NOT cryptographic security!
+// It only reduces payload size and makes data less human-readable.
+function obfuscateString(str) {
   // Simple Base64 is fast and sufficient for obfuscation.
-  // Reversing large strings is too expensive for the client.
   if (typeof Buffer !== 'undefined') {
     return Buffer.from(str, 'utf-8').toString('base64');
   }
   return btoa(unescape(encodeURIComponent(str)));
 }
 
-function getDecryptScript() {
-  // Optimized decoder: Just decode Base64 (O(1) complexity relative to string ops)
+function getDeobfuscateScript() {
+  // Optimized decoder: Just decode Base64
   return `var _d=function(e){return decodeURIComponent(escape(atob(e)));};`;
 }
 
@@ -962,23 +957,13 @@ class Document {
     doc.head.globalStyles = json.globalStyles || [];
     doc.head.classStyles = json.classStyles || {};
 
-    // Restore global state
+    // Restore global state (data only)
     doc._globalState = json.globalState || {};
 
-    // Restore oncreate callbacks
-    if (json.oncreateCallbacks && Array.isArray(json.oncreateCallbacks)) {
-      for (const fnStr of json.oncreateCallbacks) {
-        try {
-          // eslint-disable-next-line no-eval
-          const fn = eval(`(${fnStr})`);
-          doc._oncreateCallbacks.push(fn);
-        } catch (err) {
-          if (CONFIG.mode === 'dev') {
-            console.error('Failed to restore oncreate callback:', err);
-          }
-        }
-      }
-    }
+    // WARNING: Functions cannot be restored from JSON for security reasons.
+    // oncreate callbacks, computed functions, and event handlers are NOT restored.
+    // This method is intended for server-side data restoration only.
+    // For client-side hydration with functions, use renderJSON() instead.
 
     // Restore body
     const deserializeElement = (node) => {
@@ -1009,35 +994,9 @@ class Document {
         el._stateBindings = node.stateBindings;
       }
 
-      if (node.computed) {
-        try {
-          // eslint-disable-next-line no-eval
-          el._computed = eval(`(${node.computed})`);
-        } catch (err) {
-          if (CONFIG.mode === 'dev') {
-            console.error('Failed to restore computed function:', err);
-          }
-        }
-      }
-
-      if (node.events && Array.isArray(node.events)) {
-        for (const evt of node.events) {
-          try {
-            // eslint-disable-next-line no-eval
-            const fn = eval(`(${evt.fn})`);
-            el.events.push({
-              event: evt.event,
-              id: evt.id,
-              targetId: evt.targetId,
-              fn: fn
-            });
-          } catch (err) {
-            if (CONFIG.mode === 'dev') {
-              console.error('Failed to restore event handler:', err);
-            }
-          }
-        }
-      }
+      // NOTE: Functions (computed, events, oncreate) are NOT restored from JSON
+      // for security reasons. This method is for data restoration only.
+      // For full client-side hydration with functions, use renderJSON() instead.
 
       el.hydrate = node.hydrate || false;
 
@@ -1206,8 +1165,8 @@ class Document {
     
     // Inject JSON Data (Fast Decode)
     if (obfuscate) {
-      const obfuscated = encryptString(jsonStr, true);
-      parts.push(getDecryptScript(), `window.${jsonVarName}=JSON.parse(_d("${obfuscated}"));`);
+      const obfuscated = obfuscateString(jsonStr);
+      parts.push(getDeobfuscateScript(), `window.${jsonVarName}=JSON.parse(_d("${obfuscated}"));`);
     } else {
       parts.push(`window.${jsonVarName}=${jsonStr};`);
     }
