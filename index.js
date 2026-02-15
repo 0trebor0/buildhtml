@@ -1128,8 +1128,8 @@ class Document {
     // Handle both signatures:
     // renderJSON() 
     // renderJSON('varName')
-    // renderJSON({ encrypt: true })
-    // renderJSON('varName', { encrypt: true })
+    // renderJSON({ obfuscate: true })
+    // renderJSON('varName', { obfuscate: true })
     
     let jsonVarName = '__SCULPTOR_DATA__';
     let opts = {};
@@ -1193,17 +1193,17 @@ class Document {
     const jsonData = this.toJSON();
     const jsonStr = JSON.stringify(jsonData);
     
-    // Encrypt/obfuscate if requested
-    const encrypt = opts.encrypt === true;
+    // Obfuscate if requested
+    const obfuscate = opts.obfuscate === true;
     
-    if (encrypt) {
-      const encrypted = encryptString(jsonStr, true);
+    if (obfuscate) {
+      const obfuscated = encryptString(jsonStr, true);
       const decryptScript = getDecryptScript();
       
       parts.push(
         `<script${this._nonce ? ` nonce="${escapeHtml(this._nonce)}"` : ''}>`,
         decryptScript,
-        `window.${jsonVarName}=JSON.parse(_decrypt("${encrypted}"));`,
+        `window.${jsonVarName}=JSON.parse(_decrypt("${obfuscated}"));`,
         '</script>'
       );
     } else {
