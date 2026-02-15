@@ -1,7 +1,6 @@
-# BuildHTML
+# @trebor/buildhtml
 
-**High-performance, server-side rendering (SSR) library for Node.js.**  
-*"Build HTML at lightning speed with reactive state management."*
+**High-performance, server-side rendering (SSR) library for Node.js.** *"Build HTML at lightning speed with reactive state management."*
 
 ---
 
@@ -9,20 +8,20 @@
 
 BuildHTML is a lightweight SSR library for Node.js featuring object pooling, reactive state management, and CSS-in-JS capabilities. Build HTML on the server with minimal memory usage and blazing-fast performance.
 
-- **Zero dependencies** – Only Node.js required
-- **High Performance** – Object pooling and LRU caching (1-5ms render time)
-- **Reactive State** – Built-in state management with automatic UI updates
-- **CSS-in-JS** – Scoped and global styling with automatic CSS generation
-- **Security** – XSS protection, CSS sanitization, and CSP nonce support
-- **Production Ready** – HTML minification, compression, and metrics
-- **JSON Export** – Save/restore pages with optional obfuscation
+- **Zero dependencies** – Only Node.js required.
+- **High Performance** – Object pooling and LRU caching (1-5ms render time).
+- **Reactive State** – Built-in state management with automatic UI updates.
+- **CSS-in-JS** – Scoped and global styling with automatic CSS generation.
+- **Security** – XSS protection, CSS sanitization, and CSP nonce support.
+- **Production Ready** – HTML minification, compression, and metrics.
+- **JSON Export** – Save/restore pages with optional obfuscation.
 
 ---
 
 ## Installation
 
 ```bash
-npm install buildhtml
+npm install @trebor/buildhtml
 ```
 
 ---
@@ -30,7 +29,7 @@ npm install buildhtml
 ## Quick Start
 
 ```javascript
-const { Document } = require('buildhtml');
+const { Document } = require('@trebor/buildhtml');
 
 // Create a document
 const doc = new Document();
@@ -257,7 +256,7 @@ const {
   resetPools,        // Reset object pools
   healthCheck,       // Health check data
   metrics            // Performance metrics
-} = require('buildhtml');
+} = require('@trebor/buildhtml');
 ```
 
 ---
@@ -268,7 +267,7 @@ const {
 
 ```javascript
 const express = require('express');
-const { Document } = require('buildhtml');
+const { Document } = require('@trebor/buildhtml');
 
 const app = express();
 
@@ -400,7 +399,7 @@ app.get('/spa', (req, res) => {
 ## Configuration
 
 ```javascript
-const { CONFIG } = require('buildhtml');
+const { CONFIG } = require('@trebor/buildhtml');
 
 CONFIG.mode = 'prod';           // 'prod' or 'dev'
 CONFIG.poolSize = 150;          // Max pooled elements
@@ -436,14 +435,14 @@ clearCache('user-');    // Clear all keys containing 'user-'
 ### enableCompression()
 
 ```javascript
-const { enableCompression } = require('buildhtml');
+const { enableCompression } = require('@trebor/buildhtml');
 app.use(enableCompression());
 ```
 
 ### warmupCache(routes)
 
 ```javascript
-const { warmupCache } = require('buildhtml');
+const { warmupCache } = require('@trebor/buildhtml');
 
 await warmupCache([
   { key: 'home', builder: () => buildHomePage() },
@@ -546,7 +545,7 @@ doc.oncreate(() => {
 ```javascript
 process.env.ENABLE_METRICS = 'true';
 
-const { metrics } = require('buildhtml');
+const { metrics } = require('@trebor/buildhtml');
 
 // After some requests...
 console.log(metrics.getStats());
@@ -663,7 +662,7 @@ const html = doc.render();
 
 ```javascript
 const express = require('express');
-const { Document, createCachedRenderer } = require('buildhtml');
+const { Document, createCachedRenderer } = require('@trebor/buildhtml');
 
 const app = express();
 
