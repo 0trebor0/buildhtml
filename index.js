@@ -802,13 +802,6 @@ class Document {
     return this;
   }
 
-  use(el) {
-    if (el != null) {
-      this.body.push(el);
-    }
-    return this;
-  }
-
   useFragment(fn) {
     if (typeof fn !== 'function') return this;
     
@@ -819,7 +812,7 @@ class Document {
       for (let i = 0; i < arr.length; i++) {
         const el = arr[i];
         if (el != null && el instanceof Element) {
-          this.use(el);
+          this.body.push(el);
         }
       }
     } catch (err) {
@@ -837,7 +830,7 @@ class Document {
     }
     const element = getPooled('elements', tag, this._ridGen, this._stateStore, this);
     // Automatically add to document body when created from document
-    this.use(element);
+    this.body.push(element);
     return element;
   }
 
