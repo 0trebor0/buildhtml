@@ -20,8 +20,9 @@ doc.title('My Page').viewport().resetCss();
 doc.bodyCss({ fontFamily: 'system-ui', margin: '0' });
 
 doc.container((c) => {
-  c.child('h1').text('Hello World');
-  c.child('p').text('Built with buildhtml.');
+  c.child('h1').text('Hello World').hover({ color: '#007bff' });
+  c.child('p').text('Built with buildhtml.')
+    .media('(max-width: 600px)', { fontSize: '14px' });
 });
 
 console.log(doc.render());
@@ -126,6 +127,41 @@ doc.lang('en')
 doc.resetCss();
 doc.globalStyle('body', { fontFamily: 'system-ui', lineHeight: '1.6' });
 doc.sharedClass('btn', { padding: '8px 16px', borderRadius: '4px' });
+```
+
+### CSS Features
+
+| Method | Description |
+|--------|-------------|
+| `keyframes(name, frames)` | Define `@keyframes` animation |
+| `mediaQuery(query, selectorRules)` | `@media` block with selector-rules map |
+| `cssVar(name, value)` | CSS custom property on `:root` |
+| `cssVars(obj)` | Set multiple CSS variables at once |
+| `darkMode(selectorRules)` | `@media (prefers-color-scheme: dark)` shorthand |
+| `print(selectorRules)` | `@media print` shorthand |
+
+```javascript
+doc.cssVars({ primary: '#007bff', radius: '8px', spacing: '16px' });
+
+doc.keyframes('fadeIn', {
+  from: { opacity: '0', transform: 'translateY(-10px)' },
+  to: { opacity: '1', transform: 'translateY(0)' }
+});
+
+doc.darkMode({
+  body: { backgroundColor: '#1a1a1a', color: '#eee' },
+  '.card': { borderColor: '#333' }
+});
+
+doc.print({
+  '.no-print': { display: 'none' },
+  body: { fontSize: '12pt' }
+});
+
+doc.mediaQuery('(max-width: 768px)', {
+  '.sidebar': { display: 'none' },
+  '.content': { width: '100%' }
+});
 ```
 
 ### State & Lifecycle
@@ -240,6 +276,43 @@ doc.dataTable(null, [
 ], { autoHeaders: true, class: 'data-table' });
 ```
 
+### Utility Methods
+
+| Method | Description |
+|--------|-------------|
+| `comment(text)` | HTML comment in body |
+| `raw(html)` | Raw HTML string in body (no wrapper) |
+| `each(items, fn)` | Loop helper: `fn(doc, item, index)` |
+| `when(condition, fn)` | Conditional: runs `fn(doc)` if truthy |
+| `group(fn)` | Logical grouping: runs `fn(doc)`, no wrapper element |
+| `template(name, fn)` | Define reusable document-level fragment |
+| `useTemplate(name, vars)` | Stamp out a defined template |
+| `isEmpty()` | Check if body has content |
+| `elementCount()` | Total elements in body (recursive) |
+
+```javascript
+doc.comment('Navigation section');
+
+doc.template('userCard', (d, { name, role }) => {
+  const card = d.create('div').addClass('user-card');
+  card.child('h3').text(name);
+  card.child('span').text(role);
+});
+
+doc.each(users, (d, user) => {
+  d.useTemplate('userCard', user);
+});
+
+doc.when(isAdmin, (d) => {
+  d.create('button').text('Admin Panel');
+});
+
+doc.group((d) => {
+  d.h(2).text('Section');
+  d.p('Content without a wrapper element.');
+});
+```
+
 ### Rendering
 
 | Method | Description |
@@ -269,19 +342,32 @@ Created via `doc.create(tag)` or `parent.child(tag)`. All methods return `this` 
 | `remove()` | Remove from parent |
 | `empty()` | Clear all children |
 | `clone()` | Deep copy element |
+| `replaceWith(el)` | Swap this element for another in parent |
+| `prependChild(child)` | Insert child at beginning |
+| `insertAt(index, child)` | Insert child at position |
 | `find(tag)` | Find first descendant by tag |
 | `findById(id)` | Find descendant by id |
 | `findAll(tag)` | Find all descendants by tag |
 | `closest(tag)` | Walk up to find ancestor by tag |
-| `html()` | Render this element to HTML string |
+| `parent()` | Get parent element |
+| `siblings()` | Get sibling elements (excluding self) |
+| `nextSibling()` | Next sibling element |
+| `prevSibling()` | Previous sibling element |
+| `childCount()` | Number of children |
+| `index()` | Position in parent's children |
+| `isVoid()` | Check if self-closing (img, br, input, etc.) |
+| `html()` / `toString()` | Render this element to HTML string |
 
 ```javascript
 const div = doc.create('div');
 const p = div.child('p').text('Hello');
-p.wrap('section');            // <section><p>Hello</p></section>
-const cloned = div.clone();  // deep copy
-p.remove();                   // remove from parent
-div.empty();                  // clear children
+p.wrap('section');                  // <section><p>Hello</p></section>
+const cloned = div.clone();        // deep copy
+p.replaceWith(doc.create('span')); // swap p for span
+div.prependChild(doc.create('h1').text('First'));
+console.log(div.childCount());     // 3
+console.log(p.parent());           // section element
+console.log(p.siblings());         // sibling elements
 ```
 
 ### Attributes
@@ -298,17 +384,34 @@ div.empty();                  // clear children
 
 **Boolean shortcuts:** `disabled()`, `hidden()`, `required()`, `readonly()`, `autofocus()`, `multiple()`, `checked()`, `selected()`, `contentEditable()`, `draggable()`
 
+**Visibility toggles:** `show()`, `hide()`, `enable()`, `disable()`, `focus()`
+
+**Form validation:** `minLength(n)`, `maxLength(n)`, `accept(types)`, `rows(n)`, `cols(n)`
+
+**Utility:** `tooltip(text)` — sets `title` + `aria-describedby`
+
 ```javascript
 doc.create('input')
   .type('email')
   .name('email')
   .placeholder('you@example.com')
   .required()
-  .autofocus();
+  .minLength(5)
+  .maxLength(100)
+  .focus();
+
+doc.create('textarea').rows(10).cols(80).placeholder('Write here...');
 
 doc.create('div')
   .data({ userId: 42, role: 'admin' })
-  .aria({ label: 'User card', expanded: 'false' });
+  .aria({ label: 'User card', expanded: 'false' })
+  .tooltip('Click to expand');
+
+const btn = doc.create('button').text('Submit');
+btn.disable();  // disabled="disabled"
+btn.enable();   // removes disabled
+btn.hide();     // hidden="hidden"
+btn.show();     // removes hidden
 ```
 
 ### CSS & Classes
@@ -331,6 +434,75 @@ el.style({ color: 'blue', margin: '10px' });            // object form
 el.addClass('btn', 'btn-primary');
 el.classIf(isActive, 'active', 'inactive');
 el.classMap({ bold: true, italic: false, underline: true });
+```
+
+### CSS Pseudo-classes & Responsive
+
+| Method | Description |
+|--------|-------------|
+| `hover(rules)` | `:hover` styles |
+| `focusCss(rules)` | `:focus` styles |
+| `active(rules)` | `:active` styles |
+| `firstChild(rules)` | `:first-child` styles |
+| `lastChild(rules)` | `:last-child` styles |
+| `nthChild(n, rules)` | `:nth-child(n)` styles |
+| `pseudo('before', rules)` | `::before` pseudo-element |
+| `pseudo('after', rules)` | `::after` pseudo-element |
+| `media(query, rules)` | Responsive CSS scoped to this element |
+
+```javascript
+doc.create('button').text('Save')
+  .css({ padding: '8px 16px', backgroundColor: '#007bff', color: '#fff', border: 'none' })
+  .hover({ backgroundColor: '#0056b3' })
+  .active({ transform: 'scale(0.98)' })
+  .focusCss({ outline: '2px solid #80bdff' })
+  .transition({ property: 'background-color', duration: '0.2s' });
+
+doc.create('div').css({ display: 'flex', gap: '16px' })
+  .media('(max-width: 768px)', { flexDirection: 'column', gap: '8px' });
+
+doc.create('h2')
+  .pseudo('before', { content: '"§ "', color: '#999' })
+  .pseudo('after', { content: '""', display: 'block', height: '2px', backgroundColor: '#007bff' });
+
+doc.create('tr')
+  .nthChild('2n', { backgroundColor: '#f5f5f5' })
+  .firstChild({ fontWeight: 'bold' });
+```
+
+### CSS Animation & Style Shorthands
+
+| Method | Description |
+|--------|-------------|
+| `transition(props)` | CSS transition (string or `{ property, duration, timing, delay }`) |
+| `transform(value)` | CSS transform |
+| `animate(name, options)` | Link to `@keyframes` (`{ duration, timing, delay, iterations, direction, fillMode }`) |
+| `opacity(n)` | Set opacity |
+| `zIndex(n)` | Set z-index |
+| `cursor(type)` | Set cursor |
+| `overflow(value)` | Set overflow |
+| `display(value)` | Set display |
+| `position(value)` | Set position |
+| `size(w, h?)` | Set width + height (square if h omitted) |
+
+```javascript
+doc.keyframes('fadeIn', {
+  from: { opacity: '0' },
+  to: { opacity: '1' }
+});
+
+doc.create('div')
+  .animate('fadeIn', { duration: '0.5s' })
+  .opacity(0.9)
+  .cursor('pointer')
+  .position('relative')
+  .zIndex(10)
+  .size('200px', '100px')
+  .overflow('hidden');
+
+doc.create('a').text('Link')
+  .transition('color 0.2s ease')
+  .hover({ color: '#007bff' });
 ```
 
 ### Slots
@@ -750,7 +922,8 @@ buildhtml/
 └── test/
     ├── test.js
     ├── test-template.js
-    └── test-new-apis.js
+    ├── test-new-apis.js
+    └── test-apis-v2.js
 ```
 
 ---
@@ -761,9 +934,26 @@ buildhtml/
 const express = require('express');
 const { Document, components, createCachedRenderer } = require('@trebor/buildhtml');
 
-// Register reusable components
+// Design tokens
+function setupTheme(doc) {
+  doc.cssVars({ primary: '#007bff', radius: '8px', spacing: '16px' });
+  doc.keyframes('fadeIn', {
+    from: { opacity: '0', transform: 'translateY(-10px)' },
+    to: { opacity: '1', transform: 'translateY(0)' }
+  });
+  doc.darkMode({
+    body: { backgroundColor: '#111', color: '#eee' },
+    '.card': { borderColor: '#333', backgroundColor: '#222' }
+  });
+}
+
+// Component
 function Card(el, { title, body }) {
-  el.addClass('card').css({ border: '1px solid #ddd', borderRadius: '8px', padding: '16px', marginBottom: '16px' });
+  el.addClass('card')
+    .css({ border: '1px solid #ddd', borderRadius: 'var(--radius)', padding: 'var(--spacing)' })
+    .animate('fadeIn', { duration: '0.3s' })
+    .hover({ boxShadow: '0 4px 12px rgba(0,0,0,0.1)' })
+    .transition('box-shadow 0.2s ease');
   el.child('h2').text(title).css({ marginBottom: '8px' });
   el.child('p').text(body);
 }
@@ -782,32 +972,38 @@ app.get('/', (req, res) => {
     .bodyClass('light-theme')
     .bodyCss({ fontFamily: 'system-ui', lineHeight: '1.6', margin: '0' });
 
-  // Reactive state
+  setupTheme(doc);
+
   doc.state('count', 0);
 
+  doc.comment('Main content');
+
   doc.container((c) => {
-    // Header
-    c.child('h1').text('Dashboard').css({ marginBottom: '24px' });
+    c.child('h1').text('Dashboard')
+      .hover({ color: 'var(--primary)' })
+      .pseudo('after', { content: '""', display: 'block', height: '3px', backgroundColor: 'var(--primary)', marginTop: '8px' });
 
-    // Counter with state binding
-    c.child('div').bind('count', (val) => `Count: ${val}`).css({ fontSize: '24px', marginBottom: '16px' });
-    c.child('button').text('Increment').css({ padding: '8px 16px', cursor: 'pointer' })
+    c.child('div').bind('count', (val) => `Count: ${val}`)
+      .css({ fontSize: '24px', marginBottom: '16px' });
+
+    c.child('button').text('Increment')
+      .css({ padding: '8px 16px', cursor: 'pointer' })
+      .hover({ backgroundColor: '#e9ecef' })
+      .active({ transform: 'scale(0.98)' })
+      .transition('all 0.15s ease')
       .onClick(function() { State.count++; });
-
-    // Components
-    c.child('hr').css({ margin: '24px 0' });
-    const cardContainer = c.child('div');
-    Card(cardContainer.child('div'), { title: 'Getting Started', body: 'Welcome to buildhtml.' });
-    Card(cardContainer.child('div'), { title: 'Components', body: 'Reusable UI pieces.' });
-
-    // Data table
-    c.child('h2').text('Team').css({ marginTop: '24px', marginBottom: '8px' });
   }, '800px');
 
-  doc.dataTable(['Name', 'Role'], [
-    ['Alice', 'Engineer'],
-    ['Bob', 'Designer'],
-  ], { class: 'data-table' });
+  doc.each(['Getting Started', 'Components', 'Templates'], (d, title) => {
+    d.component('Card', { title, body: `Learn about ${title.toLowerCase()}.` });
+  });
+
+  doc.when(true, (d) => {
+    d.dataTable(['Name', 'Role'], [
+      ['Alice', 'Engineer'],
+      ['Bob', 'Designer'],
+    ]);
+  });
 
   res.send(doc.render());
 });
