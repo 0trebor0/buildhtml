@@ -1,0 +1,13 @@
+{
+  "name": "buildhtml",
+  "version": "2.0.0",
+  "description": "A fast, modular server-side HTML builder with components, layouts, and reactive state",
+  "main": "index.js",
+  "files": ["index.js", "lib/"],
+  "keywords": ["html", "ssr", "server-side-rendering", "components", "builder"],
+  "license": "MIT",
+  "scripts": {
+    "test": "node test/test.js",
+    "bench": "node test/bench.js"
+  }
+}

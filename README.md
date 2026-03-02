@@ -1,263 +1,645 @@
 # @trebor/buildhtml
 
-**High-performance, server-side rendering (SSR) library for Node.js.** *"Build HTML at lightning speed with reactive state management."*
+**High-performance server-side HTML builder for Node.js** — components, templates, reactive state, layouts, and CSS-in-JS with zero dependencies.
 
 ---
 
-## Overview
-
-BuildHTML is a lightweight SSR library for Node.js featuring object pooling, reactive state management, and CSS-in-JS capabilities. Build HTML on the server with minimal memory usage and blazing-fast performance.
-
-- **Zero dependencies** – Only Node.js required.
-- **High Performance** – Object pooling and LRU caching (1-5ms render time).
-- **Reactive State** – Built-in state management with automatic UI updates.
-- **CSS-in-JS** – Scoped and global styling with automatic CSS generation.
-- **Security** – XSS protection, CSS sanitization, and CSP nonce support.
-- **Production Ready** – HTML minification, compression, and metrics.
-- **JSON Export** – Save/restore pages with optional obfuscation.
-
----
-
-## Installation
+## Install
 
 ```bash
 npm install @trebor/buildhtml
 ```
-
----
 
 ## Quick Start
 
 ```javascript
 const { Document } = require('@trebor/buildhtml');
 
-// Create a document
 const doc = new Document();
-doc.title('Counter App');
+doc.title('My Page').viewport().resetCss();
+doc.bodyCss({ fontFamily: 'system-ui', margin: '0' });
 
-// Add global state
-doc.state('count', 0);
+doc.container((c) => {
+  c.child('h1').text('Hello World');
+  c.child('p').text('Built with buildhtml.');
+});
 
-// Create elements (automatically attached!)
-const display = doc.create('h1');
-display.bind('count', (val) => `Count: ${val}`);
-
-const button = doc.create('button');
-button.text('Increment');
-button.on('click', () => { State.count++; });
-
-// Render HTML
-const html = doc.render();
-console.log(html);
+console.log(doc.render());
 ```
 
-**Key Feature:** Elements created with `doc.create()` are **automatically attached** to the document. No manual attachment needed!
+Elements created with `doc.create()` are **automatically attached** to the document — no manual DOM insertion needed.
 
 ---
 
-## Features
+## Table of Contents
 
-### Core Features
-* **Automatic Element Attachment** – `doc.create('div')` automatically adds to document
-* **Reactive State** – `doc.state()` + `element.bind()` for automatic UI updates
-* **Event Handling** – `.on(event, fn)` with automatic serialization
-* **CSS-in-JS** – `.css({ color: 'red' })` with automatic scoping
-* **Computed Values** – `.computed(fn)` for derived content
-* **JSON Export/Import** – `doc.toJSON()` and `Document.fromJSON(json)`
-
-### Performance Features
-* **Object Pooling** – Reuses elements across renders
-* **LRU Caching** – Cache rendered HTML for static pages
-* **In-Flight Deduplication** – Concurrent requests share one render
-* **Minification** – Automatic in production mode
-* **Metrics** – Optional performance tracking
+- [Document API](#document-api)
+- [Element API](#element-api)
+- [Components](#components)
+- [Declarative Builder](#declarative-builder)
+- [Templates (.bhtml)](#templates-bhtml)
+- [State & Events](#state--events)
+- [Express Integration](#express-integration)
+- [Exports](#exports)
 
 ---
 
-## API Guide
-
-### Document
+## Document API
 
 Create with `new Document(options)`.
 
-#### Methods
-
-| Method | Description |
-|--------|-------------|
-| `title(t)` | Set page title (auto-escaped) |
-| `state(key, value)` | Set global reactive state |
-| `addMeta(obj)` | Add meta tag: `{ name: 'description', content: '...' }` |
-| `addLink(href)` | Add stylesheet link |
-| `addStyle(css)` | Add inline CSS to `<head>` |
-| `addScript(src)` | Add external script |
-| `globalStyle(selector, rules)` | Add global CSS rule |
-| `sharedClass(name, rules)` | Define reusable class |
-| `create(tag)` | Create element (auto-attached to document) |
-| `child(tag)` | Alias for `create(tag)` |
-| `useFragment(fn)` | Add multiple elements via function |
-| `oncreate(fn)` | Run function on page load |
-| `toJSON()` | Export document structure as JSON |
-| `render()` | Return full HTML string |
-| `renderJSON(opts?)` | Render with embedded JSON |
-| `save(path)` | Save rendered HTML to file |
-
-#### renderJSON Options
-
-```javascript
-// Default (no JSON)
-doc.renderJSON()
-// → window.__SCULPTOR_DATA__ = {...}
-
-// With obfuscation (50% smaller!)
-doc.renderJSON({ obfuscate: true })
-// → window.__SCULPTOR_DATA__ = JSON.parse(_decrypt("..."))
-
-// Custom variable name
-doc.renderJSON('MY_DATA')
-// → window.MY_DATA = {...}
-
-// Both custom name and obfuscation
-doc.renderJSON('MY_DATA', { obfuscate: true })
-// → window.MY_DATA = JSON.parse(_decrypt("..."))
-
-// Or use options object
-doc.renderJSON({ obfuscate: true, varName: 'MY_DATA' })
-```
-
-#### Static Methods
-
-| Method | Description |
-|--------|-------------|
-| `Document.fromJSON(json)` | Rebuild document from JSON |
-
-#### Constructor Options
-
 ```javascript
 new Document({
-  cache: true,        // Enable response caching
-  cacheKey: 'home',   // Cache key for this document
-  nonce: 'abc123'     // CSP nonce for inline scripts/styles
+  cache: true,       // Enable response caching
+  cacheKey: 'home',  // Cache key
+  nonce: 'abc123'    // CSP nonce for inline scripts/styles
 })
 ```
 
----
-
-### Element
-
-Created with `doc.create(tag)`. All methods return `this` for chaining.
-
-#### Methods
+### Head & Meta
 
 | Method | Description |
 |--------|-------------|
-| `create(tag)` | Create child element (auto-attached to parent) |
-| `child(tag)` | Alias for `create(tag)` |
-| `id(v?)` | Set id attribute (auto-generated if omitted) |
-| `attr(key, value)` | Set attribute |
-| `text(content)` | Append escaped text |
+| `title(t)` | Set page title |
+| `meta(name, content)` | Add `<meta>` tag |
+| `viewport(v?)` | Add viewport meta (default: responsive) |
+| `charset(c?)` | Set charset (default: UTF-8) |
+| `favicon(href)` | Add favicon link |
+| `addMeta(obj)` | Add meta with full attribute object |
+| `addLink(href)` | Add stylesheet link |
+| `addScript(src)` | Add external script |
+| `addStyle(css)` | Add CSS string to `<head>` |
+
+### SEO & Social
+
+| Method | Description |
+|--------|-------------|
+| `canonical(url)` | `<link rel="canonical">` |
+| `ogTags({ title, description, image })` | Open Graph meta tags |
+| `twitterCard({ card, site, title })` | Twitter Card meta tags |
+| `jsonLd(schemaObj)` | JSON-LD structured data |
+| `noindex(nofollow?)` | Add robots noindex (and optionally nofollow) |
+
+### Resource Hints
+
+| Method | Description |
+|--------|-------------|
+| `preload(href, as, type?)` | `<link rel="preload">` |
+| `prefetch(href)` | `<link rel="prefetch">` |
+| `preconnect(href)` | `<link rel="preconnect">` |
+
+### Head Injection
+
+| Method | Description |
+|--------|-------------|
+| `rawHead(html)` | Inject arbitrary HTML into `<head>` |
+| `inlineScript(code)` | Add inline `<script>` block |
+| `inlineStyle(css)` | Add raw CSS string to `<head>` |
+
+### HTML & Body Attributes
+
+| Method | Description |
+|--------|-------------|
+| `lang(l)` | Set `<html lang="...">` |
+| `htmlAttr(key, value)` | Set any `<html>` attribute |
+| `bodyId(id)` | Set `<body id="...">` |
+| `bodyClass(...names)` | Add classes to `<body>` |
+| `bodyAttr(key, value)` | Set any `<body>` attribute |
+| `bodyCss(rules)` | Style `<body>` via global CSS rule |
+
+```javascript
+doc.lang('en')
+  .bodyClass('dark-mode', 'no-scroll')
+  .bodyCss({ backgroundColor: '#1a1a1a', color: '#fff' });
+```
+
+### Global CSS
+
+| Method | Description |
+|--------|-------------|
+| `globalStyle(selector, rules)` | Add global CSS rule |
+| `sharedClass(name, rules)` | Define reusable class |
+| `defineClass(selector, rules, isRaw?)` | Define class or raw selector |
+| `resetCss()` | Box-sizing reset + normalize basics |
+
+```javascript
+doc.resetCss();
+doc.globalStyle('body', { fontFamily: 'system-ui', lineHeight: '1.6' });
+doc.sharedClass('btn', { padding: '8px 16px', borderRadius: '4px' });
+```
+
+### State & Lifecycle
+
+| Method | Description |
+|--------|-------------|
+| `state(key, value)` | Set a global reactive state key |
+| `states(obj)` | Set multiple state keys at once |
+| `oncreate(fn)` | Run function on page load |
+
+### Element Creation
+
+| Method | Description |
+|--------|-------------|
+| `create(tag)` / `child(tag)` | Create element (auto-attached) |
+| `div()`, `span()`, `section()`, `header()`, `footer()`, `main()`, `nav()`, `article()`, `aside()`, `form()`, `ul()`, `ol()`, `table()`, `details()`, `pre()`, `code()`, `blockquote()`, `dialog()` | Tag shortcuts |
+| `h(level)` | Heading `<h1>`–`<h6>` |
+| `p(text?)` | Paragraph |
+| `a(href, text?)` | Anchor |
+| `button(text?)` | Button |
+| `img(src, alt?)` | Image |
+| `input(type?, attrs?)` | Input |
+| `textarea(attrs?)` | Textarea |
+| `select(options, attrs?)` | Select dropdown |
+| `hr()` | Horizontal rule |
+| `br()` | Line break |
+
+```javascript
+doc.h(1).text('Title');
+doc.p('A paragraph of text.');
+doc.a('/about', 'About Us');
+doc.img('/photo.jpg', 'A photo');
+doc.input('email', { placeholder: 'you@example.com', required: true });
+doc.select([
+  { value: 'us', text: 'United States' },
+  { value: 'uk', text: 'United Kingdom', selected: true },
+], { name: 'country' });
+```
+
+### Form Helpers
+
+| Method | Description |
+|--------|-------------|
+| `formGroup(label, type?, attrs?)` | Label + input pair in wrapper |
+| `checkbox(name, label, checked?)` | Checkbox with label |
+| `radio(name, options)` | Radio button group |
+| `fieldset(legend, setupFn?)` | Fieldset with legend |
+| `hiddenInput(name, value)` | Hidden input |
+
+```javascript
+doc.formGroup('Email', 'email', { name: 'email', placeholder: 'you@example.com' });
+doc.checkbox('terms', 'I agree to the terms', false);
+doc.radio('size', [
+  { value: 's', label: 'Small' },
+  { value: 'm', label: 'Medium', checked: true },
+  { value: 'l', label: 'Large' },
+]);
+doc.fieldset('Shipping Address', (fs) => {
+  fs.child('input').type('text').name('street').placeholder('Street');
+  fs.child('input').type('text').name('city').placeholder('City');
+});
+doc.hiddenInput('csrf', 'abc123');
+```
+
+### Layout Helpers
+
+| Method | Description |
+|--------|-------------|
+| `grid(columns, items?, gap?)` | CSS Grid wrapper |
+| `flex(items?, options?)` | Flex container |
+| `stack(items?, gap?)` | Vertical stack (flex column) |
+| `row(items?, gap?)` | Horizontal row (flex row) |
+| `center(childFn?)` | Centered flex wrapper |
+| `container(childFn?, maxWidth?)` | Max-width centered container |
+| `spacer(height?)` | Empty spacer div |
+| `divider(options?)` | Styled `<hr>` |
+| `columns(count, columnFns?, gap?)` | Multi-column grid |
+
+```javascript
+doc.container((c) => {
+  c.child('h1').text('Dashboard');
+}, '960px');
+
+doc.grid(3, ['Card 1', 'Card 2', 'Card 3'], '20px');
+
+doc.columns(2, [
+  (col) => col.child('p').text('Left side'),
+  (col) => col.child('p').text('Right side'),
+]);
+
+doc.stack([
+  (el) => el.child('h2').text('Section 1'),
+  (el) => el.child('h2').text('Section 2'),
+], '24px');
+```
+
+### Data Helpers
+
+| Method | Description |
+|--------|-------------|
+| `list(items, renderer?, tag?)` | Create `<ul>` or `<ol>` from array |
+| `dataTable(headers, rows, options?)` | Create `<table>` from data |
+
+```javascript
+doc.list(['Apples', 'Bananas', 'Cherries']);
+doc.list(users, (li, user) => li.text(`${user.name} (${user.age})`));
+
+doc.dataTable(['Name', 'Age'], [['Alice', 30], ['Bob', 25]]);
+doc.dataTable(null, [
+  { name: 'Alice', age: 30 },
+  { name: 'Bob', age: 25 },
+], { autoHeaders: true, class: 'data-table' });
+```
+
+### Rendering
+
+| Method | Description |
+|--------|-------------|
+| `render()` | Return full HTML string |
+| `output()` | Get last rendered HTML |
+| `save(path)` | Write rendered HTML to file |
+| `toJSON()` | Export document structure as JSON |
+
+---
+
+## Element API
+
+Created via `doc.create(tag)` or `parent.child(tag)`. All methods return `this` for chaining.
+
+### Tree Manipulation
+
+| Method | Description |
+|--------|-------------|
+| `child(tag)` / `create(tag)` | Create child element |
 | `append(child)` | Append element or text |
-| `appendUnsafe(html)` | Append raw HTML (use carefully!) |
-| `css(styles)` | Add scoped styles: `{ color: 'red' }` |
-| `uniqueClass(rules)` | Add unique class with styles |
-| `state(value)` | Set initial state for hydration |
+| `appendUnsafe(html)` | Append raw HTML |
+| `text(content)` | Append escaped text |
+| `before(sibling)` | Insert before this element |
+| `after(sibling)` | Insert after this element |
+| `wrap(tag)` | Wrap this element in a new parent |
+| `remove()` | Remove from parent |
+| `empty()` | Clear all children |
+| `clone()` | Deep copy element |
+| `find(tag)` | Find first descendant by tag |
+| `findById(id)` | Find descendant by id |
+| `findAll(tag)` | Find all descendants by tag |
+| `closest(tag)` | Walk up to find ancestor by tag |
+| `html()` | Render this element to HTML string |
+
+```javascript
+const div = doc.create('div');
+const p = div.child('p').text('Hello');
+p.wrap('section');            // <section><p>Hello</p></section>
+const cloned = div.clone();  // deep copy
+p.remove();                   // remove from parent
+div.empty();                  // clear children
+```
+
+### Attributes
+
+| Method | Description |
+|--------|-------------|
+| `attr(key, value)` | Set any attribute |
+| `id(v?)` | Set id (auto-generated if omitted) |
+| `setAttrs(obj)` | Set multiple attributes |
+| `data(obj)` | Set `data-*` attributes |
+| `aria(obj)` | Set `aria-*` attributes |
+
+**Attribute shortcuts:** `href()`, `src()`, `type()`, `placeholder()`, `value()`, `name()`, `role()`, `for()`, `title()`, `tabindex()`, `action()`, `method()`, `target()`, `rel()`, `alt()`, `width()`, `height()`, `min()`, `max()`, `step()`, `pattern()`, `autocomplete()`
+
+**Boolean shortcuts:** `disabled()`, `hidden()`, `required()`, `readonly()`, `autofocus()`, `multiple()`, `checked()`, `selected()`, `contentEditable()`, `draggable()`
+
+```javascript
+doc.create('input')
+  .type('email')
+  .name('email')
+  .placeholder('you@example.com')
+  .required()
+  .autofocus();
+
+doc.create('div')
+  .data({ userId: 42, role: 'admin' })
+  .aria({ label: 'User card', expanded: 'false' });
+```
+
+### CSS & Classes
+
+| Method | Description |
+|--------|-------------|
+| `css(obj)` | Scoped CSS (generates unique class) |
+| `style(prop, value)` / `style(obj)` | Inline `style` attribute |
+| `addClass(...names)` | Add class names |
+| `removeClass(...names)` | Remove class names |
+| `classIf(cond, trueClass, falseClass?)` | Conditional class |
+| `classMap(obj)` | Map of classes with boolean conditions |
+| `toggleClass(cond, name)` | Conditional add (no else) |
+| `hasClass(name)` | Check if class is present |
+
+```javascript
+el.css({ padding: '16px', borderRadius: '8px' });      // scoped class
+el.style('color', 'red');                                // inline style=""
+el.style({ color: 'blue', margin: '10px' });            // object form
+el.addClass('btn', 'btn-primary');
+el.classIf(isActive, 'active', 'inactive');
+el.classMap({ bold: true, italic: false, underline: true });
+```
+
+### Slots
+
+For components that accept arbitrary child content:
+
+```javascript
+function Modal(el) {
+  el.addClass('modal');
+  el.child('div').addClass('modal-header').slot('header');
+  el.child('div').addClass('modal-body').slot('default');
+  el.child('div').addClass('modal-footer').slot('footer');
+}
+
+const modal = doc.use(Modal);
+modal.fillSlot('header', (slot) => slot.child('h2').text('Title'));
+modal.fillSlot('default', (slot) => slot.child('p').text('Body'));
+modal.fillSlot('footer', (slot) => slot.child('button').text('Close'));
+```
+
+### State & Events
+
+| Method | Description |
+|--------|-------------|
+| `state(value)` | Set element state for hydration |
 | `bind(stateKey, fn?)` | Bind to global state |
 | `computed(fn)` | Compute content from state |
 | `on(event, fn)` | Attach event handler |
+| `bindState(target, event, fn)` | Cross-element state binding |
 
-#### Examples
-
-```javascript
-// Basic element
-const div = doc.create('div')
-  .attr('class', 'container')
-  .text('Hello World');
-
-// Nested elements (auto-attached to parent)
-const container = doc.create('div');
-container.create('h1').text('Title');
-container.create('p').text('Content');
-
-// CSS-in-JS
-const box = doc.create('div').css({
-  padding: '20px',
-  backgroundColor: '#f0f0f0',
-  borderRadius: '8px'
-});
-
-// State binding
-doc.state('username', 'Alice');
-const greeting = doc.create('div');
-greeting.bind('username', (name) => `Hello, ${name}!`);
-
-// Event handling
-const button = doc.create('button').text('Click me');
-button.on('click', () => {
-  State.count++;
-  console.log('Clicked!');
-});
-
-// Computed values
-const total = doc.create('div');
-total.computed((state) => {
-  return state.price * state.quantity;
-});
-```
-
----
-
-### Global State & Reactivity
-
-Sculptor provides a reactive state system:
+**Event shorthands:** `onClick`, `onChange`, `onInput`, `onSubmit`, `onKeydown`, `onKeyup`, `onKeypress`, `onFocus`, `onBlur`, `onMouseenter`, `onMouseleave`, `onMousedown`, `onMouseup`, `onMousemove`, `onDblclick`, `onContextmenu`, `onScroll`, `onLoad`, `onError`, `onDragstart`, `onDragend`, `onDragover`, `onDrop`, `onTouchstart`, `onTouchend`, `onTouchmove`
 
 ```javascript
-// Set global state
 doc.state('count', 0);
-doc.state('user', { name: 'Alice', age: 30 });
 
-// Bind elements to state
-const display = doc.create('div');
-display.bind('count'); // Shows raw value
+doc.create('h1').bind('count', (val) => `Count: ${val}`);
 
-const formatted = doc.create('div');
-formatted.bind('count', (val) => `Count: ${val}`); // Transform
-
-// Update state (automatically updates UI)
-button.on('click', () => {
-  State.count++; // Global State proxy
+doc.create('button').text('+1').onClick(function() {
+  State.count++;
 });
-
-// Access state in browser
-// window.State.count
-// window.State.user
 ```
-
-**How it works:**
-- Server renders initial HTML
-- Client receives `window.State` as reactive Proxy
-- Changing `State.count++` automatically updates all bound elements
-- No manual DOM manipulation needed!
 
 ---
 
-### Exports
+## Components
+
+Define reusable UI pieces as functions that receive `(el, props)`:
 
 ```javascript
-const {
-  Document,           // Main class
-  Element,           // Element class (usually not used directly)
-  Head,              // Head manager (usually via doc.title(), etc.)
-  CONFIG,            // Global configuration
-  createCachedRenderer,  // Express middleware
-  clearCache,        // Clear response cache
-  enableCompression, // Gzip middleware
-  responseCache,     // LRU cache instance
-  warmupCache,       // Pre-render routes
-  getCacheStats,     // Cache statistics
-  resetPools,        // Reset object pools
-  healthCheck,       // Health check data
-  metrics            // Performance metrics
-} = require('@trebor/buildhtml');
+const { Document, components } = require('@trebor/buildhtml');
+
+// Define
+function Card(el, { title, body, footer }) {
+  el.addClass('card').css({ border: '1px solid #ddd', borderRadius: '8px', padding: '16px' });
+  el.child('h2').text(title);
+  el.child('p').text(body);
+  if (footer) el.child('footer').text(footer);
+}
+
+// Register globally
+components.register('Card', Card);
+
+// Use by name
+doc.component('Card', { title: 'Hello', body: 'World' });
+
+// Or use inline (no registration)
+doc.use(Card, { title: 'Hello', body: 'World' });
 ```
+
+### Component Registry
+
+| Method | Description |
+|--------|-------------|
+| `components.register(name, fn, options?)` | Register component |
+| `components.unregister(name)` | Remove component |
+| `components.has(name)` | Check if registered |
+| `components.get(name)` | Get component definition |
+| `components.list()` | List all registered names |
+| `components.extend(newName, baseName, extendFn)` | Extend existing component |
+| `components.clear()` | Remove all |
+
+### Component Inheritance
+
+```javascript
+components.register('Card', Card);
+components.extend('CardWithImage', 'Card', (el, { image }) => {
+  if (image) el.child('img').src(image);
+});
+
+doc.component('CardWithImage', { title: 'Photo', body: 'Nice pic', image: '/photo.jpg' });
+```
+
+### Nested Components
+
+```javascript
+function NavLink(el, { href, text, active }) {
+  el.child('a').href(href).text(text).classIf(active, 'active');
+}
+
+function Navbar(el, { links }) {
+  el.addClass('navbar').css({ display: 'flex', gap: '16px' });
+  for (const link of links) {
+    NavLink(el.child('div'), link);
+  }
+}
+
+doc.use(Navbar, {
+  links: [
+    { href: '/', text: 'Home', active: true },
+    { href: '/about', text: 'About' },
+  ]
+});
+```
+
+---
+
+## Declarative Builder
+
+Build element trees from plain objects:
+
+```javascript
+doc.build({
+  tag: 'div', class: 'container', children: [
+    { tag: 'h1', text: 'Dashboard', class: 'title' },
+    { tag: 'p', text: 'Welcome back', css: { color: '#666' } },
+    { tag: 'ul', children: [
+      { tag: 'li', text: 'Home' },
+      { tag: 'li', text: 'Settings' },
+    ]}
+  ]
+});
+```
+
+### Conditionals & Iteration
+
+```javascript
+doc.build({
+  tag: 'div', children: [
+    { tag: 'p', text: 'Admin only', if: user.isAdmin },
+    {
+      each: users,
+      itemTemplate: (user, i) => ({
+        tag: 'li', children: [
+          { tag: 'strong', text: user.name },
+          { tag: 'span', text: ` — ${user.email}` },
+        ]
+      })
+    }
+  ]
+});
+```
+
+### Components in Builder
+
+```javascript
+doc.build({
+  tag: 'div', children: [
+    { component: 'Card', props: { title: 'One', body: 'First' } },
+    { use: Alert, props: { message: 'Inline!', type: 'info' } },
+  ]
+});
+```
+
+### Builder Node Options
+
+| Key | Type | Description |
+|-----|------|-------------|
+| `tag` | string | HTML tag (default: `'div'`) |
+| `text` | string | Text content |
+| `html` | string | Raw HTML (unsafe) |
+| `class` | string/array | CSS classes |
+| `id` | string | Element ID |
+| `css` | object | Scoped CSS |
+| `style` | object | Inline style |
+| `attrs` | object | HTML attributes |
+| `data` | object | `data-*` attributes |
+| `aria` | object | `aria-*` attributes |
+| `on` | object | Events `{ click: fn }` |
+| `children` | array | Child nodes |
+| `component` | string | Registered component name |
+| `use` | function | Inline component function |
+| `props` | object | Component props |
+| `if` | boolean | Conditional rendering |
+| `each` | array | Iteration source |
+| `itemTemplate` | function | `(item, index) => nodeDef` |
+| `state` | any | Element state |
+| `bind` | object | `{ key, fn }` state binding |
+| `setup` | function | `(el) => { ... }` custom setup |
+
+---
+
+## Templates (.bhtml)
+
+An indentation-based template language that compiles to buildhtml documents:
+
+```
+---
+title "My App"
+viewport
+link "https://cdn.example.com/styles.css"
+---
+
+:reset
+:global body { font-family: system-ui; line-height: 1.6 }
+:class container { max-width: 1200px; margin: 0 auto }
+
+div#app.container
+  header
+    h1 "Welcome #{user.name}"
+    nav
+      a(href="/") "Home"
+      a(href="/about") "About"
+
+  main
+    .card { padding: 16px; border: 1px solid #eee }
+      h2 "Dashboard"
+
+      ?if user.isAdmin
+        button "Admin Panel"
+      ?else
+        span "Read only"
+
+      ul
+        ?each item in items
+          li "#{item}"
+
+  footer
+    | Copyright 2025
+```
+
+### Template Syntax
+
+| Syntax | Description |
+|--------|-------------|
+| `div` | Element |
+| `div#id.class` | ID and classes (CSS selector style) |
+| `.card` | Implicit div with class |
+| `(href="/about")` | Attributes |
+| `"Hello"` | Inline text |
+| `\| text` | Multiline text (pipe prefix) |
+| `! <b>raw</b>` | Raw HTML |
+| `{ color: red }` | Scoped CSS |
+| `[userId=42]` | Data attributes |
+| `// comment` | Comment (ignored) |
+| `@Card(title="Hi")` | Component |
+| `?if condition` | Conditional |
+| `?else` | Else branch |
+| `?each item in items` | Loop |
+| `#{variable}` | Interpolation |
+
+### Template API
+
+```javascript
+const { renderTemplate, compileTemplate, renderFile, compileFile, templateEngine } = require('@trebor/buildhtml');
+
+// Render to HTML string
+const html = renderTemplate(source, { user: { name: 'Alice' }, items: [1, 2, 3] });
+
+// Get a Document back (for further manipulation)
+const doc = compileTemplate(source, { name: 'World' });
+doc.addScript('/extra.js');
+const html = doc.render();
+
+// File-based
+const html = renderFile('./views/home.bhtml', { user });
+const doc = compileFile('./views/home.bhtml', { user });
+
+// Express view engine
+app.engine('bhtml', templateEngine);
+app.set('view engine', 'bhtml');
+// Then: res.render('home', { name: 'World', items: [1, 2, 3] });
+```
+
+---
+
+## State & Events
+
+### Reactive State
+
+```javascript
+doc.state('count', 0);
+doc.states({ name: 'World', items: [] });
+
+// Bind element to state
+doc.create('span').bind('count', (val) => `Count: ${val}`);
+
+// Update state in browser (auto-updates UI)
+doc.create('button').text('+1').onClick(function() {
+  State.count++;
+});
+
+// Client-side: window.State.count is a reactive Proxy
+```
+
+### Limitations
+
+Event handlers are serialized — closures won't work:
+
+```javascript
+// ✅ Uses global State
+doc.state('count', 0);
+btn.onClick(function() { State.count++; });
+
+// ❌ Closure won't survive serialization
+let count = 0;
+btn.onClick(function() { count++; });
+```
+
+State values must be JSON-serializable (no functions, DOM nodes, etc).
 
 ---
 
@@ -269,416 +651,107 @@ const {
 const express = require('express');
 const { Document } = require('@trebor/buildhtml');
 
-const app = express();
-
 app.get('/', (req, res) => {
   const doc = new Document();
-  doc.title('Home');
-  
-  doc.create('h1').text('Welcome!');
-  doc.create('p').text('Built with BuildHTML');
-  
+  doc.title('Home').viewport().resetCss();
+  doc.container((c) => {
+    c.child('h1').text('Welcome');
+    c.child('p').text('Built with buildhtml');
+  });
   res.send(doc.render());
 });
 ```
 
-### Cached Static Page
+### Cached Renderer
 
 ```javascript
-const { createCachedRenderer } = require('sculptor-js');
+const { createCachedRenderer } = require('@trebor/buildhtml');
 
 app.get('/about', createCachedRenderer(
   async (req) => {
     const doc = new Document();
-    doc.title('About Us');
-    doc.create('h1').text('About');
+    doc.title('About');
+    doc.p('This page is cached.');
     return doc;
   },
-  'about-page' // Cache key
-));
-
-// First request: ~3ms (render)
-// Cached requests: <0.1ms (from cache)
-```
-
-### Dynamic Content
-
-```javascript
-app.get('/user/:name', async (req, res) => {
-  const doc = new Document();
-  doc.title(`Profile - ${req.params.name}`);
-  doc.state('userName', req.params.name);
-  
-  const greeting = doc.create('h1');
-  greeting.bind('userName', (name) => `Welcome, ${name}!`);
-  
-  res.send(doc.render());
-});
-```
-
-### Interactive Counter
-
-```javascript
-app.get('/counter', (req, res) => {
-  const doc = new Document();
-  doc.title('Counter');
-  doc.state('count', 0);
-  
-  // Display
-  const display = doc.create('h1');
-  display.bind('count', (val) => `Count: ${val}`);
-  
-  // Buttons
-  doc.create('button')
-    .text('Decrement')
-    .on('click', () => { State.count--; });
-  
-  doc.create('button')
-    .text('Reset')
-    .on('click', () => { State.count = 0; });
-  
-  doc.create('button')
-    .text('Increment')
-    .on('click', () => { State.count++; });
-  
-  res.send(doc.render());
-});
-```
-
-### With JSON Export (SPA Mode)
-
-```javascript
-app.get('/spa', (req, res) => {
-  const doc = new Document();
-  doc.state('page', 'home');
-  
-  // Build UI...
-  
-  // Render with obfuscated JSON
-  const html = doc.renderJSON({ obfuscate: true });
-  res.send(html);
-  
-  // Client can access: window.__SCULPTOR_DATA__
-});
-```
-
----
-
-## Performance
-
-### Benchmarks
-
-| Scenario | Avg Time | Requests/Sec |
-|----------|----------|--------------|
-| Simple page (10 elements) | 0.5-1ms | 1,000-2,000 |
-| Complex page (100 elements) | 3-5ms | 200-333 |
-| With state (10 bindings) | 2-3ms | 333-500 |
-| Cached page | <0.1ms | 10,000+ |
-
-### Memory Usage
-
-- **Per Request:** 50-200 KB
-- **1000 Requests:** ~20-40 MB total
-- **Object Pooling:** Keeps memory stable
-
-### File Sizes
-
-| Output | Size |
-|--------|------|
-| `render()` | 1-5 KB |
-| `renderJSON()` | 2-8 KB |
-| `renderJSON({ obfuscate: true })` | 1-4 KB (50% smaller!) |
-
----
-
-## Configuration
-
-```javascript
-const { CONFIG } = require('@trebor/buildhtml');
-
-CONFIG.mode = 'prod';           // 'prod' or 'dev'
-CONFIG.poolSize = 150;          // Max pooled elements
-CONFIG.cacheLimit = 2000;       // Max cached responses
-CONFIG.enableMetrics = true;    // Track performance
-CONFIG.sanitizeCss = true;      // CSS injection protection
-```
-
----
-
-## Middleware Helpers
-
-### createCachedRenderer(builderFn, cacheKeyOrFn, options)
-
-```javascript
-app.get('/page', createCachedRenderer(
-  async (req) => {
-    const doc = new Document();
-    // Build page...
-    return doc;
-  },
-  'page-key' // or (req) => `page-${req.params.id}`
+  'about-page'
 ));
 ```
 
-### clearCache(pattern?)
+### Template View Engine
 
 ```javascript
-clearCache();           // Clear all
-clearCache('user-');    // Clear all keys containing 'user-'
-```
+app.engine('bhtml', require('@trebor/buildhtml').templateEngine);
+app.set('view engine', 'bhtml');
+app.set('views', './views');
 
-### enableCompression()
-
-```javascript
-const { enableCompression } = require('@trebor/buildhtml');
-app.use(enableCompression());
-```
-
-### warmupCache(routes)
-
-```javascript
-const { warmupCache } = require('@trebor/buildhtml');
-
-await warmupCache([
-  { key: 'home', builder: () => buildHomePage() },
-  { key: 'about', builder: () => buildAboutPage() }
-]);
-```
-
----
-
-## JSON Export/Import
-
-### Export
-
-```javascript
-const doc = new Document();
-doc.state('count', 0);
-// ... build document ...
-
-// Get JSON
-const json = doc.toJSON();
-fs.writeFileSync('./page.json', JSON.stringify(json));
-```
-
-### Import
-
-```javascript
-const json = JSON.parse(fs.readFileSync('./page.json'));
-const doc = Document.fromJSON(json);
-const html = doc.render();
-```
-
-### Embedded JSON
-
-```javascript
-// Render with JSON embedded in HTML
-const html = doc.renderJSON({ obfuscate: true });
-
-// In browser:
-console.log(window.__SCULPTOR_DATA__);
-// Can rebuild page from JSON if needed
-```
-
----
-
-## Security
-
-### Built-in Security Features
-
-**Automatic XSS Protection**
-```javascript
-doc.create('div').text('<script>alert("XSS")</script>');
-// Output: &lt;script&gt;alert("XSS")&lt;/script&gt;
-```
-
-**CSS Injection Prevention**
-```javascript
-el.css({ background: 'red; } body { display: none; }' });
-// Sanitized automatically
-```
-
-**CSP Nonce Support**
-```javascript
-const doc = new Document({ nonce: 'abc123' });
-// All inline scripts/styles get nonce attribute
-```
-
-### Enhanced Security Features (NEW!)
-
-**Security Headers Middleware**
-```javascript
-const { securityHeaders } = require('@trebor/buildhtml');
-
-app.use(securityHeaders({
-  enableCSP: true,
-  enableHSTS: true,
-  enableXFrameOptions: true,
-  cspNonce: (req) => req.nonce
-}));
-```
-
-**Input Sanitization**
-```javascript
-const { sanitize } = require('@trebor/buildhtml');
-
-// Text sanitization
-const safe = sanitize.text('<script>bad</script>');
-
-// URL sanitization (blocks javascript:, data:, vbscript:)
-const url = sanitize.url('javascript:alert(1)'); // Returns ''
-
-// Email validation
-const email = sanitize.email('user@example.com');
-
-// Filename sanitization (prevents path traversal)
-const filename = sanitize.filename('../../../etc/passwd');
-```
-
-**CSRF Protection**
-```javascript
-const { csrf } = require('@trebor/buildhtml');
-
-app.use(csrf.middleware());
-
-app.post('/submit', (req, res) => {
-  // CSRF token automatically validated
-  // Request blocked if invalid
+app.get('/', (req, res) => {
+  res.render('home', { user: req.user, items: ['A', 'B', 'C'] });
 });
 ```
 
-**Rate Limiting**
-```javascript
-const { createRateLimiter } = require('@trebor/buildhtml');
+### Middleware Helpers
 
-app.use('/api', createRateLimiter({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  maxRequests: 100
-}));
-```
-
-**CSP Header Generation**
-```javascript
-const { generateCSP } = require('@trebor/buildhtml');
-
-const csp = generateCSP({
-  scriptSrc: ["'self'", "'nonce-abc123'"],
-  styleSrc: ["'self'"],
-  imgSrc: ["'self'", 'data:', 'https:']
-});
-```
-
-📖 **See [SECURITY.md](./SECURITY.md) for complete security documentation**
+| Function | Description |
+|----------|-------------|
+| `createCachedRenderer(builderFn, key, opts?)` | Express middleware with caching |
+| `clearCache(pattern?)` | Clear cached pages (all or by pattern) |
+| `getCacheStats()` | Cache, pool, and metrics stats |
+| `healthCheck()` | Health check data |
+| `resetPools()` | Reset object pools |
 
 ---
 
-## Advanced Features
-
-### Fragments
+## Exports
 
 ```javascript
-function Header(doc) {
-  const header = doc.create('header');
-  header.create('h1').text('My Site');
-  header.create('nav').text('Navigation');
-  return header;
-}
+const {
+  // Core
+  Document, Element, Head, CONFIG,
 
-doc.useFragment(Header);
-```
+  // Components
+  components,
 
-### OnCreate Hook
+  // Templates
+  TemplateParser, parseTemplate, renderTemplate, compileTemplate,
+  renderFile, compileFile, templateEngine,
 
-```javascript
-doc.oncreate(() => {
-  console.log('Page loaded!');
-  // Initialize analytics, etc.
-});
-```
+  // Middleware
+  createCachedRenderer, clearCache, responseCache,
+  getCacheStats, resetPools, healthCheck,
 
-### Metrics
-
-```javascript
-process.env.ENABLE_METRICS = 'true';
-
-const { metrics } = require('@trebor/buildhtml');
-
-// After some requests...
-console.log(metrics.getStats());
-// {
-//   counters: { 'render.count': 1000 },
-//   timings: { 'render.total': { avg: 2.5, p95: 5 } }
-// }
+  // Metrics
+  Metrics, metrics
+} = require('@trebor/buildhtml');
 ```
 
 ---
 
-## Best Practices
+## Project Structure
 
-### ✅ DO
-
-```javascript
-// Use global state for reactive data
-doc.state('count', 0);
-btn.on('click', () => { State.count++; });
-
-// Cache static pages
-app.get('/about', createCachedRenderer(..., 'about'));
-
-// Use CSS-in-JS for scoped styles
-el.css({ padding: '20px', backgroundColor: '#f0f0f0' });
-
-// Leverage object pooling (automatic)
-// Elements are recycled after render()
 ```
-
-### ❌ DON'T
-
-```javascript
-// Don't use closures in event handlers
-let count = 0; // This won't work after serialization
-btn.on('click', () => { count++; });
-
-// Don't store non-serializable data in state
-doc.state('callback', () => {}); // Functions can't be serialized
-
-// Don't manually manipulate the DOM
-// Use State instead for reactivity
+buildhtml/
+├── index.js            ← root entry
+├── lib/
+│   ├── index.js        ← assembles exports
+│   ├── document.js     ← Document class
+│   ├── element.js      ← Element class
+│   ├── head.js         ← Head class
+│   ├── components.js   ← Component registry
+│   ├── builder.js      ← Declarative builder
+│   ├── template.js     ← .bhtml template parser
+│   ├── renderer.js     ← HTML rendering + client compiler
+│   ├── pools.js        ← Object pooling
+│   ├── cache.js        ← LRU cache
+│   ├── config.js       ← Configuration
+│   ├── metrics.js      ← Performance metrics
+│   ├── middleware.js    ← Express helpers
+│   └── utils.js        ← Shared utilities
+└── test/
+    ├── test.js
+    ├── test-template.js
+    └── test-new-apis.js
 ```
-
----
-
-## Limitations
-
-### Function Serialization
-
-Event handlers are serialized with `.toString()`:
-
-```javascript
-// ❌ BAD - Uses closure (won't work)
-let count = 0;
-btn.on('click', () => { count++; });
-
-// ✅ GOOD - Uses global State
-doc.state('count', 0);
-btn.on('click', () => { State.count++; });
-```
-
-### State Values
-
-State must be JSON-serializable:
-
-```javascript
-// ✅ GOOD
-doc.state('user', { name: 'Alice', age: 30 });
-doc.state('items', [1, 2, 3]);
-
-// ❌ BAD
-doc.state('callback', () => {}); // Functions
-doc.state('dom', document.getElementById('x')); // DOM nodes
-```
-
----
 
 ---
 
@@ -686,163 +759,62 @@ doc.state('dom', document.getElementById('x')); // DOM nodes
 
 ```javascript
 const express = require('express');
-const { Document, createCachedRenderer } = require('@trebor/buildhtml');
+const { Document, components, createCachedRenderer } = require('@trebor/buildhtml');
+
+// Register reusable components
+function Card(el, { title, body }) {
+  el.addClass('card').css({ border: '1px solid #ddd', borderRadius: '8px', padding: '16px', marginBottom: '16px' });
+  el.child('h2').text(title).css({ marginBottom: '8px' });
+  el.child('p').text(body);
+}
+components.register('Card', Card);
 
 const app = express();
 
-// Simple counter with reactive state
-app.get('/counter', (req, res) => {
+app.get('/', (req, res) => {
   const doc = new Document();
-  doc.title('Counter App');
-  
-  // Global state
+  doc.title('My App')
+    .viewport()
+    .resetCss()
+    .canonical('https://example.com')
+    .ogTags({ title: 'My App', description: 'Built with buildhtml' })
+    .lang('en')
+    .bodyClass('light-theme')
+    .bodyCss({ fontFamily: 'system-ui', lineHeight: '1.6', margin: '0' });
+
+  // Reactive state
   doc.state('count', 0);
-  
-  // Styled container
-  const container = doc.create('div');
-  container.css({
-    maxWidth: '400px',
-    margin: '50px auto',
-    padding: '20px',
-    textAlign: 'center',
-    fontFamily: 'Arial, sans-serif'
-  });
-  
-  // Title
-  container.create('h1').text('Counter Demo');
-  
-  // Count display (bound to state)
-  const display = container.create('div');
-  display.css({ 
-    fontSize: '48px', 
-    margin: '20px',
-    color: '#333' 
-  });
-  display.bind('count', (val) => `Count: ${val}`);
-  
-  // Button container
-  const buttons = container.create('div');
-  
-  // Decrement button
-  const decBtn = buttons.create('button');
-  decBtn.text('− Decrement');
-  decBtn.css({ 
-    padding: '10px 20px', 
-    margin: '5px',
-    cursor: 'pointer',
-    fontSize: '16px'
-  });
-  decBtn.on('click', () => { State.count--; });
-  
-  // Reset button
-  const resetBtn = buttons.create('button');
-  resetBtn.text('Reset');
-  resetBtn.css({ 
-    padding: '10px 20px', 
-    margin: '5px',
-    cursor: 'pointer',
-    fontSize: '16px'
-  });
-  resetBtn.on('click', () => { State.count = 0; });
-  
-  // Increment button
-  const incBtn = buttons.create('button');
-  incBtn.text('+ Increment');
-  incBtn.css({ 
-    padding: '10px 20px', 
-    margin: '5px',
-    cursor: 'pointer',
-    fontSize: '16px'
-  });
-  incBtn.on('click', () => { State.count++; });
-  
+
+  doc.container((c) => {
+    // Header
+    c.child('h1').text('Dashboard').css({ marginBottom: '24px' });
+
+    // Counter with state binding
+    c.child('div').bind('count', (val) => `Count: ${val}`).css({ fontSize: '24px', marginBottom: '16px' });
+    c.child('button').text('Increment').css({ padding: '8px 16px', cursor: 'pointer' })
+      .onClick(function() { State.count++; });
+
+    // Components
+    c.child('hr').css({ margin: '24px 0' });
+    const cardContainer = c.child('div');
+    Card(cardContainer.child('div'), { title: 'Getting Started', body: 'Welcome to buildhtml.' });
+    Card(cardContainer.child('div'), { title: 'Components', body: 'Reusable UI pieces.' });
+
+    // Data table
+    c.child('h2').text('Team').css({ marginTop: '24px', marginBottom: '8px' });
+  }, '800px');
+
+  doc.dataTable(['Name', 'Role'], [
+    ['Alice', 'Engineer'],
+    ['Bob', 'Designer'],
+  ], { class: 'data-table' });
+
   res.send(doc.render());
 });
 
-// Form with input binding
-app.get('/form', (req, res) => {
-  const doc = new Document();
-  doc.title('Form Example');
-  
-  // State
-  doc.state('username', '');
-  doc.state('greeting', 'Enter your name');
-  
-  // Form
-  const form = doc.create('div');
-  form.css({ padding: '20px', fontFamily: 'Arial' });
-  
-  form.create('h1').text('Form Demo');
-  
-  // Input
-  const input = form.create('input');
-  input.attr('type', 'text');
-  input.attr('placeholder', 'Enter name...');
-  input.css({ padding: '10px', fontSize: '16px' });
-  
-  // Submit button
-  const submitBtn = form.create('button');
-  submitBtn.text('Submit');
-  submitBtn.css({ padding: '10px 20px', marginLeft: '10px' });
-  submitBtn.on('click', () => {
-    const input = document.querySelector('input');
-    State.username = input.value;
-    State.greeting = `Hello, ${State.username}!`;
-  });
-  
-  // Display greeting
-  const greetingEl = form.create('div');
-  greetingEl.css({ marginTop: '20px', fontSize: '24px' });
-  greetingEl.bind('greeting');
-  
-  res.send(doc.render());
-});
-
-// Cached static page
-app.get('/about', createCachedRenderer(
-  async () => {
-    const doc = new Document();
-    doc.title('About Us');
-    
-    const page = doc.create('div');
-    page.css({ 
-      maxWidth: '800px', 
-      margin: '0 auto', 
-      padding: '20px',
-      fontFamily: 'Arial'
-    });
-    
-    page.create('h1').text('About BuildHTML');
-    page.create('p').text('High-performance SSR library for Node.js');
-    page.create('p').text('Features: Object pooling, reactive state, CSS-in-JS');
-    page.create('p').text('This page is cached for maximum performance!');
-    
-    return doc;
-  },
-  'about-page'
-));
-
-app.listen(3000, () => {
-  console.log('Server running at http://localhost:3000');
-  console.log('Routes:');
-  console.log('  /counter - Interactive counter');
-  console.log('  /form    - Form with state binding');
-  console.log('  /about   - Cached static page');
-});
+app.listen(3000, () => console.log('http://localhost:3000'));
 ```
 
-### What This Example Shows
+## License
 
-✅ **Reactive state binding** - `bind()` automatically updates text  
-✅ **Event handling** - Buttons update state  
-✅ **CSS-in-JS** - Inline styling with scoped classes  
-✅ **Form inputs** - Reading input values in events  
-✅ **Cached pages** - Static pages served from cache  
-✅ **Auto-attachment** - All elements automatically added  
-
-### Try It
-
-```bash
-node app.js
-# Visit http://localhost:3000/counter
-```
+MIT
