@@ -208,7 +208,7 @@ doc.mediaQuery('(max-width: 768px)', {
 | Method | Description |
 |--------|-------------|
 | `create(tag)` / `child(tag)` | Create element (auto-attached) |
-| `div()`, `span()`, `section()`, `header()`, `footer()`, `main()`, `nav()`, `article()`, `aside()`, `form()`, `ul()`, `ol()`, `table()`, `details()`, `pre()`, `code()`, `blockquote()`, `dialog()` | Tag shortcuts |
+| `div()`, `span()`, `section()`, `header()`, `footer()`, `main()`, `nav()`, `article()`, `aside()`, `form()`, `ul()`, `ol()`, `li(text?)`, `table()`, `tr()`, `th(text?)`, `td(text?)`, `details()`, `pre()`, `code()`, `blockquote()`, `dialog()` | Tag shortcuts |
 | `h1()` `h2()` `h3()` `h4()` `h5()` `h6()` | Heading elements |
 | `p(text?)` | Paragraph |
 | `a(href, text?)` | Anchor |
@@ -251,8 +251,8 @@ doc.radio('size', [
   { value: 'l', label: 'Large' },
 ]);
 doc.fieldset('Shipping Address', (fs) => {
-  fs.child('input').type('text').name('street').placeholder('Street');
-  fs.child('input').type('text').name('city').placeholder('City');
+  fs.input('text', { name: 'street', placeholder: 'Street' });
+  fs.input('text', { name: 'city', placeholder: 'City' });
 });
 doc.hiddenInput('csrf', 'abc123');
 ```
@@ -279,8 +279,8 @@ doc.container((c) => {
 doc.grid(3, ['Card 1', 'Card 2', 'Card 3'], '20px');
 
 doc.columns(2, [
-  (col) => col.child('p').text('Left side'),
-  (col) => col.child('p').text('Right side'),
+  (col) => col.p('Left side'),
+  (col) => col.p('Right side'),
 ]);
 
 doc.stack([
@@ -325,9 +325,9 @@ doc.dataTable(null, [
 doc.comment('Navigation section');
 
 doc.template('userCard', (d, { name, role }) => {
-  const card = d.create('div').addClass('user-card');
+  const card = d.div().addClass('user-card');
   card.h3().text(name);
-  card.child('span').text(role);
+  card.span().text(role);
 });
 
 doc.each(users, (d, user) => {
@@ -335,7 +335,7 @@ doc.each(users, (d, user) => {
 });
 
 doc.when(isAdmin, (d) => {
-  d.create('button').text('Admin Panel');
+  d.button('Admin Panel');
 });
 
 doc.group((d) => {
@@ -441,8 +441,7 @@ console.log(p.siblings());         // sibling elements
 **Utility:** `tooltip(text)` — sets `title` + `aria-describedby`
 
 ```javascript
-doc.create('input')
-  .type('email')
+doc.input('email')
   .name('email')
   .placeholder('you@example.com')
   .required()
@@ -450,14 +449,14 @@ doc.create('input')
   .maxLength(100)
   .focus();
 
-doc.create('textarea').rows(10).cols(80).placeholder('Write here...');
+doc.textarea().rows(10).cols(80).placeholder('Write here...');
 
-doc.create('div')
+doc.div()
   .data({ userId: 42, role: 'admin' })
   .aria({ label: 'User card', expanded: 'false' })
   .tooltip('Click to expand');
 
-const btn = doc.create('button').text('Submit');
+const btn = doc.button('Submit');
 btn.disable();  // disabled="disabled"
 btn.enable();   // removes disabled
 btn.hide();     // hidden="hidden"
@@ -501,21 +500,21 @@ el.classMap({ bold: true, italic: false, underline: true });
 | `media(query, rules)` | Responsive CSS scoped to this element |
 
 ```javascript
-doc.create('button').text('Save')
+doc.button('Save')
   .css({ padding: '8px 16px', backgroundColor: '#007bff', color: '#fff', border: 'none' })
   .hover({ backgroundColor: '#0056b3' })
   .active({ transform: 'scale(0.98)' })
   .focusCss({ outline: '2px solid #80bdff' })
   .transition({ property: 'background-color', duration: '0.2s' });
 
-doc.create('div').css({ display: 'flex', gap: '16px' })
+doc.div().css({ display: 'flex', gap: '16px' })
   .media('(max-width: 768px)', { flexDirection: 'column', gap: '8px' });
 
-doc.create('h2')
+doc.h2()
   .pseudo('before', { content: '"§ "', color: '#999' })
   .pseudo('after', { content: '""', display: 'block', height: '2px', backgroundColor: '#007bff' });
 
-doc.create('tr')
+doc.tr()
   .nthChild('2n', { backgroundColor: '#f5f5f5' })
   .firstChild({ fontWeight: 'bold' });
 ```
@@ -541,7 +540,7 @@ doc.keyframes('fadeIn', {
   to: { opacity: '1' }
 });
 
-doc.create('div')
+doc.div()
   .animate('fadeIn', { duration: '0.5s' })
   .opacity(0.9)
   .cursor('pointer')
@@ -550,7 +549,7 @@ doc.create('div')
   .size('200px', '100px')
   .overflow('hidden');
 
-doc.create('a').text('Link')
+doc.a('/page', 'Link')
   .transition('color 0.2s ease')
   .hover({ color: '#007bff' });
 ```
@@ -562,15 +561,15 @@ For components that accept arbitrary child content:
 ```javascript
 function Modal(el) {
   el.addClass('modal');
-  el.child('div').addClass('modal-header').slot('header');
-  el.child('div').addClass('modal-body').slot('default');
-  el.child('div').addClass('modal-footer').slot('footer');
+  el.div().addClass('modal-header').slot('header');
+  el.div().addClass('modal-body').slot('default');
+  el.div().addClass('modal-footer').slot('footer');
 }
 
 const modal = doc.use(Modal);
 modal.fillSlot('header', (slot) => slot.h2().text('Title'));
-modal.fillSlot('default', (slot) => slot.child('p').text('Body'));
-modal.fillSlot('footer', (slot) => slot.child('button').text('Close'));
+modal.fillSlot('default', (slot) => slot.p('Body'));
+modal.fillSlot('footer', (slot) => slot.button('Close'));
 ```
 
 ### State & Events
@@ -688,7 +687,7 @@ grid.use(Alert, { message: 'All done!', type: 'success' });
 ```javascript
 const ul = doc.ul();
 ul.each(users, (el, user) => {
-  el.child('li').text(user.name);
+  el.li(user.name);
 });
 
 const nav = doc.nav();
@@ -710,8 +709,8 @@ const { Document, components } = require('@trebor/buildhtml');
 function Card(el, { title, body, footer }) {
   el.addClass('card').css({ border: '1px solid #ddd', borderRadius: '8px', padding: '16px' });
   el.h2().text(title);
-  el.child('p').text(body);
-  if (footer) el.child('footer').text(footer);
+  el.p(body);
+  if (footer) el.footer().text(footer);
 }
 
 // Register globally
@@ -741,7 +740,7 @@ doc.use(Card, { title: 'Hello', body: 'World' });
 ```javascript
 components.register('Card', Card);
 components.extend('CardWithImage', 'Card', (el, { image }) => {
-  if (image) el.child('img').src(image);
+  if (image) el.img(image);
 });
 
 doc.component('CardWithImage', { title: 'Photo', body: 'Nice pic', image: '/photo.jpg' });
@@ -751,13 +750,13 @@ doc.component('CardWithImage', { title: 'Photo', body: 'Nice pic', image: '/phot
 
 ```javascript
 function NavLink(el, { href, text, active }) {
-  el.child('a').href(href).text(text).classIf(active, 'active');
+  el.a(href, text).classIf(active, 'active');
 }
 
 function Navbar(el, { links }) {
   el.addClass('navbar').css({ display: 'flex', gap: '16px' });
   for (const link of links) {
-    NavLink(el.child('div'), link);
+    NavLink(el.div(), link);
   }
 }
 
@@ -1029,10 +1028,10 @@ doc.state('count', 0);
 doc.states({ name: 'World', items: [] });
 
 // Bind element to state
-doc.create('span').bind('count', (val) => `Count: ${val}`);
+doc.span().bind('count', (val) => `Count: ${val}`);
 
 // Update state in browser (auto-updates UI)
-doc.create('button').text('+1').onClick(function() {
+doc.button('+1').onClick(function() {
   State.count++;
 });
 
@@ -1070,7 +1069,7 @@ app.get('/', (req, res) => {
   doc.title('Home').viewport().resetCss();
   doc.container((c) => {
     c.h1().text('Welcome');
-    c.child('p').text('Built with buildhtml');
+    c.p('Built with buildhtml');
   });
   res.send(doc.render());
 });
@@ -1202,7 +1201,7 @@ function Card(el, { title, body }) {
     .hover({ boxShadow: '0 4px 12px rgba(0,0,0,0.1)' })
     .transition('box-shadow 0.2s ease');
   el.h2().text(title).css({ marginBottom: '8px' });
-  el.child('p').text(body);
+  el.p(body);
 }
 components.register('Card', Card);
 
