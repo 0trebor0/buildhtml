@@ -849,9 +849,9 @@ doc.build({
 
 Define an entire page as a plain object — useful for config-driven pages, APIs, or serialized templates.
 
-### `renderJSON(def, options?)`
+### `renderJSON(def, setup?, options?)`
 
-Builds and renders a full page from a definition object. Returns an HTML string.
+Builds and renders a full page from a definition object. Returns an HTML string. Pass an optional `setup` callback to add elements or scripts after the JSON is loaded.
 
 ```javascript
 const { renderJSON } = require('@trebor/buildhtml');
@@ -884,6 +884,17 @@ const html = renderJSON({
     ]
   }
 });
+```
+
+```javascript
+// With a setup callback
+const html = renderJSON(
+  { title: 'Dashboard', body: { tag: 'h1', text: 'Hello' } },
+  (doc) => {
+    doc.addScript('/app.js');
+    doc.nav().a('/', 'Home').a('/about', 'About');
+  }
+);
 ```
 
 ### `doc.fromJSON(def)`
