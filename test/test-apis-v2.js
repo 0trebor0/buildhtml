@@ -1,6 +1,6 @@
 'use strict';
 
-const { Document, Element, components } = require('./index');
+const { Document, Element, components } = require('../index');
 
 let passed = 0;
 let failed = 0;
@@ -476,7 +476,7 @@ test('doc.when() false', () => {
 test('doc.group()', () => {
   const doc = new Document();
   doc.group((d) => {
-    d.h(1).text('Title');
+    d.h1().text('Title');
     d.p('Paragraph');
   });
   const html = doc.render();
