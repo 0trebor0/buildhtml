@@ -13,22 +13,40 @@ npm install @trebor/buildhtml
 ## Quick Start
 
 ```javascript
-const { Document } = require('@trebor/buildhtml');
+const { page } = require('@trebor/buildhtml');
 
-const doc = new Document();
-doc.title('My Page').viewport().resetCss();
+const doc = page('My Page');
 doc.bodyCss({ fontFamily: 'system-ui', margin: '0' });
 
 doc.container((c) => {
-  c.child('h1').text('Hello World').hover({ color: '#007bff' });
-  c.child('p').text('Built with buildhtml.')
+  c.h(1).text('Hello World').hover({ color: '#007bff' });
+  c.p('Built with buildhtml.')
     .media('(max-width: 600px)', { fontSize: '14px' });
 });
 
 console.log(doc.render());
 ```
 
-Elements created with `doc.create()` are **automatically attached** to the document — no manual DOM insertion needed.
+Elements created with `doc.create()` or tag shortcuts are **automatically attached** to the document — no manual DOM insertion needed.
+
+### JSON-first workflow
+
+```javascript
+const { renderJSON } = require('@trebor/buildhtml');
+
+const html = renderJSON({
+  title: 'My Page',
+  viewport: true,
+  resetCss: true,
+  cssVars: { primary: '#007bff' },
+  body: {
+    tag: 'div', class: 'container', children: [
+      { tag: 'h1', text: 'Hello World' },
+      { tag: 'p', text: 'Built from plain JSON.' },
+    ]
+  }
+});
+```
 
 ---
 
@@ -38,6 +56,7 @@ Elements created with `doc.create()` are **automatically attached** to the docum
 - [Element API](#element-api)
 - [Components](#components)
 - [Declarative Builder](#declarative-builder)
+- [JSON Import](#json-import)
 - [Templates (.bhtml)](#templates-bhtml)
 - [State & Events](#state--events)
 - [Express Integration](#express-integration)
@@ -46,6 +65,18 @@ Elements created with `doc.create()` are **automatically attached** to the docum
 ---
 
 ## Document API
+
+### Convenience Factory
+
+```javascript
+const { page } = require('@trebor/buildhtml');
+
+// Equivalent to: new Document() + title() + viewport() + resetCss() + lang()
+const doc = page('My Page');
+const doc = page('My Page', { lang: 'fr', nonce: 'abc' });
+```
+
+### Constructor
 
 Create with `new Document(options)`.
 
@@ -326,7 +357,26 @@ doc.group((d) => {
 
 ## Element API
 
-Created via `doc.create(tag)` or `parent.child(tag)`. All methods return `this` for chaining.
+Created via `doc.create(tag)`, `parent.child(tag)`, or any tag shortcut. All methods return `this` for chaining (or the new child element for creation methods).
+
+### Tag Shortcuts (create child elements)
+
+All the same tag shortcuts available on `Document` work on `Element` too — they create and return a child element:
+
+```javascript
+const card = doc.div().addClass('card');
+
+card.h(2).text('Title');
+card.p('Body text.');
+card.a('/more', 'Read more').hover({ textDecoration: 'underline' });
+card.img('/photo.jpg', 'A photo').size('100%', '200px');
+card.button('Submit').onClick(function() { State.submitted = true; });
+card.input('email', { placeholder: 'you@example.com' });
+card.hr();
+card.br();
+```
+
+**Available:** `div()`, `span()`, `section()`, `header()`, `footer()`, `main()`, `nav()`, `article()`, `aside()`, `form()`, `ul()`, `ol()`, `table()`, `details()`, `summary()`, `dialog()`, `pre()`, `code()`, `blockquote()`, `h(level)`, `p(text?)`, `a(href, text?)`, `button(text?)`, `img(src, alt?)`, `input(type?, attrs?)`, `textarea(attrs?)`, `select(options, attrs?)`, `hr()`, `br()`
 
 ### Tree Manipulation
 
@@ -359,8 +409,8 @@ Created via `doc.create(tag)` or `parent.child(tag)`. All methods return `this` 
 | `html()` / `toString()` | Render this element to HTML string |
 
 ```javascript
-const div = doc.create('div');
-const p = div.child('p').text('Hello');
+const div = doc.div();
+const p = div.p('Hello');
 p.wrap('section');                  // <section><p>Hello</p></section>
 const cloned = div.clone();        // deep copy
 p.replaceWith(doc.create('span')); // swap p for span
@@ -538,10 +588,112 @@ modal.fillSlot('footer', (slot) => slot.child('button').text('Close'));
 ```javascript
 doc.state('count', 0);
 
-doc.create('h1').bind('count', (val) => `Count: ${val}`);
+doc.div().bind('count', (val) => `Count: ${val}`);
 
-doc.create('button').text('+1').onClick(function() {
+doc.button('+1').onClick(function() {
   State.count++;
+});
+```
+
+### Layout Helpers (on Element)
+
+The same layout helpers available on `Document` work on any `Element`:
+
+| Method | Description |
+|--------|-------------|
+| `grid(columns, items?, gap?)` | CSS Grid child |
+| `flex(items?, options?)` | Flex child |
+| `stack(items?, gap?)` | Vertical stack child |
+| `row(items?, gap?)` | Horizontal row child |
+| `center(childFn?)` | Centered flex child |
+| `container(childFn?, maxWidth?)` | Max-width centered child |
+| `spacer(height?)` | Empty spacer div child |
+| `divider(options?)` | Styled `<hr>` child |
+| `columns(count, fns?, gap?)` | Multi-column grid child |
+
+```javascript
+const sidebar = doc.aside();
+
+sidebar.stack([
+  (el) => el.a('/home', 'Home'),
+  (el) => el.a('/about', 'About'),
+], '8px');
+
+sidebar.divider();
+
+sidebar.container((c) => {
+  c.p('Footer text');
+}, '240px');
+```
+
+### Form Helpers (on Element)
+
+| Method | Description |
+|--------|-------------|
+| `formGroup(label, type?, attrs?)` | Label + input pair |
+| `checkbox(name, label, checked?)` | Checkbox with label |
+| `radio(name, options)` | Radio button group |
+| `fieldset(legend, setupFn?)` | Fieldset with legend |
+| `hiddenInput(name, value)` | Hidden input |
+
+```javascript
+const form = doc.form().attr('action', '/submit').attr('method', 'post');
+
+form.formGroup('Email', 'email', { name: 'email', required: true });
+form.formGroup('Password', 'password', { name: 'password' });
+form.checkbox('remember', 'Remember me');
+form.button('Sign in').type('submit');
+form.hiddenInput('csrf', token);
+```
+
+### Data Helpers (on Element)
+
+| Method | Description |
+|--------|-------------|
+| `list(items, renderer?, tag?)` | `<ul>/<ol>` from array |
+| `dataTable(headers, rows, options?)` | `<table>` from data |
+
+```javascript
+const sidebar = doc.nav();
+sidebar.list(['Home', 'About', 'Contact'], (li, item) => {
+  li.a('/' + item.toLowerCase(), item);
+});
+
+const main = doc.main();
+main.dataTable(['Name', 'Role'], [['Alice', 'Engineer'], ['Bob', 'Designer']]);
+```
+
+### Component Helpers (on Element)
+
+| Method | Description |
+|--------|-------------|
+| `component(name, props?, overrides?)` | Use registered component as child |
+| `use(fn, props?, tag?)` | Use inline component function as child |
+
+```javascript
+const grid = doc.div().css({ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: '16px' });
+
+grid.component('Card', { title: 'One', body: 'First card' });
+grid.component('Card', { title: 'Two', body: 'Second card' });
+grid.use(Alert, { message: 'All done!', type: 'success' });
+```
+
+### Utility Helpers (on Element)
+
+| Method | Description |
+|--------|-------------|
+| `each(items, fn)` | Loop: `fn(el, item, index)` |
+| `when(condition, fn)` | Conditional: runs `fn(el)` if truthy |
+
+```javascript
+const ul = doc.ul();
+ul.each(users, (el, user) => {
+  el.child('li').text(user.name);
+});
+
+const nav = doc.nav();
+nav.when(isLoggedIn, (el) => {
+  el.a('/logout', 'Log out');
 });
 ```
 
@@ -691,6 +843,96 @@ doc.build({
 | `state` | any | Element state |
 | `bind` | object | `{ key, fn }` state binding |
 | `setup` | function | `(el) => { ... }` custom setup |
+
+---
+
+## JSON Import
+
+Define an entire page as a plain object — useful for config-driven pages, APIs, or serialized templates.
+
+### `renderJSON(def, options?)`
+
+Builds and renders a full page from a definition object. Returns an HTML string.
+
+```javascript
+const { renderJSON } = require('@trebor/buildhtml');
+
+const html = renderJSON({
+  title: 'Dashboard',
+  lang: 'en',
+  viewport: true,
+  resetCss: true,
+  favicon: '/favicon.ico',
+  canonical: 'https://example.com/dashboard',
+  cssVars: { primary: '#007bff', radius: '8px' },
+  globalStyles: {
+    body: { fontFamily: 'system-ui', margin: '0' }
+  },
+  sharedClasses: {
+    card: { border: '1px solid #ddd', borderRadius: '8px', padding: '16px' }
+  },
+  darkMode: {
+    body: { backgroundColor: '#111', color: '#eee' }
+  },
+  ogTags: { title: 'Dashboard', description: 'My dashboard' },
+  state: { count: 0 },
+  bodyCss: { padding: '20px' },
+  bodyClass: 'app light-theme',
+  body: {
+    tag: 'div', class: 'container', children: [
+      { tag: 'h1', text: 'Hello World' },
+      { tag: 'p', text: 'Built from JSON.', css: { color: '#666' } },
+    ]
+  }
+});
+```
+
+### `doc.fromJSON(def)`
+
+Populate an existing Document from a definition object. Useful when you need to further manipulate the document after loading.
+
+```javascript
+const { Document } = require('@trebor/buildhtml');
+
+const doc = new Document();
+doc.fromJSON({
+  title: 'My Page',
+  viewport: true,
+  body: { tag: 'h1', text: 'Hello' }
+});
+
+// Further manipulation
+doc.addScript('/app.js');
+console.log(doc.render());
+```
+
+### JSON Definition Fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `title` | string | Page title |
+| `lang` | string | HTML lang attribute |
+| `charset` | string | Charset (default UTF-8) |
+| `viewport` | boolean/string | Add viewport meta |
+| `resetCss` | boolean | Box-sizing reset |
+| `favicon` | string | Favicon URL |
+| `canonical` | string | Canonical URL |
+| `noindex` | boolean/`'nofollow'` | Robots noindex |
+| `meta` | array | `[{ name, content }]` |
+| `links` | array | Stylesheet URLs |
+| `scripts` | array | Script URLs |
+| `cssVars` | object | CSS custom properties |
+| `globalStyles` | object | `{ selector: rules }` |
+| `sharedClasses` | object | `{ name: rules }` |
+| `keyframes` | object | `{ name: frames }` |
+| `darkMode` | object | Dark mode selector rules |
+| `print` | object | Print media rules |
+| `bodyCss` | object | Body CSS rules |
+| `bodyClass` | string/array | Body class names |
+| `ogTags` | object | Open Graph tags |
+| `twitterCard` | object | Twitter Card tags |
+| `state` | object | Initial global state |
+| `body` | object/array | Body content (builder nodes) |
 
 ---
 
@@ -879,7 +1121,12 @@ app.get('/', (req, res) => {
 ```javascript
 const {
   // Core
-  Document, Element, Head, CONFIG,
+  Document,
+  page,        // convenience factory: page(title, options?)
+  renderJSON,  // render a full page from a plain object
+  Element,
+  Head,
+  CONFIG,
 
   // Components
   components,
@@ -932,7 +1179,7 @@ buildhtml/
 
 ```javascript
 const express = require('express');
-const { Document, components, createCachedRenderer } = require('@trebor/buildhtml');
+const { page, components, createCachedRenderer } = require('@trebor/buildhtml');
 
 // Design tokens
 function setupTheme(doc) {
@@ -962,13 +1209,9 @@ components.register('Card', Card);
 const app = express();
 
 app.get('/', (req, res) => {
-  const doc = new Document();
-  doc.title('My App')
-    .viewport()
-    .resetCss()
-    .canonical('https://example.com')
+  const doc = page('My App');
+  doc.canonical('https://example.com')
     .ogTags({ title: 'My App', description: 'Built with buildhtml' })
-    .lang('en')
     .bodyClass('light-theme')
     .bodyCss({ fontFamily: 'system-ui', lineHeight: '1.6', margin: '0' });
 
@@ -979,14 +1222,14 @@ app.get('/', (req, res) => {
   doc.comment('Main content');
 
   doc.container((c) => {
-    c.child('h1').text('Dashboard')
+    c.h(1).text('Dashboard')
       .hover({ color: 'var(--primary)' })
       .pseudo('after', { content: '""', display: 'block', height: '3px', backgroundColor: 'var(--primary)', marginTop: '8px' });
 
-    c.child('div').bind('count', (val) => `Count: ${val}`)
+    c.div().bind('count', (val) => `Count: ${val}`)
       .css({ fontSize: '24px', marginBottom: '16px' });
 
-    c.child('button').text('Increment')
+    c.button('Increment')
       .css({ padding: '8px 16px', cursor: 'pointer' })
       .hover({ backgroundColor: '#e9ecef' })
       .active({ transform: 'scale(0.98)' })
