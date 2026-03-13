@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node test/test-new-apis.js)",
+      "Bash(node test/test-template.js)",
+      "Bash(node test/test.js)",
+      "Bash(node test/test-apis-v2.js)"
+    ]
+  }
+}

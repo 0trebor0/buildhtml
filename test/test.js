@@ -1,6 +1,6 @@
 'use strict';
 
-const { Document, components } = require('./index');
+const { Document, components } = require('../index');
 
 let passed = 0;
 let failed = 0;

@@ -19,7 +19,7 @@ const doc = page('My Page');
 doc.bodyCss({ fontFamily: 'system-ui', margin: '0' });
 
 doc.container((c) => {
-  c.h(1).text('Hello World').hover({ color: '#007bff' });
+  c.h1().text('Hello World').hover({ color: '#007bff' });
   c.p('Built with buildhtml.')
     .media('(max-width: 600px)', { fontSize: '14px' });
 });
@@ -209,7 +209,7 @@ doc.mediaQuery('(max-width: 768px)', {
 |--------|-------------|
 | `create(tag)` / `child(tag)` | Create element (auto-attached) |
 | `div()`, `span()`, `section()`, `header()`, `footer()`, `main()`, `nav()`, `article()`, `aside()`, `form()`, `ul()`, `ol()`, `table()`, `details()`, `pre()`, `code()`, `blockquote()`, `dialog()` | Tag shortcuts |
-| `h(level)` | Heading `<h1>`–`<h6>` |
+| `h1()` `h2()` `h3()` `h4()` `h5()` `h6()` | Heading elements |
 | `p(text?)` | Paragraph |
 | `a(href, text?)` | Anchor |
 | `button(text?)` | Button |
@@ -221,7 +221,7 @@ doc.mediaQuery('(max-width: 768px)', {
 | `br()` | Line break |
 
 ```javascript
-doc.h(1).text('Title');
+doc.h1().text('Title');
 doc.p('A paragraph of text.');
 doc.a('/about', 'About Us');
 doc.img('/photo.jpg', 'A photo');
@@ -273,7 +273,7 @@ doc.hiddenInput('csrf', 'abc123');
 
 ```javascript
 doc.container((c) => {
-  c.child('h1').text('Dashboard');
+  c.h1().text('Dashboard');
 }, '960px');
 
 doc.grid(3, ['Card 1', 'Card 2', 'Card 3'], '20px');
@@ -284,8 +284,8 @@ doc.columns(2, [
 ]);
 
 doc.stack([
-  (el) => el.child('h2').text('Section 1'),
-  (el) => el.child('h2').text('Section 2'),
+  (el) => el.h2().text('Section 1'),
+  (el) => el.h2().text('Section 2'),
 ], '24px');
 ```
 
@@ -326,7 +326,7 @@ doc.comment('Navigation section');
 
 doc.template('userCard', (d, { name, role }) => {
   const card = d.create('div').addClass('user-card');
-  card.child('h3').text(name);
+  card.h3().text(name);
   card.child('span').text(role);
 });
 
@@ -339,7 +339,7 @@ doc.when(isAdmin, (d) => {
 });
 
 doc.group((d) => {
-  d.h(2).text('Section');
+  d.h2().text('Section');
   d.p('Content without a wrapper element.');
 });
 ```
@@ -366,7 +366,7 @@ All the same tag shortcuts available on `Document` work on `Element` too — the
 ```javascript
 const card = doc.div().addClass('card');
 
-card.h(2).text('Title');
+card.h2().text('Title');
 card.p('Body text.');
 card.a('/more', 'Read more').hover({ textDecoration: 'underline' });
 card.img('/photo.jpg', 'A photo').size('100%', '200px');
@@ -376,7 +376,7 @@ card.hr();
 card.br();
 ```
 
-**Available:** `div()`, `span()`, `section()`, `header()`, `footer()`, `main()`, `nav()`, `article()`, `aside()`, `form()`, `ul()`, `ol()`, `table()`, `details()`, `summary()`, `dialog()`, `pre()`, `code()`, `blockquote()`, `h(level)`, `p(text?)`, `a(href, text?)`, `button(text?)`, `img(src, alt?)`, `input(type?, attrs?)`, `textarea(attrs?)`, `select(options, attrs?)`, `hr()`, `br()`
+**Available:** `div()`, `span()`, `section()`, `header()`, `footer()`, `main()`, `nav()`, `article()`, `aside()`, `form()`, `ul()`, `ol()`, `table()`, `details()`, `summary()`, `dialog()`, `pre()`, `code()`, `blockquote()`, `h1()` `h2()` `h3()` `h4()` `h5()` `h6()`, `p(text?)`, `a(href, text?)`, `button(text?)`, `img(src, alt?)`, `input(type?, attrs?)`, `textarea(attrs?)`, `select(options, attrs?)`, `hr()`, `br()`
 
 ### Tree Manipulation
 
@@ -568,7 +568,7 @@ function Modal(el) {
 }
 
 const modal = doc.use(Modal);
-modal.fillSlot('header', (slot) => slot.child('h2').text('Title'));
+modal.fillSlot('header', (slot) => slot.h2().text('Title'));
 modal.fillSlot('default', (slot) => slot.child('p').text('Body'));
 modal.fillSlot('footer', (slot) => slot.child('button').text('Close'));
 ```
@@ -709,7 +709,7 @@ const { Document, components } = require('@trebor/buildhtml');
 // Define
 function Card(el, { title, body, footer }) {
   el.addClass('card').css({ border: '1px solid #ddd', borderRadius: '8px', padding: '16px' });
-  el.child('h2').text(title);
+  el.h2().text(title);
   el.child('p').text(body);
   if (footer) el.child('footer').text(footer);
 }
@@ -1069,7 +1069,7 @@ app.get('/', (req, res) => {
   const doc = new Document();
   doc.title('Home').viewport().resetCss();
   doc.container((c) => {
-    c.child('h1').text('Welcome');
+    c.h1().text('Welcome');
     c.child('p').text('Built with buildhtml');
   });
   res.send(doc.render());
@@ -1201,7 +1201,7 @@ function Card(el, { title, body }) {
     .animate('fadeIn', { duration: '0.3s' })
     .hover({ boxShadow: '0 4px 12px rgba(0,0,0,0.1)' })
     .transition('box-shadow 0.2s ease');
-  el.child('h2').text(title).css({ marginBottom: '8px' });
+  el.h2().text(title).css({ marginBottom: '8px' });
   el.child('p').text(body);
 }
 components.register('Card', Card);
@@ -1222,7 +1222,7 @@ app.get('/', (req, res) => {
   doc.comment('Main content');
 
   doc.container((c) => {
-    c.h(1).text('Dashboard')
+    c.h1().text('Dashboard')
       .hover({ color: 'var(--primary)' })
       .pseudo('after', { content: '""', display: 'block', height: '3px', backgroundColor: 'var(--primary)', marginTop: '8px' });
 
