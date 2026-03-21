@@ -68,7 +68,7 @@ test('Implicit div with id', () => {
 /* ---- Attributes ---- */
 test('Attributes in parentheses', () => {
   const html = renderTemplate(`a(href="/about") "About"`);
-  assert(html.includes('href="&#x2F;about"'), 'href attr');
+  assert(html.includes('href="/about"'), 'href attr');
   assert(html.includes('About'), 'link text');
 });
 

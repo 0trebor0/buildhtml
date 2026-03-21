@@ -342,7 +342,7 @@ test('el.accept()', () => {
   const doc = new Document();
   doc.create('input').type('file').accept('image/*');
   const html = doc.render();
-  assert(html.includes('accept="image&#x2F;*"'), 'accept');
+  assert(html.includes('accept="image/*"'), 'accept');
 });
 
 test('el.rows() / el.cols()', () => {
