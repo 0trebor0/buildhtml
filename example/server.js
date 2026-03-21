@@ -1,5 +1,5 @@
 const express = require('express');
-const { Document, createCachedRenderer, getCacheStats } = require('./Sculptor');
+const { Document, createCachedRenderer, getCacheStats } = require('../');
 
 const app = express();
 const PORT = 3000;
