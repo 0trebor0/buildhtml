@@ -1,9 +1,5 @@
 const express = require('express');
-<<<<<<< HEAD
-const { Document, createCachedRenderer, getCacheStats } = require('../index');
-=======
-const { Document, createCachedRenderer, getCacheStats } = require('../');
->>>>>>> e8c5e44f3c31f8b7e18145ebdfa618e775709a69
+const { page, createCachedRenderer, getCacheStats } = require('../');
 
 const app = express();
 const PORT = 3000;
@@ -12,33 +8,29 @@ const PORT = 3000;
 // EXAMPLE 1: Basic Route (No Caching)
 // ==============================================
 app.get('/', (_req, res) => {
-  const doc = new Document();
-  doc.title('Home Page');
-  
+  const doc = page('Home Page');
+
   doc.h1().text('Welcome to buildhtml');
   doc.p().text('Server-rendered page created on each request');
-  
-  const html = doc.render();
-  res.send(html);
+
+  res.send(doc.render());
 });
 
 // ==============================================
 // EXAMPLE 2: Dynamic Content (User-specific)
 // ==============================================
 app.get('/user/:name', (req, res) => {
-  const doc = new Document();
-  doc.title(`Profile - ${req.params.name}`);
+  const doc = page(`Profile - ${req.params.name}`);
   doc.state('userName', req.params.name);
-  
+
   const header = doc.create('header');
   header.h1().bind('userName', (name) => `Welcome, ${name}!`);
 
   const content = doc.div();
   content.p().text(`This page was generated for: ${req.params.name}`);
   content.p().text(`Time: ${new Date().toISOString()}`);
-  
-  const html = doc.render();
-  res.send(html);
+
+  res.send(doc.render());
 });
 
 // ==============================================
@@ -46,59 +38,55 @@ app.get('/user/:name', (req, res) => {
 // ==============================================
 app.get('/about', createCachedRenderer(
   async (_req) => {
-    const doc = new Document();
-    doc.title('About Us');
-    
+    const doc = page('About Us');
+
     doc.h1().text('About buildhtml');
     doc.p().text('High-performance SSR framework for Node.js');
     doc.p().text('This page is cached for better performance');
-    
+
     return doc;
   },
-  'about-page' // Cache key
+  'about-page'
 ));
 
 // ==============================================
 // EXAMPLE 4: Counter App (With State)
 // ==============================================
 app.get('/counter', (_req, res) => {
-  const doc = new Document();
-  doc.title('Counter App');
+  const doc = page('Counter App');
   doc.state('count', 0);
-  
-  const app = doc.create('div');
-  app.css({ 
-    maxWidth: '400px', 
+
+  const container = doc.div().css({
+    maxWidth: '400px',
     margin: '50px auto',
     textAlign: 'center',
     fontFamily: 'Arial'
   });
-  
-  app.h1().text('Counter Demo');
-  
-  const display = app.create('div');
-  display.css({ fontSize: '48px', margin: '20px' });
-  display.bind('count', (val) => `Count: ${val}`);
-  
-  const buttons = app.create('div');
-  
-  buttons.create('button')
+
+  container.h1().text('Counter Demo');
+
+  container.div()
+    .css({ fontSize: '48px', margin: '20px' })
+    .bind('count', (val) => `Count: ${val}`);
+
+  const buttons = container.div();
+
+  buttons.button()
     .text('- Decrement')
     .css({ padding: '10px 20px', margin: '5px', cursor: 'pointer' })
     .on('click', () => { State.count--; });
-  
-  buttons.create('button')
+
+  buttons.button()
     .text('Reset')
     .css({ padding: '10px 20px', margin: '5px', cursor: 'pointer' })
     .on('click', () => { State.count = 0; });
-  
-  buttons.create('button')
+
+  buttons.button()
     .text('+ Increment')
     .css({ padding: '10px 20px', margin: '5px', cursor: 'pointer' })
     .on('click', () => { State.count++; });
-  
-  const html = doc.render();
-  res.send(html);
+
+  res.send(doc.render());
 });
 
 // ==============================================
@@ -121,144 +109,102 @@ app.get('/products/:category', createCachedRenderer(
   async (req) => {
     const category = req.params.category;
     const items = products[category] || [];
-    
-    const doc = new Document();
-    doc.title(`Products - ${category}`);
-    
+
+    const doc = page(`Products - ${category}`);
     doc.h1().text(`${category} Products`);
-    
+
     const list = doc.create('ul');
     items.forEach(item => {
-      const li = list.create('li');
-      li.text(`${item.name} - $${item.price}`);
+      list.create('li').text(`${item.name} - $${item.price}`);
     });
-    
+
     return doc;
   },
-  (req) => `products-${req.params.category}` // Dynamic cache key
+  (req) => `products-${req.params.category}`
 ));
 
 // ==============================================
 // EXAMPLE 6: API Data (Server-Side Fetch)
 // ==============================================
 app.get('/api-demo', async (_req, res) => {
-  const doc = new Document();
-  doc.title('API Demo');
-  
+  const doc = page('API Demo');
+
   // Simulate API call
   const apiData = await new Promise(resolve => {
-    setTimeout(() => {
-      resolve({ users: 150, posts: 1234, comments: 5678 });
-    }, 50);
+    setTimeout(() => resolve({ users: 150, posts: 1234, comments: 5678 }), 50);
   });
-  
+
   doc.state('stats', apiData);
-  
-  const app = doc.div();
-  app.h1().text('API Statistics');
-  
-  const stats = doc.create('div');
-  stats.text(`Users: ${apiData.users}, Posts: ${apiData.posts}, Comments: ${apiData.comments}`);
-  
-  const html = doc.render();
-  res.send(html);
+  doc.h1().text('API Statistics');
+  doc.div().text(`Users: ${apiData.users}, Posts: ${apiData.posts}, Comments: ${apiData.comments}`);
+
+  res.send(doc.render());
 });
 
 // ==============================================
-// EXAMPLE 7: With JSON Embedded (for hydration)
+// EXAMPLE 7: SPA with client-side state
 // ==============================================
 app.get('/spa', (_req, res) => {
-  const doc = new Document();
-  doc.title('SPA Demo');
+  const doc = page('SPA Demo');
   doc.state('page', 'home');
-  
-  const app = doc.create('div');
-  app.create('h1').text('Single Page App Demo');
-  app.create('p').bind('page', (p) => `Current page: ${p}`);
-  
-  const nav = app.create('nav');
-  ['home', 'about', 'contact'].forEach(page => {
-    nav.create('button')
-      .text(page)
+
+  const container = doc.div();
+  container.h1().text('Single Page App Demo');
+  container.p().bind('page', (p) => `Current page: ${p}`);
+
+  const nav = container.create('nav');
+  ['home', 'about', 'contact'].forEach(p => {
+    nav.button()
+      .text(p)
       .css({ margin: '5px', padding: '10px' })
-      .on('click', () => { State.page = page; });
+      .on('click', () => { State.page = p; });
   });
-  
-  // Render with JSON for client-side reactivity
-  const html = doc.renderJSON({ encrypt: true });
-  res.send(html);
+
+  res.send(doc.render());
 });
 
 // ==============================================
 // PERFORMANCE MONITORING
 // ==============================================
 app.get('/stats', (_req, res) => {
-  const stats = getCacheStats();
-  res.json(stats);
+  res.json(getCacheStats());
 });
 
 // ==============================================
 // BENCHMARK ROUTE
 // ==============================================
 app.get('/benchmark', async (_req, res) => {
-  const results = {
-    simple: {},
-    complex: {},
-    cached: {},
-    encrypted: {}
-  };
-  
+  const { Document } = require('../');
+  const results = {};
+
   // Test 1: Simple page
-  const start1 = Date.now();
+  let t = Date.now();
   for (let i = 0; i < 100; i++) {
     const doc = new Document();
-    doc.create('div').text('Hello World');
+    doc.div().text('Hello World');
     doc.render();
   }
-  results.simple = {
-    iterations: 100,
-    time: Date.now() - start1,
-    avgPerRequest: ((Date.now() - start1) / 100).toFixed(2) + 'ms'
-  };
-  
+  const simple = Date.now() - t;
+  results.simple = { iterations: 100, totalMs: simple, avgMs: (simple / 100).toFixed(2) };
+
   // Test 2: Complex page
-  const start2 = Date.now();
+  t = Date.now();
   for (let i = 0; i < 100; i++) {
     const doc = new Document();
     doc.state('count', 0);
     for (let j = 0; j < 50; j++) {
-      const div = doc.create('div');
-      div.css({ color: 'red' });
-      div.create('button').on('click', () => { State.count++; });
+      doc.div().css({ color: 'red' }).button().on('click', () => { State.count++; });
     }
     doc.render();
   }
-  results.complex = {
-    iterations: 100,
-    elements: 100, // 50 divs + 50 buttons
-    time: Date.now() - start2,
-    avgPerRequest: ((Date.now() - start2) / 100).toFixed(2) + 'ms'
-  };
-  
-  // Test 3: With encryption
-  const start3 = Date.now();
-  for (let i = 0; i < 100; i++) {
-    const doc = new Document();
-    doc.state('data', { test: 'value' });
-    doc.renderJSON({ encrypt: true });
-  }
-  results.encrypted = {
-    iterations: 100,
-    time: Date.now() - start3,
-    avgPerRequest: ((Date.now() - start3) / 100).toFixed(2) + 'ms'
-  };
-  
-  // Memory usage
+  const complex = Date.now() - t;
+  results.complex = { iterations: 100, elements: 100, totalMs: complex, avgMs: (complex / 100).toFixed(2) };
+
   results.memory = {
-    heapUsed: (process.memoryUsage().heapUsed / 1024 / 1024).toFixed(2) + 'MB',
-    heapTotal: (process.memoryUsage().heapTotal / 1024 / 1024).toFixed(2) + 'MB'
+    heapUsedMB: (process.memoryUsage().heapUsed / 1024 / 1024).toFixed(2),
+    heapTotalMB: (process.memoryUsage().heapTotal / 1024 / 1024).toFixed(2)
   };
-  
+
   res.json(results);
 });
 
@@ -266,10 +212,8 @@ app.get('/benchmark', async (_req, res) => {
 // START SERVER
 // ==============================================
 app.listen(PORT, () => {
-  console.log('==============================================');
-  console.log('Sculptor.js Express Example');
-  console.log('==============================================\n');
-  console.log(`Server running at http://localhost:${PORT}\n`);
+  console.log('buildhtml Express Example');
+  console.log(`\nServer running at http://localhost:${PORT}\n`);
   console.log('Routes:');
   console.log(`  GET /              - Basic home page`);
   console.log(`  GET /user/:name    - Dynamic user page`);
@@ -277,12 +221,9 @@ app.listen(PORT, () => {
   console.log(`  GET /counter       - Interactive counter`);
   console.log(`  GET /products/:cat - Cached product list`);
   console.log(`  GET /api-demo      - API data integration`);
-  console.log(`  GET /spa           - SPA with JSON`);
+  console.log(`  GET /spa           - SPA with client-side state`);
   console.log(`  GET /stats         - Cache statistics`);
   console.log(`  GET /benchmark     - Performance test\n`);
-  console.log('Try:');
-  console.log(`  curl http://localhost:${PORT}/benchmark`);
-  console.log(`  curl http://localhost:${PORT}/stats\n`);
 });
 
 module.exports = app;
