@@ -1,5 +1,5 @@
 const express = require('express');
-const { Document, createCachedRenderer, getCacheStats } = require('./Sculptor');
+const { Document, createCachedRenderer, getCacheStats } = require('../index');
 
 const app = express();
 const PORT = 3000;
@@ -7,12 +7,12 @@ const PORT = 3000;
 // ==============================================
 // EXAMPLE 1: Basic Route (No Caching)
 // ==============================================
-app.get('/', (req, res) => {
+app.get('/', (_req, res) => {
   const doc = new Document();
   doc.title('Home Page');
   
-  doc.create('h1').text('Welcome to Sculptor.js');
-  doc.create('p').text('Server-rendered page created on each request');
+  doc.h1().text('Welcome to buildhtml');
+  doc.p().text('Server-rendered page created on each request');
   
   const html = doc.render();
   res.send(html);
@@ -27,11 +27,11 @@ app.get('/user/:name', (req, res) => {
   doc.state('userName', req.params.name);
   
   const header = doc.create('header');
-  header.create('h1').bind('userName', (name) => `Welcome, ${name}!`);
-  
-  const content = doc.create('div');
-  content.create('p').text(`This page was generated for: ${req.params.name}`);
-  content.create('p').text(`Time: ${new Date().toISOString()}`);
+  header.h1().bind('userName', (name) => `Welcome, ${name}!`);
+
+  const content = doc.div();
+  content.p().text(`This page was generated for: ${req.params.name}`);
+  content.p().text(`Time: ${new Date().toISOString()}`);
   
   const html = doc.render();
   res.send(html);
@@ -41,13 +41,13 @@ app.get('/user/:name', (req, res) => {
 // EXAMPLE 3: Cached Static Pages
 // ==============================================
 app.get('/about', createCachedRenderer(
-  async (req) => {
+  async (_req) => {
     const doc = new Document();
     doc.title('About Us');
     
-    doc.create('h1').text('About Sculptor.js');
-    doc.create('p').text('High-performance SSR framework for Node.js');
-    doc.create('p').text('This page is cached for better performance');
+    doc.h1().text('About buildhtml');
+    doc.p().text('High-performance SSR framework for Node.js');
+    doc.p().text('This page is cached for better performance');
     
     return doc;
   },
@@ -57,7 +57,7 @@ app.get('/about', createCachedRenderer(
 // ==============================================
 // EXAMPLE 4: Counter App (With State)
 // ==============================================
-app.get('/counter', (req, res) => {
+app.get('/counter', (_req, res) => {
   const doc = new Document();
   doc.title('Counter App');
   doc.state('count', 0);
@@ -70,7 +70,7 @@ app.get('/counter', (req, res) => {
     fontFamily: 'Arial'
   });
   
-  app.create('h1').text('Counter Demo');
+  app.h1().text('Counter Demo');
   
   const display = app.create('div');
   display.css({ fontSize: '48px', margin: '20px' });
@@ -121,7 +121,7 @@ app.get('/products/:category', createCachedRenderer(
     const doc = new Document();
     doc.title(`Products - ${category}`);
     
-    doc.create('h1').text(`${category} Products`);
+    doc.h1().text(`${category} Products`);
     
     const list = doc.create('ul');
     items.forEach(item => {
@@ -137,7 +137,7 @@ app.get('/products/:category', createCachedRenderer(
 // ==============================================
 // EXAMPLE 6: API Data (Server-Side Fetch)
 // ==============================================
-app.get('/api-demo', async (req, res) => {
+app.get('/api-demo', async (_req, res) => {
   const doc = new Document();
   doc.title('API Demo');
   
@@ -150,8 +150,8 @@ app.get('/api-demo', async (req, res) => {
   
   doc.state('stats', apiData);
   
-  const app = doc.create('div');
-  app.create('h1').text('API Statistics');
+  const app = doc.div();
+  app.h1().text('API Statistics');
   
   const stats = doc.create('div');
   stats.text(`Users: ${apiData.users}, Posts: ${apiData.posts}, Comments: ${apiData.comments}`);
@@ -163,7 +163,7 @@ app.get('/api-demo', async (req, res) => {
 // ==============================================
 // EXAMPLE 7: With JSON Embedded (for hydration)
 // ==============================================
-app.get('/spa', (req, res) => {
+app.get('/spa', (_req, res) => {
   const doc = new Document();
   doc.title('SPA Demo');
   doc.state('page', 'home');
@@ -188,7 +188,7 @@ app.get('/spa', (req, res) => {
 // ==============================================
 // PERFORMANCE MONITORING
 // ==============================================
-app.get('/stats', (req, res) => {
+app.get('/stats', (_req, res) => {
   const stats = getCacheStats();
   res.json(stats);
 });
@@ -196,7 +196,7 @@ app.get('/stats', (req, res) => {
 // ==============================================
 // BENCHMARK ROUTE
 // ==============================================
-app.get('/benchmark', async (req, res) => {
+app.get('/benchmark', async (_req, res) => {
   const results = {
     simple: {},
     complex: {},
