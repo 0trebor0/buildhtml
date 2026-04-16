@@ -39,9 +39,9 @@ test('Tag shortcut methods', () => {
   const html = doc.render();
   assert(html.includes('<div>div</div>'), 'div()');
   assert(html.includes('<p>paragraph</p>'), 'p()');
-  assert(html.includes('href="https:&#x2F;&#x2F;example.com"'), 'a()');
+  assert(html.includes('href="https://example.com"'), 'a()');
   assert(html.includes('<button>click</button>'), 'button()');
-  assert(html.includes('src="&#x2F;photo.jpg"'), 'img()');
+  assert(html.includes('src="/photo.jpg"'), 'img()');
   assert(html.includes('type="email"'), 'input()');
 });
 
