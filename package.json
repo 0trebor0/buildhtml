@@ -5,12 +5,13 @@
   "main": "index.js",
   "files": [
     "index.js",
+    "lib/",
     "README.md",
     "LICENSE"
   ],
   "scripts": {
     "start": "node example/server.js",
-    "test": "node test-debug.js"
+    "test": "node test/test.js"
   },
   "repository": {
     "type": "git",

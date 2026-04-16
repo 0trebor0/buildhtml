@@ -1,5 +1,9 @@
 const express = require('express');
+<<<<<<< HEAD
 const { Document, createCachedRenderer, getCacheStats } = require('../index');
+=======
+const { Document, createCachedRenderer, getCacheStats } = require('../');
+>>>>>>> e8c5e44f3c31f8b7e18145ebdfa618e775709a69
 
 const app = express();
 const PORT = 3000;
