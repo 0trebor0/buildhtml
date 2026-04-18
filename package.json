@@ -3,9 +3,11 @@
   "version": "1.0.6",
   "description": "Zero-dependency, ultra-fast HTML builder for server-side rendering (SSR).",
   "main": "index.js",
+  "types": "typescript/index.d.ts",
   "files": [
     "index.js",
     "lib/",
+    "typescript/index.d.ts",
     "README.md",
     "LICENSE"
   ],
