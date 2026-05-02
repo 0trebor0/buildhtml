@@ -62,10 +62,13 @@ export interface ComponentOptions {
 }
 
 export interface ComponentRegistry {
-  register(name: string, fn: ComponentFn, options?: ComponentOptions): void;
+  register(name: string, fn: ComponentFn, options?: ComponentOptions): ComponentRegistry;
   get(name: string): { fn: ComponentFn; options: ComponentOptions };
   has(name: string): boolean;
-  unregister(name: string): void;
+  unregister(name: string): ComponentRegistry;
+  list(): string[];
+  extend(newName: string, baseName: string, extendFn: ComponentFn, options?: ComponentOptions): ComponentRegistry;
+  clear(): void;
 }
 
 export declare const components: ComponentRegistry;
@@ -604,6 +607,7 @@ export declare class Document implements SharedShortcuts<Document> {
 
   // Rendering
   render(): string;
+  renderStream(): import('stream').Readable;
   output(): string;
   save(path: string): Document;
   clear(): void;
