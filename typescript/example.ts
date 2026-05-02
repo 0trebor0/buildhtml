@@ -23,7 +23,7 @@ import {
   type PageDef,
   type ComponentFn,
   type SelectOption,
-} from '../typescript/index.d';
+} from '@trebor/buildhtml';
 
 // ─── 1. Basic page ────────────────────────────────────────────────────────────
 
