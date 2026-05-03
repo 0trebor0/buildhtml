@@ -203,6 +203,58 @@ doc.mediaQuery('(max-width: 768px)', {
 | `states(obj)` | Set multiple state keys at once |
 | `oncreate(fn)` | Run function on page load |
 
+### SPA Compilation
+
+buildhtml compiles reactive SPAs entirely server-side — no raw client JS needed.
+
+| Method | Description |
+|--------|-------------|
+| `liveList(stateKey, itemFn, options?)` | Reactive list — server-renders initial items, client re-renders on state change |
+| `hashRouter(options?)` | Hash-based router — syncs `location.hash` → `State[stateKey]`, highlights active nav |
+
+`liveList` — `itemFn(item, index)` must return a **NodeDef plain object** (tag, css, children, on, attrs, text). The server renders the initial list; the client re-renders whenever `State[stateKey]` changes.
+
+```javascript
+doc.states({ tasks: [{ id: 1, title: 'Buy milk', done: false }], view: 'all' });
+
+const list = doc.liveList('tasks', function(task) {
+  return {
+    tag: 'div',
+    css: { display: 'flex', gap: '8px', padding: '12px' },
+    children: [
+      { tag: 'input', attrs: { type: 'checkbox', 'data-id': String(task.id), ...(task.done ? { checked: 'checked' } : {}) },
+        on: { change: function() {
+          var id = Number(this.dataset.id), ck = this.checked;
+          State.tasks = State.tasks.map(function(t) { return t.id === id ? { id: t.id, title: t.title, done: ck } : t; });
+        }}
+      },
+      { tag: 'span', text: task.title },
+    ]
+  };
+}, {
+  filter: function(task, state) {
+    if (state.view === 'active') return !task.done;
+    if (state.view === 'done')   return  task.done;
+    return true;
+  },
+  filterKeys: ['view'],  // re-render when State.view changes too
+});
+
+list.css({ display: 'flex', flexDirection: 'column' });
+```
+
+`hashRouter` — maps `#all` → `State.view = 'all'` and optionally applies active/inactive styles to nav links:
+
+```javascript
+doc.hashRouter({
+  stateKey: 'view',
+  default: 'all',
+  navSelector: 'header a',
+  activeStyle:   { background: '#3b82f6', color: '#fff' },
+  inactiveStyle: { background: 'transparent', color: '#94a3b8' },
+});
+```
+
 ### Element Creation
 
 | Method | Description |
@@ -349,9 +401,20 @@ doc.group((d) => {
 | Method | Description |
 |--------|-------------|
 | `render()` | Return full HTML string |
+| `renderStream()` | Return a Node.js `Readable` stream — sends `<head>` immediately for faster TTFB |
 | `output()` | Get last rendered HTML |
 | `save(path)` | Write rendered HTML to file |
 | `toJSON()` | Export document structure as JSON |
+
+```javascript
+// Streaming — browser starts loading CSS/fonts while body is still building
+app.get('/', (req, res) => {
+  res.setHeader('Content-Type', 'text/html');
+  const doc = page('Home');
+  doc.h1().text('Hello');
+  doc.renderStream().pipe(res);
+});
+```
 
 ---
 
@@ -577,21 +640,45 @@ modal.fillSlot('footer', (slot) => slot.button('Close'));
 | Method | Description |
 |--------|-------------|
 | `state(value)` | Set element state for hydration |
-| `bind(stateKey, fn?)` | Bind to global state |
+| `bind(stateKey, fn?)` | Reactive text content — `fn(val)` return value sets `textContent` |
+| `bindShow(stateKey, fn?)` | Show/hide — `fn(val)` truthy = visible, falsy = `display:none` |
+| `bindClass(stateKey, fn)` | Reactive class — `fn(val)` return string sets `className` |
+| `bindAttr(stateKey, attr, fn?)` | Reactive attribute — `null`/`false` removes, anything else sets |
+| `bindStyle(stateKey, fn)` | Reactive inline style — `fn(val)` returns `{ prop: value }` object |
+| `bindProp(stateKey, prop, fn?)` | Reactive DOM property — sets `el[prop]` (e.g. `value`, `checked`) |
 | `computed(fn)` | Compute content from state |
 | `on(event, fn)` | Attach event handler |
 | `bindState(target, event, fn)` | Cross-element state binding |
 
 **Event shorthands:** `onClick`, `onChange`, `onInput`, `onSubmit`, `onKeydown`, `onKeyup`, `onKeypress`, `onFocus`, `onBlur`, `onMouseenter`, `onMouseleave`, `onMousedown`, `onMouseup`, `onMousemove`, `onDblclick`, `onContextmenu`, `onScroll`, `onLoad`, `onError`, `onDragstart`, `onDragend`, `onDragover`, `onDrop`, `onTouchstart`, `onTouchend`, `onTouchmove`
 
+All event handlers and bindings are **server-compiled** — the server serializes the function, attaches it via `addEventListener` (not inline `onclick`), and wires it to the reactive `State` proxy. You never write client JS manually.
+
 ```javascript
-doc.state('count', 0);
+doc.states({ count: 0, theme: 'light', open: false });
 
-doc.div().bind('count', (val) => `Count: ${val}`);
+// Text binding
+doc.span().bind('count', (val) => `Count: ${val}`);
 
-doc.button('+1').onClick(function() {
-  State.count++;
-});
+// Show/hide
+doc.div().text('Alert!').bindShow('open');
+doc.div().text('Alert!').bindShow('count', (val) => val > 5);
+
+// Class binding
+doc.div().bindClass('theme', (val) => val + '-mode');
+
+// Attribute binding (e.g. disabled)
+doc.input('text').bindAttr('open', 'disabled', (val) => val ? 'disabled' : null);
+
+// Style binding
+doc.div().bindStyle('count', (val) => ({ width: val * 10 + 'px', background: val > 5 ? 'red' : 'green' }));
+
+// DOM property binding (input value)
+doc.input('text').bindProp('count', 'value', (val) => String(val));
+
+// Events — compiled to addEventListener, wired to State proxy
+doc.button('+1').onClick(function() { State.count++; });
+doc.button('Toggle').onClick(function() { State.open = !State.open; });
 ```
 
 ### Layout Helpers (on Element)
@@ -1032,30 +1119,51 @@ app.set('view engine', 'bhtml');
 
 ## State & Events
 
+buildhtml is a **server-side compiler** — all interactivity is expressed through the server API and compiled to client JavaScript automatically. You never write raw client JS.
+
+### How it works
+
+1. Call `.states()` on the document to define initial state
+2. Attach `.onClick()`, `.bind()`, `.bindShow()` etc. on elements
+3. Call `doc.render()` — one compiled `<script>` is emitted with a `State` Proxy and all event listeners
+4. In the browser, mutating `State.key = value` automatically updates every bound element
+
 ### Reactive State
 
 ```javascript
-doc.state('count', 0);
-doc.states({ name: 'World', items: [] });
+doc.states({ count: 0, theme: 'light', open: false });
 
-// Bind element to state
+// Text update
 doc.span().bind('count', (val) => `Count: ${val}`);
 
-// Update state in browser (auto-updates UI)
-doc.button('+1').onClick(function() {
-  State.count++;
-});
+// Show/hide
+doc.div().text('Panel').bindShow('open');
+doc.div().text('High!').bindShow('count', (val) => val > 5);
 
-// Client-side: window.State.count is a reactive Proxy
+// CSS class toggle
+doc.div().bindClass('theme', (val) => val + '-mode');
+
+// Attribute toggle (e.g. disable a button when loading)
+doc.button('Save').bindAttr('open', 'disabled', (val) => val ? null : 'disabled');
+
+// Inline style update
+doc.div().bindStyle('count', (val) => ({ width: val * 10 + 'px' }));
+
+// DOM property (input value, checkbox checked)
+doc.input('text').bindProp('count', 'value', (val) => String(val));
+
+// Events — State mutations trigger all bound elements automatically
+doc.button('+1').onClick(function() { State.count++; });
+doc.button('Toggle').onClick(function() { State.open = !State.open; });
 ```
 
 ### Limitations
 
-Event handlers are serialized — closures won't work:
+Event handlers are serialized — closures over server variables won't work:
 
 ```javascript
 // ✅ Uses global State
-doc.state('count', 0);
+doc.states({ count: 0 });
 btn.onClick(function() { State.count++; });
 
 // ❌ Closure won't survive serialization
@@ -1064,6 +1172,8 @@ btn.onClick(function() { count++; });
 ```
 
 State values must be JSON-serializable (no functions, DOM nodes, etc).
+
+Inline `on*` attributes (`onclick`, `onmouseover`) are blocked — use `.onClick()` and other event methods instead, which compile to safe `addEventListener` calls.
 
 ---
 
@@ -1137,6 +1247,7 @@ const {
   Element,
   Head,
   CONFIG,
+  configure,   // set CONFIG options programmatically
 
   // Components
   components,
@@ -1150,8 +1261,16 @@ const {
   getCacheStats, resetPools, healthCheck,
 
   // Metrics
-  Metrics, metrics
+  Metrics, metrics,
+
+  // SPA compilation (low-level — normally called via doc.liveList() / doc.hashRouter())
+  compileLiveList, compileHashRouter,
 } = require('@trebor/buildhtml');
+```
+
+TypeScript types are included — no `@types/` package needed:
+```typescript
+import { page, Document, Element, components } from '@trebor/buildhtml';
 ```
 
 ---
@@ -1168,6 +1287,7 @@ buildhtml/
 │   ├── head.js         ← Head class
 │   ├── components.js   ← Component registry
 │   ├── builder.js      ← Declarative builder
+│   ├── live.js         ← SPA compilation (liveList, hashRouter, _mkEl runtime)
 │   ├── template.js     ← .bhtml template parser
 │   ├── renderer.js     ← HTML rendering + client compiler
 │   ├── pools.js        ← Object pooling
@@ -1176,8 +1296,11 @@ buildhtml/
 │   ├── metrics.js      ← Performance metrics
 │   ├── middleware.js    ← Express helpers
 │   └── utils.js        ← Shared utilities
+├── typescript/
+│   └── index.d.ts      ← TypeScript declarations
 └── test/
     ├── test.js
+    ├── test-spa.js
     ├── test-template.js
     ├── test-new-apis.js
     └── test-apis-v2.js

@@ -357,6 +357,11 @@ export declare class Element implements SharedShortcuts<Element> {
 
   // State & events
   bind(stateKey: string, templateFn?: (val: any) => any): Element;
+  bindShow(stateKey: string, fn?: (val: any) => boolean | any): Element;
+  bindClass(stateKey: string, fn: (val: any) => string): Element;
+  bindAttr(stateKey: string, attrName: string, fn?: (val: any) => string | null | false): Element;
+  bindStyle(stateKey: string, fn: (val: any) => Record<string, string>): Element;
+  bindProp(stateKey: string, prop: string, fn?: (val: any) => any): Element;
   state(value: any): Element;
   computed(fn: () => any): Element;
   on(event: string, fn: (e: Event) => void): Element;
@@ -406,6 +411,9 @@ export declare class Element implements SharedShortcuts<Element> {
   // Component system
   component(name: string, props?: Record<string, any>, overrides?: ComponentOptions): Element;
   use(fn: ComponentFn, props?: Record<string, any>, tag?: string): Element;
+
+  // SPA compilation
+  liveList(stateKey: string, itemFn: (item: any, index: number) => NodeDef, options?: LiveListOptions): Element;
 
   // Fragment rendering
   renderFragment(): Fragment;
@@ -591,6 +599,10 @@ export declare class Document implements SharedShortcuts<Document> {
   // Declarative builder
   build(defs: NodeDef | NodeDef[]): Document;
 
+  // SPA compilation
+  liveList(stateKey: string, itemFn: (item: any, index: number) => NodeDef, options?: LiveListOptions): Element;
+  hashRouter(options?: HashRouterOptions): Document;
+
   // Utility APIs
   comment(text: string): Document;
   raw(html: string): Document;
@@ -726,6 +738,38 @@ export declare function createCachedRenderer(
 export declare function clearCache(pattern?: string): void;
 export declare function getCacheStats(): CacheStats;
 export declare function healthCheck(): HealthCheckResult;
+
+// ─── SPA Compilation ─────────────────────────────────────────────────────────
+
+export interface LiveListOptions {
+  /** Client-side filter: (item, State) => boolean. Also applied server-side for initial render. */
+  filter?: (item: any, state: Record<string, any>) => boolean;
+  /** Extra state keys that trigger a re-render when they change (e.g. ['view']). */
+  filterKeys?: string[];
+}
+
+export interface HashRouterOptions {
+  /** State key to update on hash change (default: 'view'). */
+  stateKey?: string;
+  /** Hash value used when location.hash is empty (default: 'all'). */
+  default?: string;
+  /** CSS selector for nav links to highlight (e.g. 'header a'). */
+  navSelector?: string;
+  /** Inline styles applied to the active nav link. */
+  activeStyle?: Record<string, string>;
+  /** Inline styles applied to inactive nav links. */
+  inactiveStyle?: Record<string, string>;
+}
+
+export declare function compileLiveList(
+  doc: Document,
+  parent: Document | Element,
+  stateKey: string,
+  itemFn: (item: any, index: number) => NodeDef,
+  options?: LiveListOptions
+): Element;
+
+export declare function compileHashRouter(doc: Document, options?: HashRouterOptions): Document;
 
 // ─── Top-level helpers ────────────────────────────────────────────────────────
 
