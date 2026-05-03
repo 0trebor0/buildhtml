@@ -1,10 +1,12 @@
 example/
+test/
 node_modules/
 .claude/
 .git/
 .gitignore
 *.log
 .DS_Store
+CLAUDE.md
 test-debug.js
 test-xss-debug.js
 test-server.js
