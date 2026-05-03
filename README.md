@@ -1,52 +1,103 @@
 # @trebor/buildhtml
 
-**High-performance server-side HTML builder for Node.js** — components, templates, reactive state, layouts, and CSS-in-JS with zero dependencies.
+**Write Node.js. Get a complete, reactive HTML page — zero client JavaScript, zero dependencies.**
 
 ---
 
-## Install
+## Why
+
+- **No client JS to write** — events, reactive state, and DOM bindings compile automatically from server-side API calls
+- **Zero dependencies** — nothing to audit, nothing to break, nothing to update
+- **Components without a framework** — define reusable UI as plain functions; register them globally or use inline
+- **Security by default** — XSS escaping, URL sanitization, CSP nonce support, and `setAttribute` instead of inline `onclick`
+- **Progressive** — start with static HTML, add reactive state only when you need it
+
+---
+
+## Quick Start
 
 ```bash
 npm install @trebor/buildhtml
 ```
 
-## Quick Start
-
 ```javascript
-const { page } = require('@trebor/buildhtml');
+const { Document } = require('@trebor/buildhtml');
 
-const doc = page('My Page');
-doc.bodyCss({ fontFamily: 'system-ui', margin: '0' });
-
-doc.container((c) => {
-  c.h1().text('Hello World').hover({ color: '#007bff' });
-  c.p('Built with buildhtml.')
-    .media('(max-width: 600px)', { fontSize: '14px' });
-});
+const doc = new Document();
+doc.title('Hello').viewport().resetCss();
+doc.h1().text('Hello World');
+doc.p('No bundlers. No client JS. Just a page.');
 
 console.log(doc.render());
 ```
 
-Elements created with `doc.create()` or tag shortcuts are **automatically attached** to the document — no manual DOM insertion needed.
+Run it:
 
-### JSON-first workflow
+```bash
+node index.js > index.html
+```
+
+Open `index.html`. That's it.
+
+---
+
+## Before / After
+
+**Before** — managing state manually with string templates or raw client JS:
 
 ```javascript
-const { renderJSON } = require('@trebor/buildhtml');
-
-const html = renderJSON({
-  title: 'My Page',
-  viewport: true,
-  resetCss: true,
-  cssVars: { primary: '#007bff' },
-  body: {
-    tag: 'div', class: 'container', children: [
-      { tag: 'h1', text: 'Hello World' },
-      { tag: 'p', text: 'Built from plain JSON.' },
-    ]
-  }
-});
+// Template string + hand-rolled client JS
+res.send(`<!DOCTYPE html>
+<html><head><title>Dashboard</title></head><body>
+  <div id="count">Count: 0</div>
+  <button onclick="
+    var el = document.getElementById('count');
+    var n = parseInt(el.textContent.split(': ')[1]) + 1;
+    el.textContent = 'Count: ' + n;
+  ">+1</button>
+</body></html>`);
+// Add more state keys? More client JS.
+// CSP nonce? Manually thread it through every script tag.
+// Reactive list that re-renders on state change? Write a full client-side renderer.
 ```
+
+**After** — server API, compiled output:
+
+```javascript
+const { Document } = require('@trebor/buildhtml');
+
+const doc = new Document();
+doc.title('Dashboard').viewport().resetCss();
+doc.states({ count: 0 });
+
+doc.div().bind('count', (val) => `Count: ${val}`);
+doc.button('+1').onClick(function() { State.count++; });
+
+res.send(doc.render());
+// ↑ Emits a full HTML page with one compiled <script> that wires all reactivity.
+// Click the button — State.count increments — the div re-renders. Zero client JS written.
+```
+
+---
+
+## Features
+
+- **Reactive bindings** — `bind`, `bindShow`, `bindClass`, `bindAttr`, `bindStyle`, `bindProp`, `bindInput` all compile to `addEventListener` + a `State` Proxy
+- **Reactive lists** — `liveList(stateKey, itemFn)` server-renders the initial list and re-renders it client-side whenever state changes
+- **Components** — register named components or pass functions directly; supports inheritance and deep nesting
+- **Declarative builder** — `doc.build({...})` for JSON-driven pages, config files, and serialized templates
+- **Hash router** — `doc.hashRouter()` maps `location.hash` to a state key and highlights active nav links — no `history.pushState` wiring needed
+- **Express ready** — `renderStream()` flushes `<head>` immediately for faster TTFB; `createCachedRenderer()` caches rendered pages with LRU eviction
+
+---
+
+## How It Works
+
+1. You call server-side API methods — `doc.states()`, `.bind()`, `.onClick()` — describing what the page should do
+2. `doc.render()` walks the element tree, collecting events, bindings, and computed values
+3. It emits one `<script>` IIFE containing a `State` Proxy, `watchState()`, and all compiled `addEventListener` calls
+4. The browser runs the script synchronously at end of `<body>` — no async loading, no hydration step
+5. Mutate `State.key = value` from any event handler; every element bound to that key updates automatically
 
 ---
 
@@ -60,6 +111,8 @@ const html = renderJSON({
 - [Templates (.bhtml)](#templates-bhtml)
 - [State & Events](#state--events)
 - [Express Integration](#express-integration)
+- [Limitations](#limitations)
+- [Contributing](#contributing)
 - [Exports](#exports)
 
 ---
@@ -669,8 +722,8 @@ doc.div().text('Alert!').bindShow('count', (val) => val > 5);
 // Class binding
 doc.div().bindClass('theme', (val) => val + '-mode');
 
-// Attribute binding (e.g. disabled)
-doc.input('text').bindAttr('open', 'disabled', (val) => val ? 'disabled' : null);
+// Attribute binding (e.g. disable a button when loading)
+doc.input('text').bindAttr('open', 'disabled', (val) => val ? null : 'disabled');
 
 // Style binding
 doc.div().bindStyle('count', (val) => ({ width: val * 10 + 'px', background: val > 5 ? 'red' : 'green' }));
@@ -681,7 +734,7 @@ doc.input('text').bindProp('count', 'value', (val) => String(val));
 // Two-way input binding — State.name ↔ input.value (shorthand for bindProp + onInput)
 doc.input('text').bindInput('name');
 
-// Events — compiled to addEventListener, wired to State proxy
+// Events — State mutations trigger all bound elements automatically
 doc.button('+1').onClick(function() { State.count++; });
 doc.button('Toggle').onClick(function() { State.open = !State.open; });
 ```
@@ -1192,24 +1245,6 @@ doc.button('+1').onClick(function() { State.count++; });
 doc.button('Toggle').onClick(function() { State.open = !State.open; });
 ```
 
-### Limitations
-
-Event handlers are serialized — closures over server variables won't work:
-
-```javascript
-// ✅ Uses global State
-doc.states({ count: 0 });
-btn.onClick(function() { State.count++; });
-
-// ❌ Closure won't survive serialization
-let count = 0;
-btn.onClick(function() { count++; });
-```
-
-State values must be JSON-serializable (no functions, DOM nodes, etc).
-
-Inline `on*` attributes (`onclick`, `onmouseover`) are blocked — use `.onClick()` and other event methods instead, which compile to safe `addEventListener` calls.
-
 ---
 
 ## Express Integration
@@ -1268,6 +1303,55 @@ app.get('/', (req, res) => {
 | `getCacheStats()` | Cache, pool, and metrics stats |
 | `healthCheck()` | Health check data |
 | `resetPools()` | Reset object pools |
+
+---
+
+## Limitations
+
+**Event handlers are serialized** — the function body is extracted as a string and embedded in the compiled script. Closures over server variables won't survive:
+
+```javascript
+// ✅ Works — uses global State
+doc.states({ count: 0 });
+btn.onClick(function() { State.count++; });
+
+// ❌ Won't work — count is a server variable, not available at runtime
+let count = 0;
+btn.onClick(function() { count++; });
+```
+
+**State must be JSON-serializable** — no functions, `Date` objects, `Map`, `Set`, DOM nodes, or circular references in `doc.states({...})`.
+
+**`new Function()` and `eval` are blocked** in event handlers and bindings — `sanitizeFunctionSource` rejects them. This is intentional; it prevents a class of injection attacks.
+
+**Inline `on*` attributes are blocked** — `isValidAttrKey` rejects `onclick`, `onmouseover`, etc. Use `.onClick()` and other event methods, which compile to safe `addEventListener` calls.
+
+**No SSR hydration protocol** — buildhtml emits a compiled script that runs once at page load. It is not a framework like Next.js or SvelteKit; there is no diffing, virtual DOM, or component lifecycle. For full-page reactive apps, use `liveList` and `hashRouter`. For complex client-side UI, reach for a dedicated framework.
+
+**`clear()` does not reset head content** — `doc.clear()` resets the body, state, and per-render script state. It does not reset `<head>` (stylesheets, meta tags, etc.). This is intentional — head content is typically static. Use a new `Document` instance for a completely fresh page.
+
+---
+
+## Contributing
+
+```bash
+git clone https://github.com/0trebor0/buildhtml
+cd buildhtml
+npm install  # no dependencies, but useful for running tests
+```
+
+Run the test suite:
+
+```bash
+node test/test.js          # core + regression tests
+node test/test-bindings.js # bind methods + liveList tests
+node test/test-spa.js      # SPA compilation smoke test
+node test/test-template.js # .bhtml template tests
+node test/test-new-apis.js # API v1 tests
+node test/test-apis-v2.js  # API v2 tests
+```
+
+All 443 tests must pass before opening a pull request. There are no build steps, no transpilation, and no bundler.
 
 ---
 
@@ -1335,6 +1419,7 @@ buildhtml/
 │   └── index.d.ts      ← TypeScript declarations
 └── test/
     ├── test.js
+    ├── test-bindings.js
     ├── test-spa.js
     ├── test-template.js
     ├── test-new-apis.js
@@ -1386,8 +1471,6 @@ app.get('/', (req, res) => {
   setupTheme(doc);
 
   doc.state('count', 0);
-
-  doc.comment('Main content');
 
   doc.container((c) => {
     c.h1().text('Dashboard')
