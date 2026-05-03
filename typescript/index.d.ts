@@ -491,6 +491,10 @@ export interface DocumentOptions {
   cacheKey?: string;
   nonce?: string;
   lang?: string;
+  /** Set to false to skip the viewport meta tag added by page(). Default: true */
+  viewport?: boolean;
+  /** Set to false to skip the CSS reset added by page(). Default: true */
+  resetCss?: boolean;
 }
 
 export interface BindDescriptor {
