@@ -61,34 +61,15 @@ Run `npm publish --access public`. All bugs are fixed, all items complete.
 
 ---
 
-### Step 2 — Fill test coverage gaps
+### Step 2 — Fill test coverage gaps ✅ COMPLETE
 
-These areas have **zero test coverage** and should each get a dedicated file or section:
+All coverage gaps have been filled:
 
-**A. `renderStream()` — create `test/test-stream.js`**
-- Verify streaming output matches `render()` output exactly
-- Test error path: if `renderNode()` throws, `stream.destroy(err)` is called and no data is left pending
-- Test that head is included when head.render() throws
-
-**B. `fromJSON()` / `toJSON()` round-trip — create `test/test-json.js`**
-- Verify `fromJSON(doc.toJSON())` produces identical HTML for: text nodes, nested elements, events, state bindings, CSS, classes, attrs
-- Text node round-trip was recently fixed (was silently creating empty `<div>` instead of restoring text) — must be covered
-
-**C. `slot()` / `fillSlot()` / `portal()` — add to `test/test.js`**
-- These methods exist in `lib/element.js` with no tests at all
-- Verify slot content is rendered at the slot position, not at definition position
-- Verify portal moves element to the target container
-
-**D. `bindState()` cross-element binding — add to `test/test-bindings.js`**
-- The `__STATE_ID__` placeholder replacement path (renderer.js line 148) is untested
-- Verify that the compiled output contains the correct target element ID
-
-**E. `middleware.js` + `cache.js` — create `test/test-middleware.js`**
-- Mock `req`/`res` objects — no real HTTP server needed
-- Test: cache hit returns cached HTML, cache miss calls builderFn
-- Test: concurrent requests for same key coalesce into one builderFn call (in-flight cache)
-- Test: error in builderFn propagates to `next(err)`
-- Test: nonce option injects nonce into compiled script tags
+- **`test/test-stream.js`** (16 tests) — renderStream matches render(), head content, nonce, scoped CSS, liveList, clear() called after stream
+- **`test/test-json.js`** (38 tests) — full toJSON/fromJSON round-trip: text nodes, nested elements, classes, scoped CSS, events, state bindings, attrs, multi-root, structure, idempotent double round-trip. Also fixed `toJSON()` to serialize `_classes`; fixed `buildNode()` to handle `classes`, `cssText`, pre-serialized `events`, `stateBindings`, and `computed` from toJSON format; fixed `fromJSON()` to handle `globalState` key.
+- **`slot()`/`fillSlot()`/`portal()`** added to `test/test.js` — data-slot attribute, slot content injection, unknown slot no-op, default slot, portal _portalTarget, portal server-side render in place
+- **`bindState()` tests** added to `test/test-bindings.js` — `__STATE_ID__` replacement, auto-generated ids, correct event type, target id in compiled output
+- **`test/test-middleware.js`** (23 tests) — no-cache-key path, cache miss/hit, concurrent coalescing, error propagation to next(err), non-Document 500, nonce injection, clearCache(), getCacheStats()
 
 ---
 
@@ -135,15 +116,18 @@ These are not confirmed bugs but are worth verifying manually or with tests:
 ## Running tests
 
 ```bash
-node test/test.js          # 77 core + regression tests
-node test/test-bindings.js # 49 bind method + liveList tests
+node test/test.js          # 99 core + regression + slot/portal + security tests
+node test/test-bindings.js # 58 bind method + liveList + bindState tests
+node test/test-stream.js   # 16 renderStream tests
+node test/test-json.js     # 38 toJSON/fromJSON round-trip tests
+node test/test-middleware.js # 23 middleware/cache tests
 node test/test-spa.js      # SPA compilation smoke test
 node test/test-template.js # .bhtml template tests
 node test/test-new-apis.js # API v1 tests
 node test/test-apis-v2.js  # API v2 tests
 ```
 
-**Total: 443 tests, 0 failing**
+**Total: 579 tests, 0 failing**
 
 ---
 
@@ -169,3 +153,11 @@ node test/test-apis-v2.js  # API v2 tests
 | CSS hash collision not detected in dev mode | `_cssRegistry` Map on Document, checked in `element.css()` |
 | `configure()` accepted wrong types silently | Type validation added |
 | `renderStream()` no error handling | try/catch/finally added |
+| `toJSON()` didn't serialize `_classes` | Added `classes: el._classes` to serialized node |
+| `buildNode()` ignored `cssText`, `events`, `stateBindings`, `computed` from toJSON | All handled — enables full round-trip |
+| `fromJSON()` ignored `globalState` key from toJSON format | Added `def.globalState` handler alongside `def.state` |
+| `sanitizeUrl` returned original `value` with control chars instead of cleaned `s` | Return `s` (stripped) not `value` (original) |
+| `hashRouter` used `'State.' + stateKey` string concat — JS injection if stateKey has dots/semicolons | Changed to `State[JSON.stringify(stateKey)]` |
+| `nodeDefToHtml` didn't call `isValidAttrKey` — allowed `onclick` in liveList SSR output | Added `isValidAttrKey` guard in attrs loop |
+| `nodeDefToHtml` and `_mkEl` missing `aria` key | Added aria handling to both SSR and client |
+| `live.js` called `itemFn.toString()` twice — once in sanitizeFunctionSource, once in script emit | Stored sanitized source string; use it in script emit |
