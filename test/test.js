@@ -390,6 +390,141 @@ test('nonce not applied to external script tags', () => {
   assert(html.includes('src="/app.js"'), 'src attribute present');
 });
 
+/* ---- slot() / fillSlot() ---- */
+test('slot() marks element with data-slot attribute', () => {
+  const doc = new Document();
+  const container = doc.div();
+  container.div().slot('header');
+  const html = doc.render();
+  assert(html.includes('data-slot="header"'), 'data-slot attribute set');
+  assert(html.includes('id='), 'slot element gets an id');
+});
+
+test('fillSlot() injects content into named slot', () => {
+  const doc = new Document();
+  function Modal(el) {
+    el.addClass('modal');
+    el.div().slot('header');
+    el.div().slot('body');
+  }
+  const modal = doc.use(Modal);
+  modal.fillSlot('header', (slot) => slot.h2().text('My Title'));
+  modal.fillSlot('body', (slot) => slot.p('My Body'));
+  const html = doc.render();
+  assert(html.includes('class="modal"'), 'modal class rendered');
+  assert(html.includes('<h2>My Title</h2>'), 'slot header content rendered');
+  assert(html.includes('<p>My Body</p>'), 'slot body content rendered');
+});
+
+test('fillSlot() with unknown slot name does nothing', () => {
+  const doc = new Document();
+  const el = doc.div();
+  el.div().slot('known');
+  el.fillSlot('unknown', (slot) => slot.p('should not appear'));
+  const html = doc.render();
+  assert(!html.includes('should not appear'), 'unknown slot produces no output');
+});
+
+test('fillSlot() default slot name', () => {
+  const doc = new Document();
+  const wrapper = doc.div();
+  wrapper.div().slot(); // default slot
+  wrapper.fillSlot('default', (slot) => slot.span().text('default content'));
+  const html = doc.render();
+  assert(html.includes('<span>default content</span>'), 'default slot content rendered');
+});
+
+/* ---- portal() ---- */
+test('portal() sets _portalTarget property', () => {
+  const doc = new Document();
+  const el = doc.div().text('portaled');
+  el.portal('target-container');
+  assert(el._portalTarget === 'target-container', '_portalTarget set correctly');
+});
+
+test('portal() element still renders at its original position server-side', () => {
+  const doc = new Document();
+  doc.div().text('portaled content').portal('somewhere-else');
+  const html = doc.render();
+  assert(html.includes('portaled content'), 'portaled element renders in-place server-side');
+});
+
+/* ---- Bug regressions: security fixes ---- */
+
+test('sanitizeUrl strips control chars from safe URLs (no phantom control chars in output)', () => {
+  const doc = new Document();
+  // URL with a null byte — used to bypass naive URL checks
+  doc.a('/page\x00extra', 'link');
+  const html = doc.render();
+  assert(!html.includes('\x00'), 'null byte stripped from href');
+  assert(html.includes('href="/pageextra"'), 'cleaned URL in output');
+});
+
+test('sanitizeUrl still blocks javascript: with control char prefix', () => {
+  const doc = new Document();
+  doc.a('java\x00script:alert()', 'xss');
+  const html = doc.render();
+  assert(!html.includes('javascript:'), 'javascript: blocked');
+  assert(html.includes('href="#"'), 'replaced with #');
+});
+
+test('hashRouter uses JSON.stringify for stateKey — no JS injection', () => {
+  const { compileHashRouter } = require('../lib/live');
+  const doc = new Document();
+  doc.states({ 'my.key': 'all' });
+  compileHashRouter(doc, { stateKey: 'my.key', default: 'all' });
+  const html = doc.render();
+  // stateKey should be JSON-encoded, not bare — State["my.key"]=h not State.my.key=h
+  assert(html.includes('State["my.key"]='), 'stateKey JSON-stringified in hashRouter');
+  assert(!html.includes('State.my.key='), 'bare dot-notation stateKey not present');
+});
+
+test('nodeDefToHtml filters on* attributes from liveList NodeDef attrs', () => {
+  const { compileLiveList, nodeDefToHtml } = require('../lib/live');
+  // Test nodeDefToHtml directly — the function that renders SSR HTML
+  const ssrHtml = nodeDefToHtml({
+    tag: 'div',
+    attrs: { onclick: 'alert(1)', 'data-safe': 'ok' },
+    text: 'hello',
+  });
+  assert(!ssrHtml.includes('onclick'), 'onclick blocked in nodeDefToHtml SSR output');
+  assert(ssrHtml.includes('data-safe="ok"'), 'safe attrs still pass through');
+});
+
+test('nodeDefToHtml renders aria attributes from liveList NodeDef', () => {
+  const { compileLiveList } = require('../lib/live');
+  const doc = new Document();
+  doc.states({ items: [{ label: 'btn' }] });
+  compileLiveList(doc, doc, 'items', (item) => ({
+    tag: 'button',
+    text: item.label,
+    aria: { label: 'Close dialog', expanded: 'false' },
+  }));
+  const html = doc.render();
+  assert(html.includes('aria-label="Close dialog"'), 'aria-label rendered in SSR');
+  assert(html.includes('aria-expanded="false"'), 'aria-expanded rendered in SSR');
+});
+
+test('_mkEl source includes aria attribute support', () => {
+  const { MK_EL_SRC } = require('../lib/live');
+  assert(MK_EL_SRC.includes('d.aria'), 'aria key handled in _mkEl source');
+  assert(MK_EL_SRC.includes('"aria-"'), 'aria- prefix in _mkEl');
+});
+
+test('liveList embeds itemFn source via sanitizeFunctionSource (single toString call)', () => {
+  const { compileLiveList } = require('../lib/live');
+  const doc = new Document();
+  doc.states({ items: ['hello'] });
+  let toStringCallCount = 0;
+  const fn = (item) => ({ tag: 'span', text: item });
+  const origToString = fn.toString.bind(fn);
+  fn.toString = () => { toStringCallCount++; return origToString(); };
+  compileLiveList(doc, doc, 'items', fn);
+  doc.render();
+  // sanitizeFunctionSource calls toString once; we must not call it again
+  assert(toStringCallCount === 1, 'itemFn.toString() called exactly once (inside sanitizeFunctionSource)');
+});
+
 /* ---- Summary ---- */
 console.log(`\n${'='.repeat(40)}`);
 console.log(`Results: ${passed} passed, ${failed} failed`);

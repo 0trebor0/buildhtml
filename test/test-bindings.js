@@ -285,6 +285,59 @@ test('document reuse: liveList emits _mkEl definition exactly once per render', 
   assert(defCount2 === 1, 'second render defines _mkEl exactly once (not accumulated)');
 });
 
+/* ---- bindState() cross-element binding ---- */
+test('bindState() compiles targetId into __STATE_ID__ placeholder', () => {
+  const doc = new Document();
+  const source = doc.input('text');
+  const target = doc.div().id('my-target');
+  source.bindState(target, 'input', function() {
+    var el = document.getElementById('__STATE_ID__');
+    if (el) el.textContent = this.value;
+  });
+  const html = doc.render();
+  // __STATE_ID__ should be replaced with the target's actual id
+  assert(!html.includes('__STATE_ID__'), '__STATE_ID__ placeholder replaced');
+  assert(html.includes('my-target'), 'target id compiled into event handler');
+});
+
+test('bindState() gives source element an id', () => {
+  const doc = new Document();
+  const source = doc.input('text');
+  const target = doc.div();
+  source.bindState(target, 'change', function() { return this.value; });
+  assert(!!source.attrs.id, 'source element has id after bindState()');
+  assert(!!target.attrs.id, 'target element has id after bindState()');
+});
+
+test('bindState() compiles addEventListener for the right event', () => {
+  const doc = new Document();
+  const source = doc.input('text');
+  const target = doc.div().id('display');
+  source.bindState(target, 'keyup', function() {
+    var el = document.getElementById('__STATE_ID__');
+    if (el) el.textContent = this.value;
+  });
+  const html = doc.render();
+  assert(html.includes('"keyup"'), 'keyup event compiled');
+  assert(html.includes('display'), 'target id present in compiled output');
+});
+
+test('bindState() with auto-generated target id works', () => {
+  const doc = new Document();
+  const source = doc.span().text('trigger');
+  const target = doc.div(); // no explicit id — auto-generated
+  source.bindState(target, 'click', function() {
+    var el = document.getElementById('__STATE_ID__');
+    if (el) el.style.display = 'none';
+  });
+  // Capture id before render() recycles the elements
+  const targetId = target.attrs.id;
+  const html = doc.render();
+  assert(typeof targetId === 'string' && targetId.length > 0, 'target has auto-generated id');
+  assert(html.includes(targetId), 'auto-generated target id in compiled output');
+  assert(!html.includes('__STATE_ID__'), '__STATE_ID__ replaced with auto id');
+});
+
 /* ---- summary ---- */
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);
