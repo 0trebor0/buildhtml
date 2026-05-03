@@ -212,7 +212,7 @@ buildhtml compiles reactive SPAs entirely server-side — no raw client JS neede
 | `liveList(stateKey, itemFn, options?)` | Reactive list — server-renders initial items, client re-renders on state change |
 | `hashRouter(options?)` | Hash-based router — syncs `location.hash` → `State[stateKey]`, highlights active nav |
 
-`liveList` — `itemFn(item, index)` must return a **NodeDef plain object** (tag, css, children, on, attrs, text). The server renders the initial list; the client re-renders whenever `State[stateKey]` changes.
+`liveList` — `itemFn(item, index)` must return a **NodeDef plain object** (tag, css, children, on, attrs, text). The server renders the initial list; the client re-renders whenever `State[stateKey]` changes. Children support an `if` key for conditional rendering — both server and client skip the node when `if` is falsy.
 
 ```javascript
 doc.states({ tasks: [{ id: 1, title: 'Buy milk', done: false }], view: 'all' });
@@ -229,6 +229,7 @@ const list = doc.liveList('tasks', function(task) {
         }}
       },
       { tag: 'span', text: task.title },
+      { tag: 'em', text: 'done', if: task.done },  // skipped when if is falsy
     ]
   };
 }, {
@@ -646,6 +647,7 @@ modal.fillSlot('footer', (slot) => slot.button('Close'));
 | `bindAttr(stateKey, attr, fn?)` | Reactive attribute — `null`/`false` removes, anything else sets |
 | `bindStyle(stateKey, fn)` | Reactive inline style — `fn(val)` returns `{ prop: value }` object |
 | `bindProp(stateKey, prop, fn?)` | Reactive DOM property — sets `el[prop]` (e.g. `value`, `checked`) |
+| `bindInput(stateKey)` | Two-way input binding — syncs `State[key]` → `input.value` and `input` event → `State[key]` |
 | `computed(fn)` | Compute content from state |
 | `on(event, fn)` | Attach event handler |
 | `bindState(target, event, fn)` | Cross-element state binding |
@@ -675,6 +677,9 @@ doc.div().bindStyle('count', (val) => ({ width: val * 10 + 'px', background: val
 
 // DOM property binding (input value)
 doc.input('text').bindProp('count', 'value', (val) => String(val));
+
+// Two-way input binding — State.name ↔ input.value (shorthand for bindProp + onInput)
+doc.input('text').bindInput('name');
 
 // Events — compiled to addEventListener, wired to State proxy
 doc.button('+1').onClick(function() { State.count++; });
@@ -927,8 +932,35 @@ doc.build({
 | `each` | array | Iteration source |
 | `itemTemplate` | function | `(item, index) => nodeDef` |
 | `state` | any | Element state |
-| `bind` | object | `{ key, fn }` state binding |
+| `bind` | object/array | State binding — see below |
+| `liveList` | object | Reactive list — `{ stateKey, itemFn, filter?, filterKeys? }` |
 | `setup` | function | `(el) => { ... }` custom setup |
+
+**`bind` descriptor** — supports a `type` field for all reactive bind methods:
+
+```javascript
+// Text content (default)
+{ bind: { key: 'count', fn: val => `Count: ${val}` } }
+
+// Show/hide
+{ bind: { key: 'open', type: 'show' } }
+{ bind: { key: 'count', type: 'show', fn: val => val > 0 } }
+
+// Class
+{ bind: { key: 'theme', type: 'class', fn: val => val + '-mode' } }
+
+// Attribute
+{ bind: { key: 'loading', type: 'attr', attr: 'disabled', fn: val => val ? 'disabled' : null } }
+
+// Style
+{ bind: { key: 'progress', type: 'style', fn: val => ({ width: val + '%' }) } }
+
+// DOM property
+{ bind: { key: 'val', type: 'prop', prop: 'value' } }
+
+// Multiple bindings on one element
+{ bind: [{ key: 'open', type: 'show' }, { key: 'theme', type: 'class', fn: val => val + '-mode' }] }
+```
 
 ---
 
@@ -1151,6 +1183,9 @@ doc.div().bindStyle('count', (val) => ({ width: val * 10 + 'px' }));
 
 // DOM property (input value, checkbox checked)
 doc.input('text').bindProp('count', 'value', (val) => String(val));
+
+// Two-way input binding — shorthand for bindProp('value') + onInput handler
+doc.input('text').bindInput('name');  // State.name ↔ input.value
 
 // Events — State mutations trigger all bound elements automatically
 doc.button('+1').onClick(function() { State.count++; });
