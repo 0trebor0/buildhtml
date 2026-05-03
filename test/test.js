@@ -313,6 +313,83 @@ test('build() with array of roots', () => {
   assert(html.includes('<footer>Bottom</footer>'), 'footer');
 });
 
+/* ---- Bug regressions ---- */
+
+test('clone() preserves events', () => {
+  const doc = new Document();
+  doc.states({ count: 0 });
+  const btn = doc.button('+1').onClick(function() { State.count++; });
+  const clone = btn.clone();
+  const html = doc.render();
+  assert(clone.events.length === 1, 'cloned element has 1 event');
+  assert(html.includes('State.count++'), 'event compiled into output');
+});
+
+test('clone() preserves _stateBindings', () => {
+  const doc = new Document();
+  doc.states({ label: 'hello' });
+  const span = doc.span().bind('label', v => v.toUpperCase());
+  const clone = span.clone();
+  assert(clone._stateBindings.length === 1, 'cloned element has 1 binding');
+  assert(clone._stateBindings[0].stateKey === 'label', 'binding stateKey preserved');
+});
+
+test('clone() preserves _computed', () => {
+  const doc = new Document();
+  const el = doc.div().id('x').computed(function(state) { return state.v; });
+  const clone = el.clone();
+  assert(typeof clone._computed === 'string', 'cloned _computed is a string');
+  assert(clone._computed.includes('state.v'), 'computed source preserved');
+});
+
+test('setAttrs() blocks prototype pollution', () => {
+  const doc = new Document();
+  const el = doc.div();
+  const before = ({}).polluted;
+  el.setAttrs({ '__proto__': { polluted: true }, 'class': 'safe' });
+  assert(({}).polluted === before, '__proto__ key not assigned to prototype');
+  assert(el.attrs['class'] === 'safe', 'safe keys still applied');
+});
+
+test('clear() resets _cssVarsRuleIdx', () => {
+  const doc = new Document();
+  doc.cssVar('--color', 'red');
+  const idxBefore = doc._cssVarsRuleIdx;
+  doc.clear();
+  assert(doc._cssVarsRuleIdx === undefined, '_cssVarsRuleIdx cleared after clear()');
+});
+
+test('toJSON/fromJSON round-trip preserves text content', () => {
+  const doc = new Document();
+  doc.create('div').text('Hello World');
+  doc.create('p').text('Some & <escaped> text');
+  const doc2 = new Document().fromJSON(doc.toJSON());
+  const html = doc2.render();
+  assert(html.includes('<div>Hello World</div>'), 'text content round-tripped');
+  assert(html.includes('Some &amp; &lt;escaped&gt; text'), 'special chars preserved and escaped');
+});
+
+test('toJSON/fromJSON round-trip nested text', () => {
+  const doc = new Document();
+  const p = doc.create('p');
+  p.text('Before ');
+  p.child('strong').text('bold');
+  p.text(' after');
+  const doc2 = new Document().fromJSON(doc.toJSON());
+  const html = doc2.render();
+  assert(html.includes('<strong>bold</strong>'), 'nested element text preserved');
+  assert(html.includes('Before '), 'text before child preserved');
+  assert(html.includes(' after'), 'text after child preserved');
+});
+
+test('nonce not applied to external script tags', () => {
+  const doc = new Document({ nonce: 'abc123' });
+  doc.addScript('/app.js');
+  const html = doc.render();
+  assert(!html.includes('<script nonce='), 'no nonce on external script');
+  assert(html.includes('src="/app.js"'), 'src attribute present');
+});
+
 /* ---- Summary ---- */
 console.log(`\n${'='.repeat(40)}`);
 console.log(`Results: ${passed} passed, ${failed} failed`);

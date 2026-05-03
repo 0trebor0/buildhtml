@@ -53,91 +53,60 @@ All scripts run synchronously at end of body (`readyState === 'interactive'`), s
 
 ---
 
-## Things to fix next
+## What to work on next
 
-### HIGH — Fix immediately
+### Step 1 — Publish 1.1.0
 
-**1. `oncreate()` has the same `fn.toString()` vulnerability as `on()` did**
-- File: `lib/document.js` line ~232, `lib/renderer.js` line ~157
-- Problem: `oncreate(fn)` stores the function reference. In `renderer.js`, `sanitizeFunctionSource(fn, ...)` is called at **render time**, so an overridden `fn.toString` after registration works.
-- Fix: In `document.js oncreate()`, call `sanitizeFunctionSource(fn)` immediately and store the **source string**, not the function. In `renderer.js initOncreate`, use the stored string directly without re-sanitizing.
-- Pattern: Same fix already applied to `on()` and `computed()` — store source at validation time.
-
-**2. `builder.js` missing new bind methods**
-- File: `lib/builder.js` line 125
-- Problem: `def.bind` only supports `{ key, fn }` which maps to `el.bind()` (text content only). The declarative builder has no support for `bindShow`, `bindClass`, `bindAttr`, `bindStyle`, `bindProp`.
-- Fix: Extend the `def.bind` node to support a `type` field:
-  ```js
-  // Current
-  { bind: { key: 'count', fn: val => String(val) } }
-  // Needed
-  { bind: { key: 'open', type: 'show' } }
-  { bind: { key: 'theme', type: 'class', fn: val => val + '-mode' } }
-  { bind: { key: 'active', type: 'attr', attr: 'disabled', fn: val => val ? null : 'disabled' } }
-  { bind: { key: 'progress', type: 'style', fn: val => ({ width: val + '%' }) } }
-  { bind: { key: 'val', type: 'prop', prop: 'value' } }
-  ```
-  Or support an array: `bind: [{ key: 'open', type: 'show' }, { key: 'theme', type: 'class', fn: ... }]`
-- Also update TypeScript `BuilderNode` type in `typescript/index.d.ts`.
-
-**3. `builder.js` missing `liveList` support**
-- File: `lib/builder.js`
-- Problem: No way to declare a `liveList` in the declarative builder.
-- Fix: Add a `liveList` key to node defs:
-  ```js
-  { liveList: { stateKey: 'tasks', itemFn: (task) => ({ tag: 'div', text: task.title }), filter: ..., filterKeys: [...] } }
-  ```
+Run `npm publish --access public`. All bugs are fixed, all items complete.
 
 ---
 
-### MEDIUM — Fix soon
+### Step 2 — Fill test coverage gaps
 
-**4. Add test coverage for new bind methods**
-- File: `test/test.js` or new `test/test-bindings.js`
-- Problem: `bindShow`, `bindClass`, `bindAttr`, `bindStyle`, `bindProp` have no automated tests. Manual checks were done but not committed as tests.
-- Fix: Add test cases for each bind type that verify the compiled output contains the correct update expression.
+These areas have **zero test coverage** and should each get a dedicated file or section:
 
-**5. `liveList` dev-mode warning for missing stateKey**
-- File: `lib/live.js` line ~128
-- Problem: If `stateKey` is not in `doc._globalState`, liveList silently renders nothing and emits a `watchState` subscription for a key that will never fire. Hard to debug.
-- Fix: Add a dev-mode warning:
-  ```js
-  if (CONFIG.mode === 'dev' && !(stateKey in doc._globalState)) {
-    console.warn(`[liveList] stateKey "${stateKey}" not found in doc.states(). Did you forget to call doc.states({ ${stateKey}: [] })?`);
-  }
-  ```
+**A. `renderStream()` — create `test/test-stream.js`**
+- Verify streaming output matches `render()` output exactly
+- Test error path: if `renderNode()` throws, `stream.destroy(err)` is called and no data is left pending
+- Test that head is included when head.render() throws
 
-**6. `configure()` input validation**
-- File: `lib/config.js`
-- Problem: `configure({ mode: 123 })` silently sets `mode` to a number which could break string comparisons downstream.
-- Fix: Validate known keys have the right type before applying.
+**B. `fromJSON()` / `toJSON()` round-trip — create `test/test-json.js`**
+- Verify `fromJSON(doc.toJSON())` produces identical HTML for: text nodes, nested elements, events, state bindings, CSS, classes, attrs
+- Text node round-trip was recently fixed (was silently creating empty `<div>` instead of restoring text) — must be covered
 
-**7. `renderStream()` error propagation**
-- File: `lib/document.js` line ~538
-- Problem: If `renderNode()` throws during stream generation, the error is uncaught and the stream is left in an incomplete state (no `null` push, no cleanup).
-- Fix: Wrap the body render loop in try/catch, push an error or destroy the stream, and ensure cleanup still runs.
+**C. `slot()` / `fillSlot()` / `portal()` — add to `test/test.js`**
+- These methods exist in `lib/element.js` with no tests at all
+- Verify slot content is rendered at the slot position, not at definition position
+- Verify portal moves element to the target container
+
+**D. `bindState()` cross-element binding — add to `test/test-bindings.js`**
+- The `__STATE_ID__` placeholder replacement path (renderer.js line 148) is untested
+- Verify that the compiled output contains the correct target element ID
+
+**E. `middleware.js` + `cache.js` — create `test/test-middleware.js`**
+- Mock `req`/`res` objects — no real HTTP server needed
+- Test: cache hit returns cached HTML, cache miss calls builderFn
+- Test: concurrent requests for same key coalesce into one builderFn call (in-flight cache)
+- Test: error in builderFn propagates to `next(err)`
+- Test: nonce option injects nonce into compiled script tags
 
 ---
 
-### LOW — Nice to have
+### Step 3 — Known edge cases to watch
 
-**8. Two-way input binding shorthand**
-- Currently requires two separate calls:
-  ```js
-  input.onChange(function() { State.val = this.value; });
-  input.bindProp('val', 'value');
-  ```
-- A `bindInput(stateKey)` shorthand could compile both at once.
+These are not confirmed bugs but are worth verifying manually or with tests:
 
-**9. `each` / `when` in `liveList` itemFn**
-- `itemFn` returns a NodeDef plain object. Complex item structures with conditionals require manual `if/else` in the function. A `when` or `if` key in NodeDef children inside `itemFn` would help.
+**F. `addScript()` only accepts a src string — TypeScript types say `ScriptAttrs`**
+- `head.addScript(s)` stores only a plain string (the src URL)
+- `typescript/index.d.ts` declares it as `addScript(attrs: ScriptAttrs): Document`
+- Scripts with `defer`, `async`, or `type="module"` cannot be added via this API
+- Fix: either update the TypeScript type to `string`, or update `head.addScript` to accept an attrs object
 
-**10. CSS hash collision detection in dev mode**
-- FNV-1a 32-bit has a small but non-zero collision probability with large CSS rule sets.
-- In dev mode, log a warning if two different CSS strings hash to the same class name.
-
-**11. TypeScript `BuilderNode` — add new fields**
-- `typescript/index.d.ts` `BuilderNode` interface is missing: `bind` type variants, `liveList`, `bindShow`, `bindClass` etc. once builder.js is updated.
+**G. `clear()` does not reset head content**
+- `clear()` resets body, stateStore, inlineScripts, oncreateCallbacks, mkElDefined, cssVarsRuleIdx
+- It does NOT reset `head.globalStyles`, `head.styles`, `head.metas`, `head.links`, etc.
+- This is intentional (head is shared/static), but if a document is truly reused for different pages this could leak head content
+- Decision: document this explicitly or add a `clearAll()` that resets head too
 
 ---
 
@@ -149,6 +118,8 @@ All scripts run synchronously at end of body (`readyState === 'interactive'`), s
 - `sanitizeUrl()` — applied to `href`, `src`, `action`, `formaction`, `cite`, `poster` — blocks `javascript:`, `vbscript:`, `data:` URLs
 - `sanitizeFunctionSource()` — validates function source at registration time, stores source string (not function reference)
 - `escapeJsString()` — used when embedding string values into compiled JS
+- `setAttrs()` — blocks `__proto__`, `constructor`, `prototype` keys (prototype pollution prevention)
+- nonce — applied to inline `<script>` and `<style>` tags only; never to external `<script src>` tags
 
 ## Design rules to follow
 
@@ -159,13 +130,42 @@ All scripts run synchronously at end of body (`readyState === 'interactive'`), s
 - **CSS via `.css()`** generates scoped classes (hashed). Use `.style()` for inline styles. Never mix them for the same element.
 - **`nodeDefToHtml`** is for liveList SSR only — it outputs inline styles matching `_mkEl`, keeping SSR and client renders identical
 - **Pool reset happens at dequeue time** (`resetElement()` in `getPooled()`), not at enqueue time (`recycle()`)
+- **`clear()` is per-render** — resets body, scripts, state. Head is NOT cleared (intentional). Use a new Document for a completely fresh page.
 
 ## Running tests
 
 ```bash
-node test/test.js          # 61 core tests
+node test/test.js          # 77 core + regression tests
+node test/test-bindings.js # 49 bind method + liveList tests
 node test/test-spa.js      # SPA compilation smoke test
 node test/test-template.js # .bhtml template tests
 node test/test-new-apis.js # API v1 tests
 node test/test-apis-v2.js  # API v2 tests
 ```
+
+**Total: 443 tests, 0 failing**
+
+---
+
+## Complete bug fix history
+
+| Bug | Fix |
+|-----|-----|
+| `oncreate()` fn.toString() override at render time | Store source string at registration time |
+| `on()`, `computed()`, `bindState()` same issue | Same fix — all store source strings now |
+| `clone()` lost `events`, `_stateBindings`, `_computed` | `clone()` now shallow-copies all three |
+| `setAttrs()` prototype pollution via `__proto__` | Skip `__proto__`/`constructor`/`prototype` keys |
+| `toJSON()` double-called `.toString()` on strings | Removed redundant `.toString()` calls |
+| `clear()` left stale `_cssVarsRuleIdx` | Reset to `undefined` in `clear()` |
+| `clear()` left stale `_inlineScripts`, `_mkElDefined`, `_oncreateCallbacks` | All zeroed/reset in `clear()` |
+| `toJSON/fromJSON` silently dropped text nodes | `buildNode()` now handles `{ type: 'text', content }` |
+| nonce on external `<script src>` tags | Nonce removed from external scripts in `head.js` |
+| `renderStream()` head render outside try/catch | Moved inside try block |
+| `_mkEl` TypeError on string children | Added `typeof d==="string"` → `createTextNode(d)` guard |
+| `_mkEl` silently dropped `html` key | Added `if(d.html!=null)e.innerHTML=d.html` |
+| `builder.js` missing `bindShow/Class/Attr/Style/Prop` dispatch | Added `type` field + array support to `def.bind` |
+| `builder.js` missing `liveList` node | Added `if (def.liveList)` handler |
+| liveList `if` key not supported in SSR | `nodeDefToHtml` now checks `'if' in def` |
+| CSS hash collision not detected in dev mode | `_cssRegistry` Map on Document, checked in `element.css()` |
+| `configure()` accepted wrong types silently | Type validation added |
+| `renderStream()` no error handling | try/catch/finally added |

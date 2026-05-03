@@ -362,6 +362,7 @@ export declare class Element implements SharedShortcuts<Element> {
   bindAttr(stateKey: string, attrName: string, fn?: (val: any) => string | null | false): Element;
   bindStyle(stateKey: string, fn: (val: any) => Record<string, string>): Element;
   bindProp(stateKey: string, prop: string, fn?: (val: any) => any): Element;
+  bindInput(stateKey: string): Element;
   state(value: any): Element;
   computed(fn: () => any): Element;
   on(event: string, fn: (e: Event) => void): Element;
@@ -492,14 +493,48 @@ export interface DocumentOptions {
   lang?: string;
 }
 
+export interface BindDescriptor {
+  key: string;
+  type?: 'show' | 'class' | 'attr' | 'style' | 'prop';
+  fn?: (val: any) => any;
+  /** Attribute name — required when type is 'attr' */
+  attr?: string;
+  /** Alias for attr */
+  attrName?: string;
+  /** Property name — required when type is 'prop' */
+  prop?: string;
+}
+
+export interface LiveListNodeDef {
+  stateKey: string;
+  itemFn: (item: any, index: number) => NodeDef;
+  filter?: (item: any, state: Record<string, any>) => boolean;
+  filterKeys?: string[];
+}
+
 export interface NodeDef {
   tag?: string;
-  text?: string;
+  text?: string | number;
+  html?: string;
   id?: string;
-  class?: string;
+  class?: string | string[];
+  style?: CSSRules;
   attrs?: Record<string, any>;
+  data?: Record<string, string | number>;
+  aria?: Record<string, string>;
   css?: CSSRules;
+  on?: Record<string, (e: Event) => void>;
+  bind?: BindDescriptor | BindDescriptor[];
+  liveList?: LiveListNodeDef;
   children?: NodeDef[];
+  component?: string;
+  use?: ComponentFn;
+  props?: Record<string, any>;
+  if?: boolean | any;
+  each?: any[];
+  itemTemplate?: (item: any, index: number) => NodeDef;
+  state?: any;
+  setup?: (el: Element) => void;
   [key: string]: any;
 }
 
