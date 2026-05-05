@@ -1,16 +1,33 @@
 # @trebor/buildhtml
 
-**Write Node.js. Get a complete, reactive HTML page — zero client JavaScript, zero dependencies.**
+**Server-side HTML compiler for Node.js. Describe your page with a JS API — reactive state, events, and DOM bindings compile automatically into a single `<script>`. Zero dependencies, zero client framework, zero template files.**
+
+---
+
+## Who it's for
+
+If you build pages where the structure comes from data — dashboards, reports, admin panels, data tables, config-driven UIs — you've probably been here:
+
+```javascript
+const rows = data.map(r => `<tr><td>${r.name}</td></tr>`).join(''); // no escaping
+res.send(`<html><body><table>${rows}</table></body></html>`);
+```
+
+It works until it doesn't. Escaping is manual. Adding interactivity means context-switching to hand-rolled client JS. Templating languages help with the HTML, but you're still managing two files and two languages.
+
+This library lets you stay in Node.js. You describe the page with a JS API; it emits safe, complete HTML with reactivity compiled in automatically.
+
+**Not the right fit** for a complex SPA with lots of client-side routing or component state — use React, Svelte, or SvelteKit for that.
 
 ---
 
 ## Why
 
-- **No client JS to write** — events, reactive state, and DOM bindings compile automatically from server-side API calls
+- **No template files** — stay in Node.js; no `.ejs`, `.pug`, or `.hbs` context-switching
+- **Reactivity is compiled, not written** — `.onClick()`, `.bind()`, `.liveList()` describe behavior; the library emits the `addEventListener` calls. You never write client JS manually
 - **Zero dependencies** — nothing to audit, nothing to break, nothing to update
-- **Components without a framework** — define reusable UI as plain functions; register them globally or use inline
-- **Security by default** — XSS escaping, URL sanitization, CSP nonce support, and `setAttribute` instead of inline `onclick`
-- **Progressive** — start with static HTML, add reactive state only when you need it
+- **Security by default** — XSS escaping, URL sanitization, CSP nonce support, `addEventListener` instead of inline `onclick`
+- **Progressive** — start with static HTML, add `.states()` and `.bind()` only when you need them
 
 ---
 
@@ -43,39 +60,54 @@ Open `index.html`. That's it.
 
 ## Before / After
 
-**Before** — managing state manually with string templates or raw client JS:
+**Before** — generating a filterable data table in vanilla Node.js:
 
 ```javascript
-// Template string + hand-rolled client JS
-res.send(`<!DOCTYPE html>
-<html><head><title>Dashboard</title></head><body>
-  <div id="count">Count: 0</div>
-  <button onclick="
-    var el = document.getElementById('count');
-    var n = parseInt(el.textContent.split(': ')[1]) + 1;
-    el.textContent = 'Count: ' + n;
-  ">+1</button>
+// String templates + hand-rolled client JS
+const rows = users
+  .map(u => `<tr><td>${u.name}</td><td>${u.role}</td></tr>`) // no XSS escaping
+  .join('');
+
+res.send(`<!DOCTYPE html><html><head><title>Users</title></head><body>
+  <input id="q" oninput="filter(this.value)">  <!-- CSP will block this -->
+  <table id="t">${rows}</table>
+  <script>
+    var data = ${JSON.stringify(users)};  // manual serialization
+    function filter(q) {
+      document.getElementById('t').innerHTML = data
+        .filter(u => u.name.toLowerCase().includes(q.toLowerCase()))
+        .map(u => '<tr><td>' + u.name + '</td><td>' + u.role + '</td></tr>')
+        .join('');
+    }
+  </script>
 </body></html>`);
-// Add more state keys? More client JS.
-// CSP nonce? Manually thread it through every script tag.
-// Reactive list that re-renders on state change? Write a full client-side renderer.
 ```
 
 **After** — server API, compiled output:
 
 ```javascript
-const { Document } = require('@trebor/buildhtml');
+const { page } = require('@trebor/buildhtml');
 
-const doc = new Document();
-doc.title('Dashboard').viewport().resetCss();
-doc.states({ count: 0 });
+const doc = page('Users');
+doc.states({ users, query: '' });
 
-doc.div().bind('count', (val) => `Count: ${val}`);
-doc.button('+1').onClick(function() { State.count++; });
+doc.input('text', { placeholder: 'Filter...' }).bindInput('query');
+
+doc.liveList('users', function(u) {
+  return {
+    tag: 'tr',
+    children: [{ tag: 'td', text: u.name }, { tag: 'td', text: u.role }],
+  };
+}, {
+  filter: function(u, state) {
+    return u.name.toLowerCase().includes(state.query.toLowerCase());
+  },
+  filterKeys: ['query'],
+});
 
 res.send(doc.render());
-// ↑ Emits a full HTML page with one compiled <script> that wires all reactivity.
-// Click the button — State.count increments — the div re-renders. Zero client JS written.
+// ↑ Full HTML page + one compiled <script>. XSS-safe. CSP-ready.
+// Type in the input — the list filters. Zero client JS written.
 ```
 
 ---
@@ -1351,7 +1383,7 @@ node test/test-new-apis.js # API v1 tests
 node test/test-apis-v2.js  # API v2 tests
 ```
 
-All 443 tests must pass before opening a pull request. There are no build steps, no transpilation, and no bundler.
+All 579 tests must pass before opening a pull request. There are no build steps, no transpilation, and no bundler.
 
 ---
 
