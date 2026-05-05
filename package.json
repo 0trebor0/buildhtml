@@ -1,7 +1,7 @@
 {
   "name": "@trebor/buildhtml",
   "version": "1.1.1",
-  "description": "Zero-dependency, ultra-fast HTML builder for server-side rendering (SSR).",
+  "description": "Server-side HTML compiler for Node.js. Build pages with a JS API — reactive state, events, and DOM bindings compile automatically. Zero dependencies, zero client framework.",
   "main": "index.js",
   "types": "typescript/index.d.ts",
   "files": [
@@ -20,11 +20,16 @@
     "url": "https://github.com/0trebor0/buildhtml.git"
   },
   "keywords": [
+    "html",
+    "html-builder",
     "ssr",
     "server-side-rendering",
-    "javascript",
     "nodejs",
-    "html-builder"
+    "reactive",
+    "template",
+    "no-dependencies",
+    "dashboard",
+    "report"
   ],
   "author": "0trebor0 <webdevme@outlook.com>",
   "license": "MIT",
