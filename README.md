@@ -142,6 +142,7 @@ res.send(doc.render());
 - [JSON Import](#json-import)
 - [Templates (.bhtml)](#templates-bhtml)
 - [State & Events](#state--events)
+- [Client-Side Fetch](#client-side-fetch)
 - [Express Integration](#express-integration)
 - [Limitations](#limitations)
 - [Contributing](#contributing)
@@ -1276,6 +1277,56 @@ doc.input('text').bindInput('name');  // State.name ↔ input.value
 doc.button('+1').onClick(function() { State.count++; });
 doc.button('Toggle').onClick(function() { State.open = !State.open; });
 ```
+
+---
+
+## Client-Side Fetch
+
+Use the browser's `fetch()` inside an event handler or `oncreate()` callback. buildhtml serializes the async function into the compiled client script, so no `inlineScript()` is needed.
+
+```javascript
+const { Document } = require('@trebor/buildhtml');
+
+const doc = new Document();
+doc.states({ loading: false, message: 'Ready', error: '' });
+
+doc.p().bindShow('loading').text('Loading...');
+doc.p().bind('message', (value) => value);
+doc.p().bind('error', (value) => value);
+
+doc.button('Load data').onClick(async function () {
+  State.loading = true;
+  State.error = '';
+
+  try {
+    const response = await fetch('/api/data');
+    if (!response.ok) throw new Error('HTTP ' + response.status);
+
+    const data = await response.json();
+    State.message = data.message;
+  } catch (error) {
+    State.error = error.message;
+  } finally {
+    State.loading = false;
+  }
+});
+```
+
+Fetch automatically when the page loads:
+
+```javascript
+doc.oncreate(async function () {
+  const response = await fetch('/api/data');
+  if (!response.ok) throw new Error('HTTP ' + response.status);
+
+  const data = await response.json();
+  State.message = data.message;
+});
+```
+
+Compiled functions run in the browser and cannot access server-side closure variables. Use literal URLs, `State` values, or `data-*` attributes for runtime configuration.
+
+The runnable Express example is available at `GET /fetch-demo`, with its JSON endpoint at `GET /api/client-data`.
 
 ---
 

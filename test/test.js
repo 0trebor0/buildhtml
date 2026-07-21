@@ -449,6 +449,25 @@ test('portal() element still renders at its original position server-side', () =
   assert(html.includes('portaled content'), 'portaled element renders in-place server-side');
 });
 
+test('portal() compiles automatic client relocation', () => {
+  const doc = new Document();
+  doc.div().id('overlay-root');
+  const modal = doc.div().text('Modal').portal('overlay-root');
+  const sourceId = modal.attrs.id;
+  const html = doc.render();
+  assert(html.includes(`getById("${sourceId}")`), 'portal source id compiled');
+  assert(html.includes('getById("overlay-root")'), 'portal target id compiled');
+  assert(html.includes('target.appendChild(el)'), 'portal relocation compiled');
+  assert(html.includes('initPortals();'), 'portal initialization runs automatically');
+});
+
+test('clone() preserves portal target', () => {
+  const doc = new Document();
+  const original = doc.div().portal('overlay-root');
+  const cloned = original.clone();
+  assert(cloned._portalTarget === 'overlay-root', 'cloned portal target preserved');
+});
+
 /* ---- Bug regressions: security fixes ---- */
 
 test('sanitizeUrl strips control chars from safe URLs (no phantom control chars in output)', () => {
@@ -523,6 +542,79 @@ test('liveList embeds itemFn source via sanitizeFunctionSource (single toString 
   doc.render();
   // sanitizeFunctionSource calls toString once; we must not call it again
   assert(toStringCallCount === 1, 'itemFn.toString() called exactly once (inside sanitizeFunctionSource)');
+});
+
+test('compiled state cannot break out of its script tag', () => {
+  const doc = new Document();
+  doc.states({ payload: '</script><script>alert(1)</script>' });
+  doc.div().bind('payload', value => value);
+  const html = doc.render();
+  assert(!html.includes('</script><script>alert(1)</script>'), 'raw closing script sequence escaped');
+  assert(html.includes('\\u003c/script>'), 'less-than characters encoded in compiled state');
+});
+
+test('htmlAttr and bodyAttr reject event and malformed attribute names', () => {
+  const doc = new Document();
+  doc.htmlAttr('onclick', 'alert(1)');
+  doc.bodyAttr('onload', 'alert(2)');
+  doc.bodyAttr('bad\" key', 'value');
+  doc.bodyAttr('data-safe', 'ok');
+  const html = doc.render();
+  assert(!html.includes('onclick='), 'html onclick attribute blocked');
+  assert(!html.includes('onload='), 'body onload attribute blocked');
+  assert(!html.includes('bad\" key='), 'malformed body attribute blocked');
+  assert(html.includes('data-safe="ok"'), 'valid body attribute preserved');
+});
+
+test('head URL helpers sanitize executable protocols', () => {
+  const doc = new Document();
+  doc.addLink('javascript:alert(1)');
+  doc.addScript('data:text/javascript,alert(2)');
+  doc.canonical('vbscript:msgbox(3)');
+  const html = doc.render();
+  assert(!html.includes('javascript:alert'), 'stylesheet URL sanitized');
+  assert(!html.includes('data:text/javascript'), 'script URL sanitized');
+  assert(!html.includes('vbscript:msgbox'), 'canonical URL sanitized');
+});
+
+test('liveList filters unsafe attrs and URLs in SSR and client runtime', () => {
+  const { MK_EL_SRC, nodeDefToHtml } = require('../lib/live');
+  const ssrHtml = nodeDefToHtml({
+    tag: 'a',
+    attrs: { onclick: 'alert(1)', href: 'java\x00script:alert(2)' },
+    text: 'link',
+  });
+  assert(!ssrHtml.includes('onclick'), 'SSR event attribute blocked');
+  assert(ssrHtml.includes('href="#"'), 'SSR executable URL sanitized');
+  assert(MK_EL_SRC.includes('!/^on[a-z]/i.test(k)'), 'client runtime blocks event attributes');
+  assert(MK_EL_SRC.includes('javascript|vbscript|data'), 'client runtime sanitizes URL protocols');
+});
+
+test('async client fetch event handlers compile without inlineScript()', () => {
+  const doc = new Document();
+  doc.states({ message: '' });
+  doc.button('Load').onClick(async function () {
+    const response = await fetch('/api/data');
+    const data = await response.json();
+    State.message = data.message;
+  });
+  const html = doc.render();
+  assert(html.includes('async function'), 'async event handler compiled');
+  assert(html.includes("fetch('/api/data')"), 'client fetch call compiled');
+  assert(html.includes('await response.json()'), 'await expression preserved');
+});
+
+test('async oncreate fetch callbacks compile and initialize', () => {
+  const doc = new Document();
+  doc.states({ message: '' });
+  doc.oncreate(async function () {
+    const response = await fetch('/api/data');
+    const data = await response.json();
+    State.message = data.message;
+  });
+  const html = doc.render();
+  assert(html.includes("fetch('/api/data')"), 'oncreate fetch call compiled');
+  assert(html.includes('initOncreate();'), 'async oncreate initialization runs');
 });
 
 /* ---- Summary ---- */

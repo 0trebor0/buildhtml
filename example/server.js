@@ -142,7 +142,41 @@ app.get('/api-demo', async (_req, res) => {
 });
 
 // ==============================================
-// EXAMPLE 7: SPA with client-side state
+// EXAMPLE 7: Client-Side Fetch (Compiled Automatically)
+// ==============================================
+app.get('/api/client-data', (_req, res) => {
+  res.json({ message: 'Data loaded in the browser', loadedAt: new Date().toISOString() });
+});
+
+app.get('/fetch-demo', (_req, res) => {
+  const doc = page('Client Fetch Demo');
+  doc.states({ loading: false, message: 'Ready', error: '' });
+
+  doc.h1().text('Client-side fetch()');
+  doc.p().bindShow('loading').text('Loading...');
+  doc.p().bind('message', value => value);
+  doc.p().bind('error', value => value);
+
+  doc.button('Load API data').onClick(async function () {
+    State.loading = true;
+    State.error = '';
+    try {
+      const response = await fetch('/api/client-data');
+      if (!response.ok) throw new Error('HTTP ' + response.status);
+      const data = await response.json();
+      State.message = data.message + ' at ' + data.loadedAt;
+    } catch (error) {
+      State.error = error.message;
+    } finally {
+      State.loading = false;
+    }
+  });
+
+  res.send(doc.render());
+});
+
+// ==============================================
+// EXAMPLE 8: SPA with client-side state
 // ==============================================
 app.get('/spa', (_req, res) => {
   const doc = page('SPA Demo');
@@ -221,6 +255,7 @@ app.listen(PORT, () => {
   console.log(`  GET /counter       - Interactive counter`);
   console.log(`  GET /products/:cat - Cached product list`);
   console.log(`  GET /api-demo      - API data integration`);
+  console.log(`  GET /fetch-demo    - Client-side fetch compiled from the server API`);
   console.log(`  GET /spa           - SPA with client-side state`);
   console.log(`  GET /stats         - Cache statistics`);
   console.log(`  GET /benchmark     - Performance test\n`);

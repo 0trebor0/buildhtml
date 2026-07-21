@@ -1,12 +1,11 @@
 const http = require('http');
-const { Document } = require('./index.js');
+const { Document } = require('../index.js');
 
 const server = http.createServer((req, res) => {
   const doc = new Document();
   doc.title('LightRender Test Server');
-  const h1 = doc.create('h1').text('Server Test - All Systems Operational');
-  const p = doc.create('p').text('Zero-dependency, ultra-fast SSR.');
-  doc.use(h1).use(p);
+  doc.create('h1').text('Server Test - All Systems Operational');
+  doc.create('p').text('Zero-dependency, ultra-fast SSR.');
   const html = doc.render();
   res.writeHead(200, { 'Content-Type': 'text/html' });
   res.end(html);

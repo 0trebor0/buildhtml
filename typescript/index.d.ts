@@ -101,18 +101,18 @@ export interface ScriptAttrs {
 export declare class Head {
   title: string;
   metas: MetaAttrs[];
-  links: LinkAttrs[];
+  links: string[];
   styles: string[];
-  scripts: ScriptAttrs[];
+  scripts: string[];
   globalStyles: string[];
   classStyles: Record<string, string>;
   setTitle(t: string): void;
   setCharset(c: string): void;
   setNonce(nonce: string): void;
   addMeta(attrs: MetaAttrs): void;
-  addLink(attrs: LinkAttrs): void;
+  addLink(href: string): void;
   addStyle(css: string): void;
-  addScript(attrs: ScriptAttrs): void;
+  addScript(src: string): void;
   addRawLink(html: string): void;
   globalCss(selector: string, rules: CSSRules): void;
   addClass(name: string, rules: CSSRules): void;
@@ -552,8 +552,8 @@ export interface PageDef {
   canonical?: string;
   noindex?: boolean | 'nofollow';
   meta?: MetaAttrs[];
-  links?: LinkAttrs[];
-  scripts?: ScriptAttrs[];
+  links?: string[];
+  scripts?: string[];
   cssVars?: Record<string, string>;
   globalStyles?: Record<string, CSSRules>;
   sharedClasses?: Record<string, CSSRules>;
@@ -585,9 +585,9 @@ export declare class Document implements SharedShortcuts<Document> {
   // Head shortcuts
   title(t: string): Document;
   addMeta(attrs: MetaAttrs): Document;
-  addLink(attrs: LinkAttrs): Document;
+  addLink(href: string): Document;
   addStyle(css: string): Document;
-  addScript(attrs: ScriptAttrs): Document;
+  addScript(src: string): Document;
   meta(name: string, content: string): Document;
   viewport(v?: string): Document;
   charset(c?: string): Document;
@@ -623,7 +623,7 @@ export declare class Document implements SharedShortcuts<Document> {
   states(obj: Record<string, any>): Document;
 
   // Lifecycle
-  oncreate(fn: () => void): Document;
+  oncreate(fn: () => void | Promise<void>): Document;
 
   // Element creation
   createElement(tag: string): Element;

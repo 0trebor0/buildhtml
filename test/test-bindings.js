@@ -338,6 +338,33 @@ test('bindState() with auto-generated target id works', () => {
   assert(!html.includes('__STATE_ID__'), '__STATE_ID__ replaced with auto id');
 });
 
+test('bindAttr rejects inline event attributes', () => {
+  const doc = new Document();
+  const el = doc.div();
+  el.bindAttr('payload', 'onclick', value => value);
+  assert(el._stateBindings.length === 0, 'onclick binding not registered');
+  const html = doc.render();
+  assert(!html.includes('setAttribute("onclick"'), 'onclick setter not compiled');
+});
+
+test('bindAttr sanitizes reactive URL values', () => {
+  const doc = new Document();
+  doc.states({ link: 'javascript:alert(1)' });
+  doc.a('/safe', 'link').bindAttr('link', 'href', value => value);
+  const html = doc.render();
+  assert(html.includes('javascript|vbscript|data'), 'URL protocol guard compiled');
+  assert(html.includes("?'#':_u"), 'unsafe reactive URL replaced with #');
+});
+
+test('bindInput safely embeds a hostile state key', () => {
+  const doc = new Document();
+  doc.states({ safe: '' });
+  doc.input('text').bindInput('</script><script>alert(1)</script>');
+  const html = doc.render();
+  assert(!html.includes('</script><script>alert(1)</script>'), 'state key cannot close compiled script');
+  assert(html.includes('\\u003c/script>'), 'hostile state key JSON-escaped');
+});
+
 /* ---- summary ---- */
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);
