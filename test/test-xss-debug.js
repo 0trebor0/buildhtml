@@ -1,9 +1,8 @@
-const { Document } = require('./index.js');
+const { Document } = require('../index.js');
 
 const doc = new Document();
 const el = doc.create('div').text('<script>alert("xss")</script>');
 el.attrs.title = '<img src=x onerror=alert(1)>';
-doc.use(el);
 const html = doc.render();
 
 console.log('Generated HTML:');

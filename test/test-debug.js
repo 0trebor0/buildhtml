@@ -1,4 +1,4 @@
-const { Document, Element, Head, CONFIG, createCachedRenderer, clearCache, enableCompression, responseCache, warmupCache, getCacheStats } = require('./index.js');
+const { Document, CONFIG, clearCache, responseCache, getCacheStats } = require('../index.js');
 
 console.log('=== LightRender Debug Test Suite ===\n');
 
@@ -22,8 +22,7 @@ function test(name, fn) {
 test('Basic Document creation and rendering', () => {
   const doc = new Document();
   doc.title('Test Page');
-  const h1 = doc.create('h1').text('Hello World');
-  doc.use(h1);
+  doc.create('h1').text('Hello World');
   const html = doc.render();
   if (!html.includes('<h1>Hello World</h1>')) throw new Error('Missing h1 element');
   if (!html.includes('<title>Test Page</title>')) throw new Error('Missing title');
@@ -42,7 +41,7 @@ test('Element method chaining', () => {
 test('CSS scoping with hash classes', () => {
   const doc = new Document();
   const el = doc.create('div').css({ marginTop: '10px', padding: '5px' });
-  if (!el.attrs.class) throw new Error('Class not added');
+  if (el._classes.length === 0) throw new Error('Class not added');
   if (!el.cssText.includes('margin-top:10px')) throw new Error('CSS not kebab-cased');
   if (!el.cssText.includes('padding:5px')) throw new Error('CSS missing padding');
 });
@@ -53,9 +52,8 @@ test('State management and hydration', () => {
   const counter = doc.create('div').state(42);
   if (!counter.attrs.id) throw new Error('State element missing auto-generated ID');
   if (counter._state !== 42) throw new Error('State value not stored');
-  doc.use(counter);
   const html = doc.render();
-  if (!html.includes('window.state')) throw new Error('State hydration script missing');
+  if (!html.includes('.state[')) throw new Error('State hydration script missing');
   if (!html.includes('42')) throw new Error('State value not in HTML');
 });
 
@@ -66,7 +64,6 @@ test('Computed values method (bug fix verification)', () => {
   if (typeof el.computed !== 'function') throw new Error('computed method shadowed by property!');
   if (!el._computed) throw new Error('_computed internal property not set');
   if (!el.attrs.id) throw new Error('Computed element missing auto-generated ID');
-  doc.use(el);
   const html = doc.render();
   if (!html.includes('computed value')) throw new Error('Computed function not serialized');
 });
@@ -77,7 +74,6 @@ test('Event binding with .on()', () => {
   const btn = doc.create('button').text('Click').on('click', function() { console.log('clicked'); });
   if (!btn.attrs.id) throw new Error('Event element missing ID');
   if (btn.events.length !== 1) throw new Error('Event not registered');
-  doc.use(btn);
   const html = doc.render();
   if (!html.includes('addEventListener')) throw new Error('Event listener not in HTML');
 });
@@ -91,10 +87,10 @@ test('bindState with __STATE_ID__ replacement', () => {
     const id = '__STATE_ID__';
     window.state[id] = parseInt(window.state[id]) + 1;
   });
-  doc.use(target).use(btn);
+  const targetId = target.attrs.id;
   const html = doc.render();
   if (html.includes('__STATE_ID__')) throw new Error('__STATE_ID__ not replaced');
-  if (!html.includes(target.attrs.id)) throw new Error('Target ID not in event handler');
+  if (!html.includes(targetId)) throw new Error('Target ID not in event handler');
 });
 
 // Test 8: XSS escaping
@@ -102,7 +98,6 @@ test('XSS escaping in text and attributes', () => {
   const doc = new Document();
   const el = doc.create('div').text('<script>alert("xss")</script>');
   el.attrs.title = '<img src=x onerror=alert(1)>';
-  doc.use(el);
   const html = doc.render();
   if (html.includes('<script>alert')) throw new Error('Script tag not escaped in text');
   if (html.includes('onerror=alert(1)>')) throw new Error('Attribute not escaped (raw onerror found)');
@@ -116,7 +111,6 @@ test('Void elements rendering', () => {
   const doc = new Document();
   const input = doc.create('input');
   input.attrs.type = 'text';
-  doc.use(input);
   const html = doc.render();
   if (html.includes('</input>')) throw new Error('Void element has closing tag');
   if (!html.includes('<input')) throw new Error('Input element missing');
@@ -126,10 +120,8 @@ test('Void elements rendering', () => {
 test('Nested element rendering', () => {
   const doc = new Document();
   const parent = doc.create('div');
-  const child1 = doc.create('span').text('Child 1');
-  const child2 = doc.create('span').text('Child 2');
-  parent.append(child1).append(child2);
-  doc.use(parent);
+  parent.child('span').text('Child 1');
+  parent.child('span').text('Child 2');
   const html = doc.render();
   if (!html.includes('<div><span>Child 1</span><span>Child 2</span></div>')) throw new Error('Nested structure incorrect');
 });
@@ -185,23 +177,13 @@ test('clearCache with pattern', () => {
   responseCache.clear();
 });
 
-// Test 15: warmupCache
-test('warmupCache pre-rendering', () => {
+// Test 15: document response cache
+test('Document response cache', () => {
   responseCache.clear();
-  const routes = [
-    {
-      key: 'home',
-      builder: () => {
-        const doc = new Document({ cache: true, cacheKey: 'home' });
-        doc.title('Home');
-        doc.use(doc.create('h1').text('Welcome'));
-        return doc;
-      }
-    }
-  ];
-  const results = warmupCache(routes);
-  if (results.length !== 1) throw new Error('Wrong number of results');
-  if (!results[0].success) throw new Error('Warmup failed');
+  const doc = new Document({ cache: true, cacheKey: 'home' });
+  doc.title('Home');
+  doc.create('h1').text('Welcome');
+  doc.render();
   if (!responseCache.get('home')) throw new Error('Cache not populated');
   responseCache.clear();
 });
@@ -211,11 +193,10 @@ test('getCacheStats returns correct structure', () => {
   responseCache.clear();
   responseCache.set('test', 'value');
   const stats = getCacheStats();
-  if (typeof stats.size !== 'number') throw new Error('Missing size');
-  if (typeof stats.limit !== 'number') throw new Error('Missing limit');
-  if (typeof stats.usage !== 'string') throw new Error('Missing usage');
-  if (!Array.isArray(stats.keys)) throw new Error('Missing keys array');
-  if (!stats.poolStats) throw new Error('Missing poolStats');
+  if (typeof stats.cache.size !== 'number') throw new Error('Missing cache size');
+  if (typeof stats.cache.limit !== 'number') throw new Error('Missing cache limit');
+  if (typeof stats.inFlight.size !== 'number') throw new Error('Missing in-flight count');
+  if (!stats.pools) throw new Error('Missing pool stats');
   responseCache.clear();
 });
 
@@ -232,7 +213,6 @@ test('Kebab-case conversion for CSS and tags', () => {
 test('Element pooling and recycling', () => {
   const doc = new Document();
   const el1 = doc.create('div').text('Test');
-  doc.use(el1);
   doc.render(); // This should recycle el1
   const el2 = doc.create('span'); // Should reuse pooled element
   if (el2.tag !== 'span') throw new Error('Recycled element not reset properly');
@@ -244,7 +224,7 @@ test('Production mode HTML minification', () => {
   const originalMode = CONFIG.mode;
   CONFIG.mode = 'prod';
   const doc = new Document();
-  doc.use(doc.create('div').text('Test'));
+  doc.create('div').text('Test');
   const html = doc.render();
   if (html.includes('  ')) throw new Error('HTML not minified (contains double spaces)');
   CONFIG.mode = originalMode;
@@ -255,7 +235,6 @@ test('Multiple state elements in one document', () => {
   const doc = new Document();
   const el1 = doc.create('div').state('value1');
   const el2 = doc.create('input').state('value2');
-  doc.use(el1).use(el2);
   const html = doc.render();
   if (!html.includes('value1')) throw new Error('First state missing');
   if (!html.includes('value2')) throw new Error('Second state missing');

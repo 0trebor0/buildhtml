@@ -13,7 +13,7 @@
   ],
   "scripts": {
     "start": "node example/server.js",
-    "test": "node test/test.js"
+    "test": "node test/run-all.js"
   },
   "repository": {
     "type": "git",
