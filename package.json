@@ -1,6 +1,6 @@
 {
   "name": "@trebor/buildhtml",
-  "version": "1.1.1",
+  "version": "1.1.2",
   "description": "Server-side HTML compiler for Node.js. Build pages with a JS API — reactive state, events, and DOM bindings compile automatically. Zero dependencies, zero client framework.",
   "main": "index.js",
   "types": "typescript/index.d.ts",
