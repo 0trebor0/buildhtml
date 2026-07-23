@@ -344,72 +344,139 @@ doc.hashRouter({
 
 #### Complete Hash SPA
 
-Use `bindShow()` for route sections, `hashRouter()` for navigation, `liveList()` for reactive collections, and `oncreate()` for client-side data loading:
+This task manager is server-rendered initially, then handles routing, filtering, form submission, updates, and deletion in the browser. Every interaction is expressed through the buildhtml API:
 
 ```javascript
-const { Document } = require('@trebor/buildhtml');
+const { page } = require('@trebor/buildhtml');
 
-const doc = new Document();
-doc.title('Users SPA');
+const doc = page('Task Manager');
 doc.states({
-  route: 'home',
-  users: [],
-  loading: false,
-  error: '',
+  tasks: [
+    { id: 1, title: 'Learn buildhtml', done: true },
+    { id: 2, title: 'Build an SPA', done: false },
+  ],
+  view: 'all',
+  nextId: 3,
 });
 
-const nav = doc.nav();
-nav.a('#home', 'Home');
-nav.a('#users', 'Users');
-nav.a('#about', 'About');
+// Hash navigation: #all, #active, #done
+const header = doc.header();
+header.h1().text('Tasks');
+header.a('#all', 'All');
+header.a('#active', 'Active');
+header.a('#done', 'Done');
 
-const homePage = doc.main().bindShow('route', route => route === 'home');
-homePage.h1().text('Home');
-homePage.p().text('Welcome to the app.');
+const main = doc.main();
 
-const usersPage = doc.main().bindShow('route', route => route === 'users');
-usersPage.h1().text('Users');
-usersPage.p().text('Loading...').bindShow('loading');
-usersPage.p().bind('error', error => error);
-usersPage.liveList('users', user => ({
-  tag: 'article',
-  children: [
-    { tag: 'h2', text: user.name },
-    { tag: 'p', text: user.email },
-  ],
-}));
+// Add tasks without a page reload
+const form = main.form().id('task-form');
+form.input('text', { placeholder: 'What needs doing?' }).id('task-title');
+form.button('Add task').attr('type', 'submit');
 
-const aboutPage = doc.main().bindShow('route', route => route === 'about');
-aboutPage.h1().text('About');
-aboutPage.p().text('This SPA was compiled entirely from the server API.');
+form.onSubmit(function (event) {
+  event.preventDefault();
+  var input = document.getElementById('task-title');
+  var title = input.value.trim();
+  if (!title) return;
+
+  State.tasks = State.tasks.concat([{
+    id: State.nextId++,
+    title: title,
+    done: false,
+  }]);
+  input.value = '';
+});
+
+// Server-rendered initially; rebuilt automatically when tasks or view changes
+main.liveList('tasks', function (task) {
+  return {
+    tag: 'article',
+    attrs: { 'data-task-id': String(task.id) },
+    css: {
+      display: 'flex',
+      gap: '8px',
+      alignItems: 'center',
+      padding: '8px',
+    },
+    children: [
+      {
+        tag: 'input',
+        attrs: {
+          type: 'checkbox',
+          'data-id': String(task.id),
+          ...(task.done ? { checked: 'checked' } : {}),
+        },
+        on: {
+          change: function () {
+            var id = Number(this.dataset.id);
+            var done = this.checked;
+            State.tasks = State.tasks.map(function (item) {
+              return item.id === id
+                ? { id: item.id, title: item.title, done: done }
+                : item;
+            });
+          },
+        },
+      },
+      {
+        tag: 'span',
+        text: task.title,
+        css: {
+          flex: '1',
+          textDecoration: task.done ? 'line-through' : 'none',
+        },
+      },
+      {
+        tag: 'button',
+        text: 'Delete',
+        attrs: { 'data-id': String(task.id) },
+        on: {
+          click: function () {
+            var id = Number(this.dataset.id);
+            State.tasks = State.tasks.filter(function (item) {
+              return item.id !== id;
+            });
+          },
+        },
+      },
+    ],
+  };
+}, {
+  filter: function (task, state) {
+    if (state.view === 'active') return !task.done;
+    if (state.view === 'done') return task.done;
+    return true;
+  },
+  filterKeys: ['view'],
+});
+
+// Reactive summary and bulk action
+const footer = doc.footer();
+footer.span().bind('tasks', function (tasks) {
+  var remaining = tasks.filter(function (task) {
+    return !task.done;
+  }).length;
+  return remaining + ' remaining';
+});
+
+footer.button('Clear completed').onClick(function () {
+  State.tasks = State.tasks.filter(function (task) {
+    return !task.done;
+  });
+});
 
 doc.hashRouter({
-  stateKey: 'route',
-  default: 'home',
-  navSelector: 'nav a',
+  stateKey: 'view',
+  default: 'all',
+  navSelector: 'header a',
   activeStyle: { fontWeight: '700' },
   inactiveStyle: { fontWeight: '400' },
-});
-
-doc.oncreate(async function () {
-  State.loading = true;
-  State.error = '';
-
-  try {
-    const response = await fetch('/api/users');
-    if (!response.ok) throw new Error('HTTP ' + response.status);
-    State.users = await response.json();
-  } catch (error) {
-    State.error = error.message;
-  } finally {
-    State.loading = false;
-  }
 });
 
 const html = doc.render();
 ```
 
-This produces client-side routes at `#home`, `#users`, and `#about`. All route sections are included in the initial HTML and switched with reactive bindings; no raw client script is required.
+Serve `html` from any Node HTTP server. The resulting page supports `#all`, `#active`, and `#done`; adding, toggling, deleting, filtering, and clearing tasks happen without page reloads. No raw client script is required.
 
 ### Element Creation
 
