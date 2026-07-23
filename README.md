@@ -342,6 +342,75 @@ doc.hashRouter({
 });
 ```
 
+#### Complete Hash SPA
+
+Use `bindShow()` for route sections, `hashRouter()` for navigation, `liveList()` for reactive collections, and `oncreate()` for client-side data loading:
+
+```javascript
+const { Document } = require('@trebor/buildhtml');
+
+const doc = new Document();
+doc.title('Users SPA');
+doc.states({
+  route: 'home',
+  users: [],
+  loading: false,
+  error: '',
+});
+
+const nav = doc.nav();
+nav.a('#home', 'Home');
+nav.a('#users', 'Users');
+nav.a('#about', 'About');
+
+const homePage = doc.main().bindShow('route', route => route === 'home');
+homePage.h1().text('Home');
+homePage.p().text('Welcome to the app.');
+
+const usersPage = doc.main().bindShow('route', route => route === 'users');
+usersPage.h1().text('Users');
+usersPage.p().text('Loading...').bindShow('loading');
+usersPage.p().bind('error', error => error);
+usersPage.liveList('users', user => ({
+  tag: 'article',
+  children: [
+    { tag: 'h2', text: user.name },
+    { tag: 'p', text: user.email },
+  ],
+}));
+
+const aboutPage = doc.main().bindShow('route', route => route === 'about');
+aboutPage.h1().text('About');
+aboutPage.p().text('This SPA was compiled entirely from the server API.');
+
+doc.hashRouter({
+  stateKey: 'route',
+  default: 'home',
+  navSelector: 'nav a',
+  activeStyle: { fontWeight: '700' },
+  inactiveStyle: { fontWeight: '400' },
+});
+
+doc.oncreate(async function () {
+  State.loading = true;
+  State.error = '';
+
+  try {
+    const response = await fetch('/api/users');
+    if (!response.ok) throw new Error('HTTP ' + response.status);
+    State.users = await response.json();
+  } catch (error) {
+    State.error = error.message;
+  } finally {
+    State.loading = false;
+  }
+});
+
+const html = doc.render();
+```
+
+This produces client-side routes at `#home`, `#users`, and `#about`. All route sections are included in the initial HTML and switched with reactive bindings; no raw client script is required.
+
 ### Element Creation
 
 | Method | Description |
