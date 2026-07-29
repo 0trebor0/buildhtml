@@ -2,6 +2,7 @@
 
 const http = require('http');
 const { Document } = require('../index');
+const PORT = Number(process.env.BUILDHTML_BROWSER_PORT) || 3344;
 
 function buildPage() {
   const doc = new Document();
@@ -13,7 +14,12 @@ function buildPage() {
     theme: 'light',
     link: '/safe',
     items: [{ id: 1, label: 'One' }],
+    profile: { name: 'Ada', tags: ['first'] },
     view: 'all',
+    page: 'home',
+    routeParams: {},
+    lifecycleUpdates: 0,
+    lifecycleDestroyed: false,
   });
 
   doc.div().id('portal-source').text('Portaled').portal('portal-target');
@@ -38,12 +44,54 @@ function buildPage() {
     tag: 'span', text: item.label, attrs: { 'data-item': item.id },
   }));
   doc.button('Add item').id('add-item').onClick(function () {
-    State.items = State.items.concat([{ id: 2, label: 'Two' }]);
+    State.items.push({ id: 2, label: 'Two' });
   });
+
+  doc.span().id('profile-output').bind('profile', value => value.name + ':' + value.tags.join(','));
+  doc.button('Mutate nested state').id('mutate-profile').onClick(function () {
+    State.profile.name = 'Grace';
+    State.profile.tags.push('second');
+  });
+
+  doc.div()
+    .id('lifecycle-target')
+    .text('Lifecycle target')
+    .onMount(function () {
+      this.dataset.mounted = 'true';
+      return function () { State.lifecycleDestroyed = true; };
+    })
+    .onUpdate('count', function (value) {
+      this.dataset.lastCount = String(value);
+      State.lifecycleUpdates += 1;
+    })
+    .onDestroy(function () {
+      State.lifecycleDestroyed = true;
+    });
+  doc.button('Remove lifecycle target').id('remove-lifecycle').onClick(function () {
+    var target = document.getElementById('lifecycle-target');
+    if (target) target.remove();
+  });
+  doc.span().id('lifecycle-destroyed').bind('lifecycleDestroyed', value => String(value));
 
   doc.a('#done', 'Done route').id('done-route');
   doc.span().id('view-output').bind('view', value => value);
   doc.hashRouter({ stateKey: 'view', default: 'all' });
+
+  doc.a('/app/users/alice%20smith', 'User route').id('user-route').attr('data-route', '');
+  doc.a('/app/about', 'About route').id('about-route').attr('data-route', '');
+  doc.span().id('page-output').bind('page', value => value);
+  doc.span().id('params-output').bind('routeParams', value => value.id || '');
+  doc.historyRouter({
+    stateKey: 'page',
+    paramsKey: 'routeParams',
+    base: '/app',
+    routes: {
+      '/': 'home',
+      '/users/:id': 'user',
+      '/about': 'about',
+      '*': 'missing',
+    },
+  });
 
   return doc.render();
 }
@@ -53,7 +101,7 @@ const server = http.createServer((_req, res) => {
   res.end(buildPage());
 });
 
-server.listen(3344, '127.0.0.1', () => console.log('browser fixture ready'));
+server.listen(PORT, '127.0.0.1', () => console.log(`browser fixture ready on ${PORT}`));
 
 function shutdown() { server.close(() => process.exit(0)); }
 process.on('SIGTERM', shutdown);

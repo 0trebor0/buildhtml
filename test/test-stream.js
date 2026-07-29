@@ -127,7 +127,22 @@ const p8 = testAsync('renderStream calls clear() — body is empty after stream'
   assert(doc.body.length === 0, 'body cleared after stream');
 });
 
-Promise.all([p1, p2, p3, p4, p5, p6, p7, p8]).then(() => {
+/* ---- renderStream with element lifecycle ---- */
+const p9 = testAsync('renderStream compiles element lifecycle hooks', async () => {
+  const doc = new Document();
+  doc.states({ count: 0 });
+  doc.div()
+    .onMount(function () { this.dataset.mounted = 'true'; })
+    .onUpdate('count', function (value) { this.textContent = String(value); })
+    .onDestroy(function () { State.destroyed = true; });
+  const html = await collectStream(doc.renderStream());
+  assert(html.includes('initLifecycles'), 'lifecycle runtime included in stream');
+  assert(html.includes('dataset.mounted'), 'mount hook included in stream');
+  assert(html.includes('"count"'), 'update state key included in stream');
+  assert(html.includes('State.destroyed'), 'destroy hook included in stream');
+});
+
+Promise.all([p1, p2, p3, p4, p5, p6, p7, p8, p9]).then(() => {
   console.log(`\n${'='.repeat(40)}`);
   console.log(`Results: ${passed} passed, ${failed} failed`);
   console.log('='.repeat(40));

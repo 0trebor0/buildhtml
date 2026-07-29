@@ -1,6 +1,7 @@
 'use strict';
 
 const { Document } = require('../index');
+const vm = require('vm');
 
 let passed = 0;
 let failed = 0;
@@ -13,6 +14,31 @@ function assert(condition, msg) {
 function test(name, fn) {
   console.log(`\n▸ ${name}`);
   try { fn(); } catch (e) { failed++; console.error(`  ✗ THREW: ${e.message}`); }
+}
+
+function runClient(doc, elements = {}, globals = {}, allScripts = false) {
+  const html = doc.render();
+  const matches = Array.from(html.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/g));
+  if (!matches.length) throw new Error('compiled client script not found');
+  const getElementById = typeof elements === 'function'
+    ? elements
+    : id => elements[id] || null;
+
+  const context = {
+    console,
+    ...globals,
+    document: {
+      readyState: 'complete',
+      body: {},
+      getElementById,
+      addEventListener: () => {},
+      ...(globals.document || {}),
+    },
+  };
+  context.window = context;
+  const scripts = allScripts ? matches : matches.slice(0, 1);
+  for (const match of scripts) vm.runInNewContext(match[1], context);
+  return context;
 }
 
 /* ---- bindShow ---- */
@@ -159,6 +185,342 @@ test('bindShow initial state false — hidden on load', () => {
   const html = doc.render();
   // The compiled script calls _render() immediately; initial state is applied
   assert(html.includes('var val='), 'initial val read from State');
+});
+
+/* ---- deep reactive state ---- */
+test('nested object mutation updates bindings for the root state key', () => {
+  const doc = new Document();
+  doc.states({ profile: { name: 'Ada', address: { city: 'London' } } });
+  const output = doc.span().bind('profile', profile => profile.name + ' — ' + profile.address.city);
+  const outputId = output.attrs.id;
+  const element = { textContent: '' };
+  const context = runClient(doc, { [outputId]: element });
+
+  assert(element.textContent === 'Ada — London', 'nested binding receives initial state');
+  context.State.profile.name = 'Grace';
+  assert(element.textContent === 'Grace — London', 'nested property set updates binding');
+  context.State.profile.address.city = 'New York';
+  assert(element.textContent === 'Grace — New York', 'deep property set updates binding');
+});
+
+test('nested arrays notify root watchers for mutating methods', () => {
+  const doc = new Document();
+  doc.states({ board: { tasks: [{ title: 'One' }] } });
+  const context = runClient(doc);
+  let notifications = 0;
+  let latestLength = 0;
+  context.watchState('board', board => {
+    notifications++;
+    latestLength = board.tasks.length;
+  });
+
+  context.State.board.tasks.push({ title: 'Two' });
+  assert(notifications > 0, 'array push notifies the root watcher');
+  assert(latestLength === 2, 'watcher receives the updated root object');
+
+  const beforeSplice = notifications;
+  context.State.board.tasks.splice(0, 1);
+  assert(notifications > beforeSplice, 'array splice notifies the root watcher');
+  assert(context.State.board.tasks[0].title === 'Two', 'array mutation is retained');
+});
+
+test('deep proxies preserve identity and ignore unchanged assignments', () => {
+  const doc = new Document();
+  doc.states({ profile: { address: { city: 'London' } } });
+  const context = runClient(doc);
+  const profile = context.State.profile;
+  const address = context.State.profile.address;
+  let notifications = 0;
+  context.watchState('profile', () => { notifications++; });
+
+  assert(profile === context.State.profile, 'root proxy identity is stable');
+  assert(address === context.State.profile.address, 'nested proxy identity is stable');
+  context.State.profile = profile;
+  context.State.profile.address = address;
+  context.State.profile.address.city = 'London';
+  assert(notifications === 0, 'assigning unchanged raw or proxied values does not notify');
+});
+
+test('nested and root deletion notify watchers', () => {
+  const doc = new Document();
+  doc.states({ settings: { theme: 'dark', compact: true } });
+  const context = runClient(doc);
+  const values = [];
+  context.watchState('settings', value => { values.push(value); });
+
+  delete context.State.settings.compact;
+  assert(values.length === 1, 'nested deletion notifies root watcher');
+  assert(!('compact' in values[0]), 'deleted nested property is absent');
+
+  delete context.State.settings;
+  assert(values.length === 2, 'root deletion notifies root watcher');
+  assert(values[1] === undefined, 'root deletion supplies undefined');
+});
+
+test('replaced root objects remain deeply reactive', () => {
+  const doc = new Document();
+  doc.states({ user: { name: 'Ada' } });
+  const context = runClient(doc);
+  const names = [];
+  context.watchState('user', user => { names.push(user.name); });
+
+  context.State.user = { name: 'Grace', details: { role: 'admin' } };
+  context.State.user.details.role = 'editor';
+  assert(names[0] === 'Grace', 'root replacement notifies with replacement object');
+  assert(names.length === 2, 'nested mutation on replacement remains reactive');
+  assert(context.State.user.details.role === 'editor', 'replacement mutation is retained');
+});
+
+test('prototype-named root state remains isolated and reactive', () => {
+  const doc = new Document();
+  doc.state('__proto__', { value: 1 });
+  const context = runClient(doc);
+  let latest = 0;
+  context.watchState('__proto__', value => { latest = value.value; });
+
+  context.State.__proto__.value = 2;
+  assert(latest === 2, '__proto__ state key notifies its watcher');
+  assert(Object.getPrototypeOf(doc._globalState) === null, 'server state registry has no mutable prototype');
+  assert(Object.prototype.value === undefined, 'global object prototype is not polluted');
+});
+
+/* ---- watcher lifecycle and cleanup ---- */
+test('watchState returns an idempotent unsubscribe function', () => {
+  const doc = new Document();
+  doc.states({ count: 0 });
+  const context = runClient(doc);
+  let firstCalls = 0;
+  let secondCalls = 0;
+  let stopFirst;
+  stopFirst = context.watchState('count', () => {
+    firstCalls++;
+    stopFirst();
+  });
+  const stopSecond = context.watchState('count', () => { secondCalls++; });
+
+  context.State.count = 1;
+  context.State.count = 2;
+  stopFirst();
+  stopSecond();
+  stopSecond();
+  context.State.count = 3;
+
+  assert(firstCalls === 1, 'watcher can unsubscribe during notification');
+  assert(secondCalls === 2, 'other watchers retain stable notification order');
+});
+
+test('removed binding targets are disposed by MutationObserver', () => {
+  const doc = new Document();
+  doc.states({ count: 0 });
+  const output = doc.span().bind('count', value => String(value));
+  const outputId = output.attrs.id;
+  const element = { textContent: '' };
+  let currentElement = element;
+  let lookups = 0;
+  let observer = null;
+
+  class TestMutationObserver {
+    constructor(callback) { this.callback = callback; observer = this; }
+    observe() {}
+    disconnect() {}
+  }
+
+  const context = runClient(
+    doc,
+    id => {
+      if (id !== outputId) return null;
+      lookups++;
+      return currentElement;
+    },
+    { MutationObserver: TestMutationObserver }
+  );
+
+  assert(element.textContent === '0', 'binding initializes before cleanup');
+  currentElement = null;
+  observer.callback();
+  const lookupsAfterCleanup = lookups;
+  context.State.count = 1;
+
+  assert(lookups === lookupsAfterCleanup, 'disposed binding is not queried on later state changes');
+});
+
+test('missing targets self-dispose without MutationObserver', () => {
+  const doc = new Document();
+  doc.states({ count: 0 });
+  const output = doc.span().bind('count', value => String(value));
+  const outputId = output.attrs.id;
+  let currentElement = { textContent: '' };
+  let lookups = 0;
+  const context = runClient(doc, id => {
+    if (id !== outputId) return null;
+    lookups++;
+    return currentElement;
+  });
+
+  currentElement = null;
+  context.State.count = 1;
+  const lookupsAfterCleanup = lookups;
+  context.State.count = 2;
+
+  assert(lookups === lookupsAfterCleanup, 'fallback cleanup stops later target queries');
+});
+
+test('removed liveList containers dispose every state watcher', () => {
+  const doc = new Document();
+  doc.states({ items: [], view: 'all' });
+  const list = doc.liveList('items', item => ({ tag: 'span', text: item }), {
+    filter: () => true,
+    filterKeys: ['view'],
+  });
+  const listId = list.attrs.id;
+  const container = {
+    firstChild: null,
+    removeChild: () => {},
+    appendChild: () => {},
+  };
+  let currentContainer = container;
+  let lookups = 0;
+  let observer = null;
+
+  class TestMutationObserver {
+    constructor(callback) { this.callback = callback; observer = this; }
+    observe() {}
+    disconnect() {}
+  }
+
+  const context = runClient(
+    doc,
+    id => {
+      if (id !== listId) return null;
+      lookups++;
+      return currentContainer;
+    },
+    {
+      MutationObserver: TestMutationObserver,
+      document: {
+        createElement: () => ({}),
+        createTextNode: value => ({ textContent: value }),
+      },
+    },
+    true
+  );
+
+  currentContainer = null;
+  observer.callback();
+  const lookupsAfterCleanup = lookups;
+  context.State.items.push('new');
+  context.State.view = 'done';
+
+  assert(lookups === lookupsAfterCleanup, 'all liveList watchers stop after container removal');
+});
+
+/* ---- element lifecycle ---- */
+test('element lifecycle runs mount, update, cleanup, and destroy in order', () => {
+  const doc = new Document();
+  doc.states({ profile: { name: 'Ada' }, other: 1 });
+  const elementDef = doc.div()
+    .onMount(function (state) {
+      this.order.push('mount-1');
+      this.mountedWith = state.profile.name;
+      return function () { this.order.push('cleanup-1'); };
+    })
+    .onMount(function () {
+      this.order.push('mount-2');
+      return function () { this.order.push('cleanup-2'); };
+    })
+    .onUpdate('profile', function (profile, state) {
+      this.order.push('update-' + profile.name);
+      this.otherValue = state.other;
+    })
+    .onDestroy(function () { this.order.push('destroy-1'); })
+    .onDestroy(function () { this.order.push('destroy-2'); });
+  const elementId = elementDef.attrs.id;
+  const element = { order: [] };
+  let currentElement = element;
+  let observer = null;
+
+  class TestMutationObserver {
+    constructor(callback) { this.callback = callback; observer = this; }
+    observe() {}
+    disconnect() {}
+  }
+
+  const context = runClient(
+    doc,
+    id => id === elementId ? currentElement : null,
+    { MutationObserver: TestMutationObserver }
+  );
+
+  assert(element.mountedWith === 'Ada', 'mount receives complete State and DOM this');
+  assert(element.order.join(',') === 'mount-1,mount-2', 'mount hooks run once in registration order');
+
+  context.State.profile.name = 'Grace';
+  assert(element.otherValue === 1, 'update receives changed value and complete State');
+  assert(element.order[2] === 'update-Grace', 'update runs only after state changes');
+
+  currentElement = null;
+  observer.callback();
+  assert(
+    element.order.join(',') === 'mount-1,mount-2,update-Grace,cleanup-2,cleanup-1,destroy-1,destroy-2',
+    'mount cleanups run in reverse order before destroy hooks'
+  );
+
+  context.State.profile.name = 'Ignored';
+  observer.callback();
+  assert(element.order.length === 7, 'destroy and update hooks do not run again');
+});
+
+test('onUpdate self-disposes when its element disappears without MutationObserver', () => {
+  const doc = new Document();
+  doc.states({ count: 0 });
+  const elementDef = doc.div().onUpdate('count', function (count) { this.count = count; });
+  const elementId = elementDef.attrs.id;
+  const element = {};
+  let currentElement = element;
+  let lookups = 0;
+  const context = runClient(doc, id => {
+    if (id !== elementId) return null;
+    lookups++;
+    return currentElement;
+  });
+
+  currentElement = null;
+  context.State.count = 1;
+  const lookupsAfterCleanup = lookups;
+  context.State.count = 2;
+
+  assert(lookups === lookupsAfterCleanup, 'missing lifecycle target removes update watcher');
+});
+
+test('clone and JSON round-trip preserve lifecycle hooks', () => {
+  const doc = new Document();
+  const original = doc.div().onMount(function () { this.lifecycleMarker = 'mounted'; });
+  const clone = original.clone();
+  doc.body.push(clone);
+  const cloneId = clone.attrs.id;
+
+  assert(clone._lifecycle.length === 1, 'clone preserves lifecycle hook');
+  assert(clone._lifecycle[0].id === cloneId, 'cloned lifecycle hook uses cloned element id');
+
+  const json = doc.toJSON();
+  const restored = new Document().fromJSON(json);
+  const html = restored.render();
+  assert(html.includes("this.lifecycleMarker = 'mounted'"), 'JSON round-trip preserves lifecycle source');
+});
+
+test('lifecycle hooks use event sanitizer and pooled elements reset hooks', () => {
+  const doc = new Document();
+  const unsafe = doc.div().onMount(function () { this.innerHTML = '<b>unsafe</b>'; });
+  assert(unsafe._lifecycle.length === 0, 'unsafe lifecycle hook is rejected');
+
+  const marker = 'uniqueLifecyclePoolMarker';
+  doc.div().onMount(function () { this.uniqueLifecyclePoolMarker = true; });
+  doc.render();
+
+  const next = new Document();
+  next.div().text('clean');
+  const html = next.render();
+  assert(!html.includes(marker), 'pooled element does not retain lifecycle hooks');
 });
 
 /* ---- security: bindInput stateKey escaping ---- */
