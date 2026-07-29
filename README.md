@@ -135,6 +135,7 @@ res.send(doc.render());
 
 ## Table of Contents
 
+- [Feature Guide & Parameter Conventions](#feature-guide--parameter-conventions)
 - [Document API](#document-api)
 - [Element API](#element-api)
 - [Components](#components)
@@ -148,6 +149,33 @@ res.send(doc.render());
 - [Benchmarks](#benchmarks)
 - [Contributing](#contributing)
 - [Exports](#exports)
+
+---
+
+## Feature Guide & Parameter Conventions
+
+Use the smallest feature that matches the page:
+
+| Need | Feature | What it does |
+|------|---------|--------------|
+| A complete HTML page | `new Document()` or `page()` | Builds and renders the document on the server |
+| Reusable UI | Components | Reuses server-side element-building functions |
+| Data/config-driven markup | `build()` or `.bhtml` templates | Turns plain objects or template source into elements |
+| Browser updates without a framework | `states()` plus bindings/events | Compiles state, DOM updates, and event listeners into the page |
+| A reactive array | `liveList()` | Server-renders the initial list and re-renders it when watched state changes |
+| SPA navigation | `hashRouter()` or `historyRouter()` | Synchronizes the URL with reactive route state |
+| Repeated Express responses | `createCachedRenderer()` | Caches rendered HTML and coalesces concurrent cache misses |
+| Faster initial response | `renderStream()` | Streams the document head before the body |
+
+Parameter conventions used throughout this guide:
+
+- A parameter ending in `?` is optional. Defaults are shown in the nearby table.
+- Most document and element methods are chainable. Creation methods such as `doc.div()` return the new `Element`; configuration methods generally return the object they modify.
+- `rules` means a JavaScript object of CSS properties, using camelCase or CSS property names.
+- `attrs` means an HTML attribute object. Text and attribute values are escaped by default.
+- Event handlers, computed bindings, lifecycle hooks, and `oncreate()` are serialized and run in the browser. They can use their arguments, `this`, browser globals, and `State`, but not server-side closure variables.
+- State values must be JSON-serializable.
+- Methods named `raw*`, `html()`, `inlineScript()`, and `inlineStyle()` accept trusted raw content and bypass normal text escaping.
 
 ---
 
@@ -174,6 +202,22 @@ new Document({
   nonce: 'abc123'    // CSP nonce for inline scripts/styles
 })
 ```
+
+| Option | Type | Default | What it does |
+|--------|------|---------|--------------|
+| `cache` | `boolean` | `false` | Enables the document render cache |
+| `cacheKey` | `string` | none | Identifies the cached render; document caching only takes effect when this and `cache` are both set |
+| `nonce` | `string` | none | Adds the CSP nonce to generated inline scripts and styles |
+
+`page(title, options)` is the batteries-included factory. In addition to the constructor options above, it accepts:
+
+| Option | Type | Default | What it does |
+|--------|------|---------|--------------|
+| `lang` | `string` | `'en'` | Sets the root `<html lang>` attribute |
+| `viewport` | `boolean` | `true` | Set to `false` to omit the standard responsive viewport meta tag |
+| `resetCss` | `boolean` | `true` | Includes the built-in CSS reset |
+
+Use `new Document()` when you want to choose every head setting yourself. Use `page()` for the normal title, viewport, language, and reset setup in one call.
 
 ### Head & Meta
 
@@ -305,6 +349,17 @@ buildhtml compiles reactive SPAs entirely server-side — no raw client JS neede
 
 `liveList` — `itemFn(item, index)` must return a **NodeDef plain object** (tag, css, children, on, attrs, text). The server renders the initial list; the client re-renders whenever `State[stateKey]` changes. Children support an `if` key for conditional rendering — both server and client skip the node when `if` is falsy.
 
+#### `liveList` parameters
+
+| Parameter | Type | What it does |
+|-----------|------|--------------|
+| `stateKey` | `string` | Names the state array to render and watch |
+| `itemFn` | `(item, index) => NodeDef` | Creates one plain-object node definition for each item |
+| `options.filter` | `(item, State) => boolean` | Optionally includes only items for which the browser callback returns truthy |
+| `options.filterKeys` | `string[]` | Additional state keys that cause the list to filter and render again |
+
+The method returns the list container `Element`, so container styles, classes, and attributes can be chained onto it. Common `NodeDef` keys include `tag`, `text`, `html`, `attrs`, `css`, `class`, `data`, `on`, `children`, and `if`.
+
 ```javascript
 doc.states({ tasks: [{ id: 1, title: 'Buy milk', done: false }], view: 'all' });
 
@@ -336,6 +391,23 @@ list.css({ display: 'flex', flexDirection: 'column' });
 ```
 
 `hashRouter` — maps `#all` → `State.view = 'all'` and optionally applies active/inactive styles to nav links:
+
+#### Router parameters
+
+| Option | Hash default | History default | What it does |
+|--------|--------------|-----------------|--------------|
+| `stateKey` | `'view'` | `'view'` | State key receiving the matched route value |
+| `default` | `'all'` | `'/'` | Route used when the hash or path is empty |
+| `routes` | none | none | Object mapping literal or `:parameter` patterns to state values; `'*'` is the fallback |
+| `paramsKey` | `'routeParams'` | `'routeParams'` | State key receiving captured route parameters |
+| `notFound` | `'not-found'` | `'not-found'` | Value used when no route and no `'*'` entry matches |
+| `navSelector` | none | none | CSS selector for links that receive active/inactive styles |
+| `activeStyle` | none | none | CSS rules applied to the active navigation link |
+| `inactiveStyle` | none | none | CSS rules applied to inactive navigation links |
+| `base` | n/a | `'/'` | URL prefix removed before matching history routes |
+| `linkSelector` | n/a | `'a[data-route]'` | Opt-in links intercepted for client-side history navigation |
+
+Both methods return the `Document` for chaining. The history router only intercepts eligible, unmodified, same-origin link clicks; other links continue through normal browser navigation.
 
 ```javascript
 doc.hashRouter({
@@ -1456,6 +1528,16 @@ app.set('view engine', 'bhtml');
 // Then: res.render('home', { name: 'World', items: [1, 2, 3] });
 ```
 
+| Function | Parameters | Returns | Use it when |
+|----------|------------|---------|-------------|
+| `compileTemplate(source, variables?)` | template string, interpolation/condition/loop values | `Document` | You need to modify the compiled document before rendering |
+| `renderTemplate(source, variables?)` | template string, values | HTML `string` | You want rendered HTML directly |
+| `compileFile(path, variables?)` | `.bhtml` path, values | `Document` | You need a modifiable document from a template file |
+| `renderFile(path, variables?)` | `.bhtml` path, values | HTML `string` | You want to render a file directly |
+| `templateEngine(path, options, callback)` | supplied by Express | callback result | You are registering `.bhtml` as an Express view engine |
+
+`variables` supplies values used by `#{...}`, `?if`, and `?each`. The direct file helpers read and compile synchronously; the Express adapter follows the view-engine callback contract.
+
 ---
 
 ## State & Events
@@ -1500,6 +1582,22 @@ doc.input('text').bindInput('name');  // State.name ↔ input.value
 doc.button('+1').onClick(function() { State.count++; });
 doc.button('Toggle').onClick(function() { State.open = !State.open; });
 ```
+
+#### Binding and event parameters
+
+| Method | Browser callback arguments | Result |
+|--------|----------------------------|--------|
+| `bind(key, fn?)` | `(value, State)` | Sets text content; without `fn`, uses the state value |
+| `bindShow(key, fn?)` | `(value, State)` | Shows or hides the element from the callback truthiness |
+| `bindClass(key, fn)` | `(value, State)` | Replaces the computed class value |
+| `bindAttr(key, name, fn)` | `(value, State)` | Sets the named attribute; return `null`/`undefined` to remove it |
+| `bindStyle(key, fn)` | `(value, State)` | Applies the returned CSS rules object |
+| `bindProp(key, name, fn?)` | `(value, State)` | Assigns a DOM property such as `value` or `checked` |
+| `bindInput(key)` | none | Two-way synchronization between the control value and `State[key]` |
+| `on(event, fn)` | browser `Event`; `this` is the element | Adds an event listener; shortcuts include `onClick`, `onInput`, and `onSubmit` |
+| `bindState(key, fn)` | `(value, State)` | Runs a custom browser-side state watcher |
+
+Bindings apply the initial value when the page starts and then react to later changes. `onUpdate(key, fn)` is intentionally different: it receives `(value, State)` only after the key changes.
 
 Objects and arrays are reactive at every nested level. For example, `State.user.name = 'Grace'`, `State.tasks.push(task)`, and `delete State.settings.compact` notify bindings watching `user`, `tasks`, and `settings` respectively.
 
@@ -1628,6 +1726,25 @@ app.get('/about', createCachedRenderer(
   'about-page'
 ));
 ```
+
+`createCachedRenderer(builderFn, cacheKeyOrFn, options?)` returns Express middleware.
+
+| Parameter | Type | What it does |
+|-----------|------|--------------|
+| `builderFn` | `(req) => Document \| Promise<Document>` | Builds the page on a cache miss |
+| `cacheKeyOrFn` | `string \| (req) => string` | Selects the cache entry; return `null` or `''` to skip caching for that request |
+| `options.nonce` | `(req) => string` | Supplies a per-build CSP nonce before rendering |
+
+Concurrent misses for the same key share one build. Cached values are complete HTML strings and use the configured LRU cache limit. Include every response-changing input in a dynamic cache key, especially locale, permissions, or user identity:
+
+```javascript
+app.get('/dashboard', createCachedRenderer(
+  (req) => buildDashboard(req.user),
+  (req) => 'dashboard:' + req.user.id
+));
+```
+
+Do not use one shared key for personalized HTML.
 
 ### Template View Engine
 
