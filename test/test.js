@@ -1,6 +1,7 @@
 'use strict';
 
 const { Document, components } = require('../index');
+const vm = require('vm');
 
 let passed = 0;
 let failed = 0;
@@ -496,6 +497,170 @@ test('hashRouter uses JSON.stringify for stateKey — no JS injection', () => {
   // stateKey should be JSON-encoded, not bare — State["my.key"]=h not State.my.key=h
   assert(html.includes('State["my.key"]='), 'stateKey JSON-stringified in hashRouter');
   assert(!html.includes('State.my.key='), 'bare dot-notation stateKey not present');
+});
+
+test('hashRouter matches route parameters and handles not-found routes', () => {
+  const { compileHashRouter } = require('../lib/live');
+  const doc = new Document();
+  compileHashRouter(doc, {
+    stateKey: 'view',
+    paramsKey: 'params',
+    default: 'home',
+    routes: {
+      home: 'home',
+      'users/:id': 'user',
+    },
+    notFound: 'missing',
+  });
+
+  const listeners = {};
+  const context = {
+    State: {},
+    location: { hash: '' },
+    document: { querySelectorAll: () => [] },
+    window: { addEventListener: (event, fn) => { listeners[event] = fn; } },
+  };
+  vm.runInNewContext(doc._inlineScripts[0], context);
+
+  assert(context.State.view === 'home', 'empty hash matches the configured default route');
+
+  context.location.hash = '#users/alice%20smith';
+  listeners.hashchange();
+  assert(context.State.view === 'user', 'route pattern maps to configured state value');
+  assert(context.State.params.id === 'alice smith', 'named route parameter is decoded');
+
+  context.location.hash = '#unknown/path';
+  listeners.hashchange();
+  assert(context.State.view === 'missing', 'unmatched route uses configured not-found state');
+  assert(Object.keys(context.State.params).length === 0, 'unmatched route clears stale parameters');
+});
+
+test('hashRouter wildcard route overrides the default not-found value', () => {
+  const { compileHashRouter } = require('../lib/live');
+  const doc = new Document();
+  compileHashRouter(doc, {
+    routes: { all: 'all', '*': '404' },
+  });
+
+  const context = {
+    State: {},
+    location: { hash: '#does-not-exist' },
+    document: { querySelectorAll: () => [] },
+    window: { addEventListener: () => {} },
+  };
+  vm.runInNewContext(doc._inlineScripts[0], context);
+
+  assert(context.State.view === '404', 'wildcard route supplies unmatched state value');
+});
+
+test('historyRouter handles route parameters, links, base paths, and popstate', () => {
+  const { compileHistoryRouter } = require('../index');
+  assert(typeof compileHistoryRouter === 'function', 'compileHistoryRouter is exported');
+
+  const doc = new Document();
+  doc.historyRouter({
+    stateKey: 'view',
+    paramsKey: 'params',
+    base: '/app',
+    routes: {
+      '/': 'home',
+      '/users/:id': 'user',
+      '/about': 'about',
+      '*': 'missing',
+    },
+  });
+
+  const windowListeners = {};
+  const documentListeners = {};
+  const location = {
+    pathname: '/app/users/alice%20smith',
+    origin: 'https://example.test',
+    href: 'https://example.test/app/users/alice%20smith',
+  };
+  let pushedUrl = null;
+  const context = {
+    URL,
+    State: {},
+    location,
+    history: {
+      pushState: (_state, _title, url) => {
+        pushedUrl = url;
+        const parsed = new URL(url, location.href);
+        location.pathname = parsed.pathname;
+        location.href = parsed.href;
+      },
+    },
+    window: { addEventListener: (event, fn) => { windowListeners[event] = fn; } },
+    document: {
+      addEventListener: (event, fn) => { documentListeners[event] = fn; },
+      querySelectorAll: () => [],
+    },
+  };
+  vm.runInNewContext(doc._inlineScripts[0], context);
+
+  assert(context.State.view === 'user', 'initial history path maps to configured state value');
+  assert(context.State.params.id === 'alice smith', 'history route parameter is decoded');
+
+  const anchor = {
+    href: 'https://example.test/app/about?from=user',
+    target: '',
+    hasAttribute: () => false,
+  };
+  let prevented = false;
+  documentListeners.click({
+    button: 0,
+    target: { closest: () => anchor },
+    preventDefault: () => { prevented = true; },
+  });
+
+  assert(prevented, 'opted-in same-origin link prevents a full page load');
+  assert(pushedUrl === '/app/about?from=user', 'history navigation preserves query strings');
+  assert(context.State.view === 'about', 'pushed history path updates router state');
+
+  location.pathname = '/app/';
+  location.href = 'https://example.test/app/';
+  windowListeners.popstate();
+  assert(context.State.view === 'home', 'popstate updates router state');
+  assert(Object.keys(context.State.params).length === 0, 'popstate clears stale parameters');
+});
+
+test('historyRouter ignores external links and supports raw path state', () => {
+  const doc = new Document();
+  doc.historyRouter();
+
+  const documentListeners = {};
+  const context = {
+    URL,
+    State: {},
+    location: {
+      pathname: '/dashboard',
+      origin: 'https://example.test',
+      href: 'https://example.test/dashboard',
+    },
+    history: { pushState: () => { throw new Error('external link must not be pushed'); } },
+    window: { addEventListener: () => {} },
+    document: {
+      addEventListener: (event, fn) => { documentListeners[event] = fn; },
+      querySelectorAll: () => [],
+    },
+  };
+  vm.runInNewContext(doc._inlineScripts[0], context);
+
+  assert(context.State.view === '/dashboard', 'historyRouter without routes stores the raw path');
+
+  let prevented = false;
+  documentListeners.click({
+    button: 0,
+    target: {
+      closest: () => ({
+        href: 'https://external.test/page',
+        target: '',
+        hasAttribute: () => false,
+      }),
+    },
+    preventDefault: () => { prevented = true; },
+  });
+  assert(!prevented, 'external links retain normal browser navigation');
 });
 
 test('nodeDefToHtml filters on* attributes from liveList NodeDef attrs', () => {

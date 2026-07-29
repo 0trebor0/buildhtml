@@ -54,7 +54,7 @@ export declare const metrics: Metrics;
 
 // ─── Components ──────────────────────────────────────────────────────────────
 
-export type ComponentFn = (el: Element, props: Record<string, any>, children?: any) => void;
+export type ComponentFn<TProps = Record<string, any>> = (el: Element, props: TProps, children?: any) => void;
 
 export interface ComponentOptions {
   tag?: string;
@@ -62,12 +62,12 @@ export interface ComponentOptions {
 }
 
 export interface ComponentRegistry {
-  register(name: string, fn: ComponentFn, options?: ComponentOptions): ComponentRegistry;
-  get(name: string): { fn: ComponentFn; options: ComponentOptions };
+  register<TProps = Record<string, any>>(name: string, fn: ComponentFn<TProps>, options?: ComponentOptions): ComponentRegistry;
+  get(name: string): { fn: ComponentFn<any>; options: ComponentOptions };
   has(name: string): boolean;
   unregister(name: string): ComponentRegistry;
   list(): string[];
-  extend(newName: string, baseName: string, extendFn: ComponentFn, options?: ComponentOptions): ComponentRegistry;
+  extend<TProps = Record<string, any>>(newName: string, baseName: string, extendFn: ComponentFn<TProps>, options?: ComponentOptions): ComponentRegistry;
   clear(): void;
 }
 
@@ -100,22 +100,26 @@ export interface ScriptAttrs {
 
 export declare class Head {
   title: string;
+  charset: string;
   metas: MetaAttrs[];
   links: string[];
+  rawLinks: string[];
   styles: string[];
   scripts: string[];
   globalStyles: string[];
   classStyles: Record<string, string>;
-  setTitle(t: string): void;
-  setCharset(c: string): void;
-  setNonce(nonce: string): void;
-  addMeta(attrs: MetaAttrs): void;
-  addLink(href: string): void;
-  addStyle(css: string): void;
-  addScript(src: string): void;
-  addRawLink(html: string): void;
-  globalCss(selector: string, rules: CSSRules): void;
-  addClass(name: string, rules: CSSRules): void;
+  nonce: string | null;
+  setTitle(t: string): Head;
+  setCharset(c: string): Head;
+  setNonce(nonce: string): Head;
+  addMeta(attrs: MetaAttrs): Head;
+  addLink(href: string): Head;
+  addStyle(css: string): Head;
+  addScript(src: string): Head;
+  addRawLink(html: string): Head;
+  globalCss(selector: string, rules: CSSRules): Head;
+  addClass(name: string, rules: CSSRules): Head;
+  hasStyles(): boolean;
   render(): string;
 }
 
@@ -367,6 +371,9 @@ export declare class Element implements SharedShortcuts<Element> {
   computed(fn: () => any): Element;
   on(event: string, fn: (e: Event) => void): Element;
   bindState(target: Element, event: string, fn: (e: Event) => void): Element;
+  onMount(fn: (this: HTMLElement, state: Record<string, any>) => void | (() => void)): Element;
+  onUpdate(stateKey: string, fn: (this: HTMLElement, value: any, state: Record<string, any>) => void): Element;
+  onDestroy(fn: (this: HTMLElement, state: Record<string, any>) => void): Element;
 
   // Event shorthands
   onClick(fn: (e: MouseEvent) => void): Element;
@@ -411,7 +418,7 @@ export declare class Element implements SharedShortcuts<Element> {
 
   // Component system
   component(name: string, props?: Record<string, any>, overrides?: ComponentOptions): Element;
-  use(fn: ComponentFn, props?: Record<string, any>, tag?: string): Element;
+  use<TProps = Record<string, any>>(fn: ComponentFn<TProps>, props?: TProps, tag?: string): Element;
 
   // SPA compilation
   liveList(stateKey: string, itemFn: (item: any, index: number) => NodeDef, options?: LiveListOptions): Element;
@@ -528,6 +535,15 @@ export interface NodeDef {
   aria?: Record<string, string>;
   css?: CSSRules;
   on?: Record<string, (e: Event) => void>;
+  onMount?: (this: HTMLElement, state: Record<string, any>) => void | (() => void);
+  onUpdate?: {
+    key: string;
+    fn: (this: HTMLElement, value: any, state: Record<string, any>) => void;
+  } | Array<{
+    key: string;
+    fn: (this: HTMLElement, value: any, state: Record<string, any>) => void;
+  }>;
+  onDestroy?: (this: HTMLElement, state: Record<string, any>) => void;
   bind?: BindDescriptor | BindDescriptor[];
   liveList?: LiveListNodeDef;
   children?: NodeDef[];
@@ -632,7 +648,7 @@ export declare class Document implements SharedShortcuts<Document> {
 
   // Component system
   component(name: string, props?: Record<string, any>, overrides?: ComponentOptions): Element;
-  use(fn: ComponentFn, props?: Record<string, any>, tag?: string): Element;
+  use<TProps = Record<string, any>>(fn: ComponentFn<TProps>, props?: TProps, tag?: string): Element;
   useFragment(fn: (doc: Document) => void): Document;
 
   // Declarative builder
@@ -641,6 +657,7 @@ export declare class Document implements SharedShortcuts<Document> {
   // SPA compilation
   liveList(stateKey: string, itemFn: (item: any, index: number) => NodeDef, options?: LiveListOptions): Element;
   hashRouter(options?: HashRouterOptions): Document;
+  historyRouter(options?: HistoryRouterOptions): Document;
 
   // Utility APIs
   comment(text: string): Document;
@@ -736,17 +753,94 @@ export interface TemplateEngineOptions {
   cache?: boolean;
 }
 
-export declare class TemplateParser {
-  constructor(options?: TemplateEngineOptions);
-  parse(source: string): (doc: Document) => void;
+export type TemplateAttributeValue = string | boolean;
+
+export interface TemplateHeadNode {
+  title: string | null;
+  metas: Array<Record<string, TemplateAttributeValue>>;
+  links: string[];
+  scripts: string[];
+  viewport: boolean;
 }
 
-export declare function parseTemplate(source: string): (doc: Document) => void;
-export declare function renderTemplate(source: string, vars?: Record<string, any>, options?: DocumentOptions): string;
-export declare function compileTemplate(source: string): (vars?: Record<string, any>, options?: DocumentOptions) => string;
-export declare function renderFile(filePath: string, vars?: Record<string, any>, options?: DocumentOptions): Promise<string>;
-export declare function compileFile(filePath: string): Promise<(vars?: Record<string, any>, options?: DocumentOptions) => string>;
-export declare function templateEngine(options?: TemplateEngineOptions): (filePath: string, options: Record<string, any>, callback: (err: Error | null, html?: string) => void) => void;
+export type TemplateGlobalNode =
+  | { type: 'reset' }
+  | { type: 'globalStyle'; selector: string; css: CSSRules }
+  | { type: 'sharedClass'; name: string; css: CSSRules };
+
+export interface TemplateElementNode {
+  type: 'element';
+  tag: string;
+  id: string | null;
+  classes: string[];
+  attrs: Record<string, TemplateAttributeValue>;
+  css: CSSRules;
+  text: string | null;
+  rawHtml: string | null;
+  events: Record<string, TemplateAttributeValue>;
+  bind: TemplateAttributeValue | null;
+  bindFn: TemplateAttributeValue | null;
+  dataAttrs: Record<string, TemplateAttributeValue>;
+  children: TemplateNode[];
+}
+
+export interface TemplateComponentNode {
+  type: 'component';
+  name: string | null;
+  props: Record<string, TemplateAttributeValue>;
+  children: TemplateNode[];
+}
+
+export interface TemplateConditionalNode {
+  type: 'conditional';
+  condition: string;
+  trueBranch: TemplateNode[];
+  falseBranch: TemplateNode[];
+}
+
+export interface TemplateLoopNode {
+  type: 'loop';
+  itemVar: string;
+  indexVar: string | null;
+  source: string;
+  children: TemplateNode[];
+}
+
+export interface TemplateErrorNode {
+  type: 'error';
+  message: string;
+}
+
+export type TemplateNode =
+  | TemplateElementNode
+  | TemplateComponentNode
+  | TemplateConditionalNode
+  | TemplateLoopNode
+  | TemplateErrorNode;
+
+export interface TemplateAST {
+  type: 'document';
+  head: TemplateHeadNode | null;
+  globals: Array<TemplateGlobalNode | null>;
+  body: TemplateNode[];
+}
+
+export declare class TemplateParser {
+  constructor(options?: TemplateEngineOptions);
+  parse(source: string, variables?: Record<string, any>): TemplateAST;
+  compile(source: string, variables?: Record<string, any>): Document;
+}
+
+export declare function parseTemplate(source: string, variables?: Record<string, any>): TemplateAST;
+export declare function renderTemplate(source: string, variables?: Record<string, any>): string;
+export declare function compileTemplate(source: string, variables?: Record<string, any>): Document;
+export declare function renderFile(filePath: string, variables?: Record<string, any>): string;
+export declare function compileFile(filePath: string, variables?: Record<string, any>): Document;
+export declare function templateEngine(
+  filePath: string,
+  options: Record<string, any>,
+  callback: (err: Error | null, html?: string) => void
+): void;
 
 // ─── Middleware ───────────────────────────────────────────────────────────────
 
@@ -792,12 +886,27 @@ export interface HashRouterOptions {
   stateKey?: string;
   /** Hash value used when location.hash is empty (default: 'all'). */
   default?: string;
+  /** Optional route patterns mapped to state values (e.g. { 'users/:id': 'user', '*': 'not-found' }). */
+  routes?: Record<string, string>;
+  /** State key populated with named route parameters (default: 'routeParams'). */
+  paramsKey?: string;
+  /** State value used when no route pattern matches and no '*' route exists (default: 'not-found'). */
+  notFound?: string;
   /** CSS selector for nav links to highlight (e.g. 'header a'). */
   navSelector?: string;
   /** Inline styles applied to the active nav link. */
   activeStyle?: Record<string, string>;
   /** Inline styles applied to inactive nav links. */
   inactiveStyle?: Record<string, string>;
+}
+
+export interface HistoryRouterOptions extends HashRouterOptions {
+  /** Path used when the application path is empty after removing base (default: '/'). */
+  default?: string;
+  /** Path prefix removed before route matching (default: '/'). */
+  base?: string;
+  /** Selector for same-origin links handled without a page reload (default: 'a[data-route]'). */
+  linkSelector?: string;
 }
 
 export declare function compileLiveList(
@@ -809,6 +918,7 @@ export declare function compileLiveList(
 ): Element;
 
 export declare function compileHashRouter(doc: Document, options?: HashRouterOptions): Document;
+export declare function compileHistoryRouter(doc: Document, options?: HistoryRouterOptions): Document;
 
 // ─── Top-level helpers ────────────────────────────────────────────────────────
 
@@ -821,10 +931,14 @@ export declare const renderJSON: typeof renderFromJSON;
 
 export declare function resetPools(): void;
 
-export declare const responseCache: {
-  get(key: string): string | undefined;
-  set(key: string, value: string): void;
-  delete(key: string): void;
-  clear(): void;
+export interface ResponseCache {
+  readonly limit: number;
   readonly size: number;
-};
+  get(key: string): string | null;
+  set(key: string, value: string): void;
+  delete(key: string): boolean;
+  clear(): void;
+  has(key: string): boolean;
+}
+
+export declare const responseCache: ResponseCache;

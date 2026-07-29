@@ -14,20 +14,28 @@
 import {
   Document,
   Element,
+  Head,
   page,
   renderFromJSON,
+  parseTemplate,
+  renderTemplate,
+  compileTemplate,
   components,
   configure,
   getCacheStats,
+  responseCache,
   type CSSRules,
   type PageDef,
   type ComponentFn,
   type SelectOption,
+  type TemplateAST,
 } from '@trebor/buildhtml';
 
 // ─── 1. Basic page ────────────────────────────────────────────────────────────
 
 const doc: Document = page('Home', { lang: 'en' });
+const typedHead: Head = new Head().setTitle('Typed head').setCharset('UTF-8');
+console.log(typedHead.hasStyles(), responseCache.has('missing'), responseCache.get('missing'));
 
 doc.resetCss();
 doc.cssVars({ primaryColor: '#3b82f6', fontBase: '16px' });
@@ -39,6 +47,11 @@ hero.p('Built with full type safety.');
 const html: string = doc.render();
 console.log('--- Basic page ---');
 console.log(html.slice(0, 200) + '...\n');
+
+const templateAst: TemplateAST = parseTemplate('h1 "Typed template"');
+const templateHtml: string = renderTemplate('h1 "Typed template"');
+const templateDocument: Document = compileTemplate('h1 "Typed template"');
+console.log(templateAst.type, templateHtml.length, templateDocument.isEmpty());
 
 // ─── 2. Layout helpers ────────────────────────────────────────────────────────
 
@@ -72,6 +85,18 @@ doc3.state('count', 0);
 const counter: Element = doc3.div().css({ textAlign: 'center', padding: '40px' } as CSSRules);
 
 counter.h1().text('Counter').css({ marginBottom: '16px' } as CSSRules);
+counter
+  .onMount(function (state) {
+    this.dataset.initialCount = String(state.count);
+    return () => { this.dataset.disposed = 'true'; };
+  })
+  .onUpdate('count', function (value: number, state) {
+    this.dataset.currentCount = String(value);
+    this.dataset.stateCount = String(state.count);
+  })
+  .onDestroy(function (state) {
+    console.log('Counter removed at', state.count);
+  });
 
 counter
   .div()
@@ -89,6 +114,15 @@ controls
   .button('+')
   .onClick(() => { (window as any).State.count++; })
   .css({ padding: '8px 20px' } as CSSRules);
+
+doc3.historyRouter({
+  base: '/app',
+  routes: {
+    '/': 'counter',
+    '/settings': 'settings',
+    '*': 'not-found',
+  },
+});
 
 console.log('--- Counter page rendered ---\n');
 doc3.render();
@@ -128,7 +162,7 @@ interface CardProps {
   accent?: string;
 }
 
-const Card: ComponentFn = (el: Element, { title, body, accent = '#3b82f6' }: CardProps) => {
+const Card: ComponentFn<CardProps> = (el: Element, { title, body, accent = '#3b82f6' }) => {
   el.css({
     border: '1px solid #e5e7eb',
     borderRadius: '8px',

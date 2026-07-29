@@ -1,6 +1,6 @@
 # @trebor/buildhtml
 
-**Server-side HTML compiler for Node.js. Describe your page with a JS API — reactive state, events, and DOM bindings compile automatically into a single `<script>`. Zero dependencies, zero client framework, zero template files.**
+**Server-side HTML compiler for Node.js. Describe your page with a JS API — reactive state, events, and DOM bindings compile automatically into a small client runtime. Zero dependencies and zero client framework.**
 
 ---
 
@@ -106,7 +106,7 @@ doc.liveList('users', function(u) {
 });
 
 res.send(doc.render());
-// ↑ Full HTML page + one compiled <script>. XSS-safe. CSP-ready.
+// ↑ Full HTML page + compiled client runtime. XSS-safe and CSP nonce-ready.
 // Type in the input — the list filters. Zero client JS written.
 ```
 
@@ -114,11 +114,11 @@ res.send(doc.render());
 
 ## Features
 
-- **Reactive bindings** — `bind`, `bindShow`, `bindClass`, `bindAttr`, `bindStyle`, `bindProp`, `bindInput` all compile to `addEventListener` + a `State` Proxy
+- **Deep reactive bindings** — `bind`, `bindShow`, `bindClass`, `bindAttr`, `bindStyle`, `bindProp`, and `bindInput` react to top-level assignments, nested changes, array mutations, and deletions
 - **Reactive lists** — `liveList(stateKey, itemFn)` server-renders the initial list and re-renders it client-side whenever state changes
 - **Components** — register named components or pass functions directly; supports inheritance and deep nesting
 - **Declarative builder** — `doc.build({...})` for JSON-driven pages, config files, and serialized templates
-- **Hash router** — `doc.hashRouter()` maps `location.hash` to a state key and highlights active nav links — no `history.pushState` wiring needed
+- **Client routing** — `doc.hashRouter()` supports portable hash routes; `doc.historyRouter()` adds clean URLs, route parameters, and back/forward navigation
 - **Express ready** — `renderStream()` flushes `<head>` immediately for faster TTFB; `createCachedRenderer()` caches rendered pages with LRU eviction
 
 ---
@@ -129,7 +129,7 @@ res.send(doc.render());
 2. `doc.render()` walks the element tree, collecting events, bindings, and computed values
 3. It emits one `<script>` IIFE containing a `State` Proxy, `watchState()`, and all compiled `addEventListener` calls
 4. The browser runs the script synchronously at end of `<body>` — no async loading, no hydration step
-5. Mutate `State.key = value` from any event handler; every element bound to that key updates automatically
+5. Mutate `State.key`, a nested property, or a state array from any event handler; every element bound to the root key updates automatically
 
 ---
 
@@ -145,6 +145,7 @@ res.send(doc.render());
 - [Client-Side Fetch](#client-side-fetch)
 - [Express Integration](#express-integration)
 - [Limitations](#limitations)
+- [Benchmarks](#benchmarks)
 - [Contributing](#contributing)
 - [Exports](#exports)
 
@@ -288,6 +289,9 @@ doc.mediaQuery('(max-width: 768px)', {
 | `state(key, value)` | Set a global reactive state key |
 | `states(obj)` | Set multiple state keys at once |
 | `oncreate(fn)` | Run function on page load |
+| `element.onMount(fn)` | Run once when the rendered element is available |
+| `element.onUpdate(key, fn)` | Run after the named state key changes |
+| `element.onDestroy(fn)` | Run once when the element is removed from the DOM |
 
 ### SPA Compilation
 
@@ -297,6 +301,7 @@ buildhtml compiles reactive SPAs entirely server-side — no raw client JS neede
 |--------|-------------|
 | `liveList(stateKey, itemFn, options?)` | Reactive list — server-renders initial items, client re-renders on state change |
 | `hashRouter(options?)` | Hash-based router — syncs `location.hash` → `State[stateKey]`, highlights active nav |
+| `historyRouter(options?)` | History API router — clean URLs, named parameters, opted-in links, and back/forward navigation |
 
 `liveList` — `itemFn(item, index)` must return a **NodeDef plain object** (tag, css, children, on, attrs, text). The server renders the initial list; the client re-renders whenever `State[stateKey]` changes. Children support an `if` key for conditional rendering — both server and client skip the node when `if` is falsy.
 
@@ -341,6 +346,67 @@ doc.hashRouter({
   inactiveStyle: { background: 'transparent', color: '#94a3b8' },
 });
 ```
+
+Pass `routes` to map hashes to named views, capture `:parameters`, and handle unknown routes:
+
+```javascript
+doc.states({ view: 'home', routeParams: {} });
+
+doc.hashRouter({
+  stateKey: 'view',
+  default: 'home',
+  routes: {
+    home: 'home',
+    'users/:id': 'user',
+    '*': 'not-found',
+  },
+});
+
+// #users/42 sets:
+// State.view = 'user'
+// State.routeParams = { id: '42' }
+```
+
+Set `paramsKey` to store parameters under a different state key. When no pattern matches, the router uses the `'*'` route if present, otherwise `notFound` (default: `'not-found'`).
+
+`historyRouter` uses the same route table with clean paths. Add `data-route` to links that should navigate without reloading:
+
+```javascript
+const nav = doc.nav();
+nav.a('/app/', 'Home').attr('data-route', '');
+nav.a('/app/users/42', 'User 42').attr('data-route', '');
+
+doc.states({ view: 'home', routeParams: {} });
+doc.historyRouter({
+  base: '/app',
+  stateKey: 'view',
+  routes: {
+    '/': 'home',
+    '/users/:id': 'user',
+    '*': 'not-found',
+  },
+});
+```
+
+The router intercepts same-origin links matching `a[data-route]`, calls `history.pushState()`, and updates state on `popstate`. Set `linkSelector` to use a different opt-in selector.
+
+Clean URLs require the server to return the same generated document when an application route is loaded or refreshed. Register this fallback after static files and API routes:
+
+```javascript
+const express = require('express');
+const app = express();
+const html = buildAppHtml();
+
+app.use(express.static('public'));
+app.use('/api', apiRouter);
+
+app.use('/app', function (req, res, next) {
+  if (req.method !== 'GET' || !req.accepts('html')) return next();
+  res.type('html').send(html);
+});
+```
+
+Without this fallback, direct requests such as `/app/users/42` will return the server's 404 response before the client router can start. Hash routing does not require a server fallback.
 
 #### Complete Hash SPA
 
@@ -908,6 +974,27 @@ doc.button('+1').onClick(function() { State.count++; });
 doc.button('Toggle').onClick(function() { State.open = !State.open; });
 ```
 
+State is deeply reactive. A binding watches its top-level key and receives the complete updated root value after nested object changes, array mutations, or deletions:
+
+```javascript
+doc.states({
+  profile: { name: 'Ada', address: { city: 'London' } },
+  tasks: [{ title: 'First task', done: false }],
+});
+
+doc.span().bind('profile', function (profile) {
+  return profile.name + ' — ' + profile.address.city;
+});
+
+doc.button('Move').onClick(function () {
+  State.profile.address.city = 'New York';
+});
+
+doc.button('Add task').onClick(function () {
+  State.tasks.push({ title: 'Another task', done: false });
+});
+```
+
 ### Layout Helpers (on Element)
 
 The same layout helpers available on `Document` work on any `Element`:
@@ -1379,8 +1466,8 @@ buildhtml is a **server-side compiler** — all interactivity is expressed throu
 
 1. Call `.states()` on the document to define initial state
 2. Attach `.onClick()`, `.bind()`, `.bindShow()` etc. on elements
-3. Call `doc.render()` — one compiled `<script>` is emitted with a `State` Proxy and all event listeners
-4. In the browser, mutating `State.key = value` automatically updates every bound element
+3. Call `doc.render()` — the generated HTML includes the `State` Proxy and feature scripts required by the APIs you used
+4. In the browser, top-level assignments and nested mutations automatically update every element bound to the root state key
 
 ### Reactive State
 
@@ -1413,6 +1500,47 @@ doc.input('text').bindInput('name');  // State.name ↔ input.value
 doc.button('+1').onClick(function() { State.count++; });
 doc.button('Toggle').onClick(function() { State.open = !State.open; });
 ```
+
+Objects and arrays are reactive at every nested level. For example, `State.user.name = 'Grace'`, `State.tasks.push(task)`, and `delete State.settings.compact` notify bindings watching `user`, `tasks`, and `settings` respectively.
+
+Client watchers can be stopped explicitly. `watchState()` returns an idempotent unsubscribe function, including when it is called from inside the watcher:
+
+```javascript
+const stop = watchState('count', function (count) {
+  console.log(count);
+  if (count >= 10) stop();
+});
+```
+
+Compiled bindings and `liveList` watchers are disposed automatically when their target element is removed from the DOM. This uses one shared `MutationObserver`; it disconnects when no tracked targets remain. In environments without `MutationObserver`, a missing target is disposed on its next state notification.
+
+### Element Lifecycle
+
+Lifecycle hooks let an element set up and clean up client-side behavior without a component runtime:
+
+```javascript
+doc.states({ count: 0 });
+
+doc.div()
+  .text('Tracked element')
+  .onMount(function (state) {
+    const timer = setInterval(() => console.log(state.count), 1000);
+
+    return function () {
+      clearInterval(timer);
+    };
+  })
+  .onUpdate('count', function (value, state) {
+    console.log('count changed to', value, state);
+  })
+  .onDestroy(function (state) {
+    console.log('element removed', state);
+  });
+```
+
+Hooks use the rendered DOM element as `this`. `onMount` runs once after DOM readiness and receives the complete `State`; it can return a cleanup function. `onUpdate` does not run for the initial value—it receives `(value, State)` only after its named state key changes. When the element is removed, mount cleanups run in reverse registration order, followed by `onDestroy` hooks.
+
+Removal detection uses `MutationObserver`. Without it, `onUpdate` hooks still dispose themselves when their next state notification finds that the element is gone, but a standalone `onDestroy` hook cannot observe removal.
 
 ---
 
@@ -1545,9 +1673,30 @@ btn.onClick(function() { count++; });
 
 **Inline `on*` attributes are blocked** — `isValidAttrKey` rejects `onclick`, `onmouseover`, etc. Use `.onClick()` and other event methods, which compile to safe `addEventListener` calls.
 
-**No SSR hydration protocol** — buildhtml emits a compiled script that runs once at page load. It is not a framework like Next.js or SvelteKit; there is no diffing, virtual DOM, or component lifecycle. For full-page reactive apps, use `liveList` and `hashRouter`. For complex client-side UI, reach for a dedicated framework.
+**No SSR hydration protocol** — buildhtml emits a compiled script that runs once at page load. It is not a framework like Next.js or SvelteKit; there is no diffing or virtual DOM. Element lifecycle hooks provide targeted setup and cleanup, but components do not independently hydrate or re-render. For full-page reactive apps, use `liveList` and a router. For complex client-side UI, reach for a dedicated framework.
 
 **`clear()` does not reset head content** — `doc.clear()` resets the body, state, and per-render script state. It does not reset `<head>` (stylesheets, meta tags, etc.). This is intentional — head content is typically static. Use a new `Document` instance for a completely fresh page.
+
+---
+
+## Benchmarks
+
+Run the reproducible server-render benchmark:
+
+```bash
+npm run benchmark
+```
+
+It validates every renderer's output before timing, warms up the runtime, calibrates batch sizes, and reports median throughput, median/p95 latency, full HTML size, gzip size, and buildhtml's compiled client JavaScript size. The static scenario measures end-to-end element construction and serialization for 50 equivalent rows. The reactive scenario is buildhtml-specific because it also compiles state, events, a reactive list, routing, and lifecycle hooks.
+
+React and Preact comparisons are optional and are detected when their packages are available:
+
+```bash
+npm install --no-save --package-lock=false react react-dom preact preact-render-to-string
+npm run benchmark
+```
+
+Use `BENCH_ITEMS`, `BENCH_SAMPLES`, and `BENCH_TIME_MS` to change the workload. Compare renderers only within the same run: CPU, Node version, power settings, package versions, and background activity materially affect results. The raw-string result is a lower-bound baseline, not a feature-equivalent library.
 
 ---
 
@@ -1562,15 +1711,27 @@ npm install  # no dependencies, but useful for running tests
 Run the test suite:
 
 ```bash
-node test/test.js          # core + regression tests
-node test/test-bindings.js # bind methods + liveList tests
-node test/test-spa.js      # SPA compilation smoke test
-node test/test-template.js # .bhtml template tests
-node test/test-new-apis.js # API v1 tests
-node test/test-apis-v2.js  # API v2 tests
+npm test
+npm run test:browser # requires Playwright and Chromium
+npm run test:types # requires TypeScript to be installed
 ```
 
-All 579 tests must pass before opening a pull request. There are no build steps, no transpilation, and no bundler.
+Install the optional test tools without adding them to the package manifest:
+
+```bash
+npm install --no-save --package-lock=false playwright@1 typescript@5
+npx playwright install chromium
+```
+
+For manual browser integration testing, start the reusable fixture and open `http://127.0.0.1:3344/`:
+
+```bash
+node test/browser-fixture.js
+```
+
+The fixture covers compiled events and bindings, nested object and array mutations, reactive lists, portals, hash and History API routing, URL sanitization, and element mount/update/destroy behavior. `npm run test:browser` drives the same fixture automatically when Playwright and Chromium are installed. GitHub Actions runs the automated browser test on every push and pull request.
+
+All automated suites must pass before opening a pull request. There are no build steps, no transpilation, and no bundler.
 
 ---
 
@@ -1601,8 +1762,8 @@ const {
   // Metrics
   Metrics, metrics,
 
-  // SPA compilation (low-level — normally called via doc.liveList() / doc.hashRouter())
-  compileLiveList, compileHashRouter,
+  // SPA compilation (low-level — normally called via Document methods)
+  compileLiveList, compileHashRouter, compileHistoryRouter,
 } = require('@trebor/buildhtml');
 ```
 

@@ -1,6 +1,9 @@
 'use strict';
 
-const { renderTemplate, compileTemplate, parseTemplate, components } = require('../index');
+const { renderTemplate, compileTemplate, parseTemplate, renderFile, compileFile, templateEngine, components } = require('../index');
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
 
 let passed = 0;
 let failed = 0;
@@ -251,6 +254,34 @@ test('compileTemplate returns a Document', () => {
   assert(typeof doc.addScript === 'function', 'has addScript method');
   const html = doc.render();
   assert(html.includes('<h1>Test</h1>'), 'renders correctly');
+});
+
+test('parseTemplate returns a document AST', () => {
+  const ast = parseTemplate(`h1 "AST"`);
+  assert(ast.type === 'document', 'AST has document type');
+  assert(Array.isArray(ast.body), 'AST has body nodes');
+  assert(ast.body[0].type === 'element', 'AST body contains element node');
+});
+
+test('file helpers are synchronous and templateEngine follows the Express callback contract', () => {
+  const fixturePath = path.join(os.tmpdir(), `buildhtml-template-${process.pid}.bhtml`);
+  fs.writeFileSync(fixturePath, `h1 "Hello #{name}"`, 'utf8');
+  try {
+    const html = renderFile(fixturePath, { name: 'File' });
+    const doc = compileFile(fixturePath, { name: 'Document' });
+    let callbackResult = null;
+    templateEngine(fixturePath, { name: 'Engine' }, (error, output) => {
+      callbackResult = { error, output };
+    });
+
+    assert(typeof html === 'string' && html.includes('Hello File'), 'renderFile returns HTML synchronously');
+    assert(typeof doc.render === 'function', 'compileFile returns a Document synchronously');
+    assert(doc.render().includes('Hello Document'), 'compileFile applies variables');
+    assert(callbackResult && callbackResult.error === null, 'templateEngine calls back without an error');
+    assert(callbackResult.output.includes('Hello Engine'), 'templateEngine returns rendered HTML');
+  } finally {
+    fs.unlinkSync(fixturePath);
+  }
 });
 
 /* ---- Full page example ---- */

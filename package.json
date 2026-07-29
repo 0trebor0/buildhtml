@@ -6,6 +6,7 @@
   "types": "typescript/index.d.ts",
   "files": [
     "index.js",
+    "benchmark/",
     "lib/",
     "typescript/",
     "README.md",
@@ -13,7 +14,10 @@
   ],
   "scripts": {
     "start": "node example/server.js",
-    "test": "node test/run-all.js"
+    "test": "node test/run-all.js",
+    "test:browser": "node test/test-browser.js",
+    "test:types": "tsc --project typescript/tsconfig.json --noEmit",
+    "benchmark": "node benchmark/render.js"
   },
   "repository": {
     "type": "git",
