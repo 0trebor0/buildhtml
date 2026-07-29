@@ -1,6 +1,6 @@
 # @trebor/buildhtml
 
-**Build secure, reactive HTML entirely in Node.js—without a frontend framework, bundler, or hydration step.**
+**Build secure, reactive HTML entirely in Node.js with a focused server-side API.**
 
 `@trebor/buildhtml` is a zero-dependency server-side HTML compiler. Describe pages with JavaScript, render complete HTML on the server, and opt into browser behavior with declarative state, bindings, events, reactive lists, and routing.
 
@@ -26,7 +26,7 @@ Use one JavaScript API for the page, styles, state, and browser interactions:
 
 - **Server-rendered by default** — send complete HTML immediately or generate static files at startup.
 - **Reactive when needed** — compile state bindings and events only for pages that use them.
-- **No client framework** — no React, virtual DOM, hydration protocol, or application bundle.
+- **Focused browser runtime** — generated pages include only the state and event behavior they use.
 - **Secure defaults** — escaped text and attributes, sanitized URLs, blocked inline `on*` attributes, and CSP nonce support.
 - **Zero runtime dependencies** — a small supply chain and straightforward deployment.
 - **Flexible output** — strings, streams, static files, Express responses, JSON-driven pages, or `.bhtml` templates.
@@ -38,7 +38,7 @@ Node.js API  →  complete HTML  →  optional compiled browser runtime
 
 The browser receives only the behavior the page uses. A static page stays static. Adding `.states()`, `.bind()`, or `.onClick()` automatically adds the required client runtime.
 
-## A reactive page without client framework code
+## A reactive page from one Node.js file
 
 ```javascript
 const { page } = require('@trebor/buildhtml');
@@ -727,10 +727,8 @@ buildhtml is a strong fit for:
 - Server-rendered forms
 - Small reactive applications
 - Static HTML generation
-- Express applications that do not need a full frontend framework
+- Express applications with server-defined pages and browser behavior
 - Teams that want one JavaScript language across server rendering and browser behavior
-
-Consider a dedicated client framework when the product needs a large client-side component ecosystem, complex independent component state, advanced transitions, offline-first synchronization, or virtual-DOM diffing.
 
 ## API overview
 

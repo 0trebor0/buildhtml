@@ -167,7 +167,7 @@
 
 const doc = page('Hello');
 doc.h1().text('Hello world');
-doc.p('No bundler and no client framework.');
+doc.p('A complete page from one focused Node.js API.');
 
 const html = doc.render();</code></pre>
         <p><code>page(title, options?)</code> creates a configured <code>Document</code> with a title, responsive viewport, CSS reset, and language. Use <code>new Document(options?)</code> when you want to configure those manually.</p>
@@ -189,7 +189,7 @@ const html = doc.render();</code></pre>
         <div class="grid">
           <article class="card"><h3>1. Describe</h3><p>Build elements and behavior with the server-side JavaScript API.</p></article>
           <article class="card"><h3>2. Compile</h3><p><code>render()</code> escapes markup and compiles only the browser behavior the page uses.</p></article>
-          <article class="card"><h3>3. Run</h3><p>The browser receives complete HTML plus a small state and event runtime. There is no hydration protocol.</p></article>
+          <article class="card"><h3>3. Run</h3><p>The browser receives complete HTML plus the state and event behavior used by the page.</p></article>
         </div>
         <div class="callout">
           Event handlers, computed bindings, lifecycle hooks, <code>liveList</code> callbacks, and <code>oncreate()</code> are serialized and run in the browser. They may use their arguments, <code>this</code>, browser globals, and <code>State</code>, but cannot capture server-side closure variables.
@@ -498,7 +498,7 @@ doc.historyRouter({
           <li>CSP nonces are supported for generated inline scripts and styles.</li>
           <li><code>new Function()</code> and <code>eval</code> are rejected inside serialized callbacks.</li>
           <li>State cannot contain functions, circular references, DOM nodes, <code>Map</code>, <code>Set</code>, or live <code>Date</code> objects.</li>
-          <li>This is not virtual-DOM hydration. Use a dedicated client framework for highly complex interactive applications.</li>
+          <li>Browser behavior is compiled into the generated page and runs directly against its rendered elements.</li>
         </ul>
       </section>
 

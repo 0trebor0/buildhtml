@@ -1,7 +1,7 @@
 {
   "name": "@trebor/buildhtml",
-  "version": "1.2.0",
-  "description": "Server-side HTML compiler for Node.js. Build pages with a JS API — reactive state, events, and DOM bindings compile automatically. Zero dependencies, zero client framework.",
+  "version": "1.2.1",
+  "description": "Server-side HTML compiler for Node.js. Build pages with a JavaScript API while reactive state, events, and DOM bindings compile automatically.",
   "main": "index.js",
   "types": "typescript/index.d.ts",
   "files": [
@@ -22,7 +22,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/0trebor0/buildhtml.git"
+    "url": "git+https://github.com/0trebor0/buildhtml.git"
   },
   "keywords": [
     "html",
