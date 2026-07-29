@@ -1,0 +1,625 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="@trebor/buildhtml complete feature guide and API parameter reference.">
+  <title>@trebor/buildhtml — Guide & API Reference</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #07111f;
+      --panel: #0d1b2d;
+      --panel-2: #11243a;
+      --text: #e8f0f8;
+      --muted: #9bb0c5;
+      --line: #213b55;
+      --brand: #56d6b3;
+      --brand-2: #73a7ff;
+      --code: #06101c;
+      --warning: #f5c76b;
+      --radius: 14px;
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      background:
+        radial-gradient(circle at 70% -10%, rgba(86, 214, 179, .12), transparent 33rem),
+        var(--bg);
+      color: var(--text);
+      font: 16px/1.65 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    a { color: var(--brand); }
+    a:hover { color: #8aefd3; }
+    code, pre { font-family: "Cascadia Code", "SFMono-Regular", Consolas, monospace; }
+    code {
+      padding: .12rem .35rem;
+      border: 1px solid rgba(115, 167, 255, .2);
+      border-radius: 5px;
+      background: rgba(115, 167, 255, .08);
+      color: #c9dcff;
+    }
+    pre {
+      overflow-x: auto;
+      margin: 1rem 0;
+      padding: 1rem 1.1rem;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: var(--code);
+      line-height: 1.55;
+    }
+    pre code { padding: 0; border: 0; background: transparent; color: #d8e8f7; }
+    .layout { display: grid; grid-template-columns: 280px minmax(0, 1fr); min-height: 100vh; }
+    .sidebar {
+      position: sticky;
+      top: 0;
+      height: 100vh;
+      overflow: auto;
+      padding: 1.4rem;
+      border-right: 1px solid var(--line);
+      background: rgba(7, 17, 31, .94);
+      backdrop-filter: blur(16px);
+    }
+    .brand { display: block; margin-bottom: .2rem; color: var(--text); font-size: 1.05rem; font-weight: 800; text-decoration: none; }
+    .version { color: var(--muted); font-size: .78rem; }
+    .search {
+      width: 100%;
+      margin: 1.25rem 0 1rem;
+      padding: .7rem .8rem;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      outline: none;
+      background: var(--panel);
+      color: var(--text);
+    }
+    .search:focus { border-color: var(--brand); box-shadow: 0 0 0 3px rgba(86, 214, 179, .12); }
+    nav a {
+      display: block;
+      padding: .34rem .5rem;
+      border-radius: 6px;
+      color: var(--muted);
+      font-size: .9rem;
+      text-decoration: none;
+    }
+    nav a:hover { background: var(--panel); color: var(--text); }
+    main { width: min(100%, 1120px); padding: 3.5rem clamp(1.2rem, 5vw, 5rem) 7rem; }
+    .hero { padding-bottom: 2rem; border-bottom: 1px solid var(--line); }
+    .eyebrow { color: var(--brand); font-weight: 750; letter-spacing: .09em; text-transform: uppercase; }
+    h1 { max-width: 850px; margin: .45rem 0 1rem; font-size: clamp(2.25rem, 6vw, 4.8rem); line-height: 1.02; letter-spacing: -.045em; }
+    .lead { max-width: 760px; color: var(--muted); font-size: 1.18rem; }
+    .actions { display: flex; flex-wrap: wrap; gap: .75rem; margin-top: 1.5rem; }
+    .button { padding: .65rem .9rem; border: 1px solid var(--line); border-radius: 8px; color: var(--text); text-decoration: none; }
+    .button.primary { border-color: transparent; background: var(--brand); color: #052018; font-weight: 750; }
+    section { scroll-margin-top: 1rem; padding: 2.6rem 0 .4rem; }
+    h2 { margin: 0 0 .75rem; font-size: clamp(1.7rem, 3vw, 2.35rem); letter-spacing: -.025em; }
+    h3 { margin: 2rem 0 .55rem; font-size: 1.25rem; }
+    p, li { max-width: 850px; }
+    .muted { color: var(--muted); }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 1rem; }
+    .card { padding: 1.1rem; border: 1px solid var(--line); border-radius: var(--radius); background: linear-gradient(145deg, var(--panel), rgba(13, 27, 45, .55)); }
+    .card h3 { margin-top: 0; }
+    .callout { padding: 1rem 1.1rem; border-left: 3px solid var(--brand); border-radius: 0 9px 9px 0; background: rgba(86, 214, 179, .08); }
+    .warning { border-left-color: var(--warning); background: rgba(245, 199, 107, .08); }
+    .table-wrap { overflow-x: auto; margin: 1rem 0 1.5rem; border: 1px solid var(--line); border-radius: 10px; }
+    table { width: 100%; border-collapse: collapse; background: rgba(13, 27, 45, .55); }
+    th, td { padding: .68rem .78rem; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+    th { background: var(--panel-2); color: #dceafa; font-size: .84rem; letter-spacing: .025em; }
+    tr:last-child td { border-bottom: 0; }
+    td:first-child { white-space: nowrap; }
+    .api-group[hidden], section[hidden] { display: none; }
+    footer { margin-top: 4rem; padding-top: 2rem; border-top: 1px solid var(--line); color: var(--muted); }
+    .menu { display: none; }
+    @media (max-width: 800px) {
+      .layout { display: block; }
+      .sidebar { position: static; width: 100%; height: auto; border-right: 0; border-bottom: 1px solid var(--line); }
+      .sidebar nav { display: none; columns: 2; }
+      .sidebar.open nav { display: block; }
+      .menu { display: inline-block; float: right; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: var(--text); padding: .35rem .6rem; }
+      main { padding-top: 2.2rem; }
+    }
+  </style>
+</head>
+<body>
+  <div class="layout">
+    <aside class="sidebar" id="sidebar">
+      <button class="menu" id="menu" type="button" aria-expanded="false">Menu</button>
+      <a class="brand" href="#top">@trebor/buildhtml</a>
+      <div class="version">Guide & API reference · v1.2</div>
+      <label>
+        <span class="muted">Search this guide</span>
+        <input class="search" id="search" type="search" placeholder="Try “router” or “bindAttr”">
+      </label>
+      <nav aria-label="Documentation">
+        <a href="#start">Quick start</a>
+        <a href="#concepts">How it works</a>
+        <a href="#server">Server & static HTML</a>
+        <a href="#document">Document</a>
+        <a href="#elements">Elements</a>
+        <a href="#components">Components</a>
+        <a href="#builder">Builder & JSON</a>
+        <a href="#templates">Templates</a>
+        <a href="#state">State & events</a>
+        <a href="#fetch">Client fetch</a>
+        <a href="#spa">SPA & routing</a>
+        <a href="#express">Express & caching</a>
+        <a href="#security">Security & limits</a>
+        <a href="#reference">API reference</a>
+      </nav>
+    </aside>
+
+    <main id="top">
+      <header class="hero">
+        <div class="eyebrow">Complete documentation</div>
+        <h1>Build reactive HTML entirely from Node.js.</h1>
+        <p class="lead">A practical guide to every major feature, its parameters, return values, defaults, and the browser/server boundary.</p>
+        <div class="actions">
+          <a class="button primary" href="#start">Start building</a>
+          <a class="button" href="#reference">Browse API</a>
+          <a class="button" href="https://www.npmjs.com/package/@trebor/buildhtml">npm package</a>
+        </div>
+      </header>
+
+      <section id="start" data-search="installation quick start document page render">
+        <h2>Quick start</h2>
+        <pre><code>npm install @trebor/buildhtml</code></pre>
+        <pre><code>const { page } = require('@trebor/buildhtml');
+
+const doc = page('Hello');
+doc.h1().text('Hello world');
+doc.p('No bundler and no client framework.');
+
+const html = doc.render();</code></pre>
+        <p><code>page(title, options?)</code> creates a configured <code>Document</code> with a title, responsive viewport, CSS reset, and language. Use <code>new Document(options?)</code> when you want to configure those manually.</p>
+        <div class="table-wrap"><table>
+          <thead><tr><th>Option</th><th>Type</th><th>Default</th><th>Purpose</th></tr></thead>
+          <tbody>
+            <tr><td><code>lang</code></td><td>string</td><td><code>'en'</code></td><td>Root HTML language.</td></tr>
+            <tr><td><code>viewport</code></td><td>boolean</td><td><code>true</code></td><td>Set false to omit the responsive viewport meta tag.</td></tr>
+            <tr><td><code>resetCss</code></td><td>boolean</td><td><code>true</code></td><td>Set false to omit the built-in reset.</td></tr>
+            <tr><td><code>nonce</code></td><td>string</td><td>none</td><td>CSP nonce for generated inline scripts and styles.</td></tr>
+            <tr><td><code>cache</code></td><td>boolean</td><td><code>false</code></td><td>Enables document render caching when a cache key is also set.</td></tr>
+            <tr><td><code>cacheKey</code></td><td>string</td><td>none</td><td>Stable key for the document render cache.</td></tr>
+          </tbody>
+        </table></div>
+      </section>
+
+      <section id="concepts" data-search="how works compiled runtime browser state server">
+        <h2>How it works</h2>
+        <div class="grid">
+          <article class="card"><h3>1. Describe</h3><p>Build elements and behavior with the server-side JavaScript API.</p></article>
+          <article class="card"><h3>2. Compile</h3><p><code>render()</code> escapes markup and compiles only the browser behavior the page uses.</p></article>
+          <article class="card"><h3>3. Run</h3><p>The browser receives complete HTML plus a small state and event runtime. There is no hydration protocol.</p></article>
+        </div>
+        <div class="callout">
+          Event handlers, computed bindings, lifecycle hooks, <code>liveList</code> callbacks, and <code>oncreate()</code> are serialized and run in the browser. They may use their arguments, <code>this</code>, browser globals, and <code>State</code>, but cannot capture server-side closure variables.
+        </div>
+      </section>
+
+      <section id="server" data-search="server load static files writefile express html">
+        <h2>Generate and serve static HTML</h2>
+        <p>Build once during server startup, write the result to disk, and let the server handle it like any other static file.</p>
+        <pre><code>const fs = require('node:fs');
+const path = require('node:path');
+const express = require('express');
+const { page } = require('@trebor/buildhtml');
+
+const doc = page('Home');
+doc.h1('Generated on server startup');
+
+const publicDir = path.join(__dirname, 'public');
+fs.mkdirSync(publicDir, { recursive: true });
+fs.writeFileSync(path.join(publicDir, 'index.html'), doc.render());
+
+const app = express();
+app.use(express.static(publicDir));
+app.listen(3000);</code></pre>
+        <p>Generate per request when content depends on the request. Generate once when every visitor receives the same content.</p>
+      </section>
+
+      <section id="document" data-search="document head meta seo css render stream clear clone">
+        <h2>Document guide</h2>
+        <h3>Head, metadata, and resources</h3>
+        <pre><code>doc.title('Dashboard')
+  .viewport()
+  .charset('UTF-8')
+  .favicon('/favicon.ico')
+  .canonical('https://example.com/dashboard')
+  .preconnect('https://fonts.example.com')
+  .addLink('/app.css')
+  .addScript('/app.js');</code></pre>
+        <div class="table-wrap"><table>
+          <thead><tr><th>Method</th><th>Parameters</th><th>Purpose</th></tr></thead>
+          <tbody>
+            <tr><td><code>title</code></td><td><code>text</code></td><td>Sets the document title.</td></tr>
+            <tr><td><code>meta</code></td><td><code>name, content</code></td><td>Adds a named meta tag.</td></tr>
+            <tr><td><code>addMeta</code></td><td><code>attributes</code></td><td>Adds a meta tag from a complete attribute object.</td></tr>
+            <tr><td><code>viewport</code></td><td><code>content?</code></td><td>Adds the responsive viewport meta tag or custom content.</td></tr>
+            <tr><td><code>charset</code></td><td><code>charset?</code></td><td>Sets the character encoding; default UTF-8.</td></tr>
+            <tr><td><code>addLink</code></td><td><code>href</code></td><td>Adds a stylesheet link.</td></tr>
+            <tr><td><code>addScript</code></td><td><code>src</code></td><td>Adds an external script.</td></tr>
+            <tr><td><code>preload</code></td><td><code>href, as, type?</code></td><td>Adds a preload resource hint.</td></tr>
+            <tr><td><code>prefetch</code></td><td><code>href</code></td><td>Adds a prefetch hint.</td></tr>
+            <tr><td><code>preconnect</code></td><td><code>href</code></td><td>Adds a preconnect hint.</td></tr>
+            <tr><td><code>ogTags</code></td><td><code>{ title, description, image, ... }</code></td><td>Adds Open Graph metadata.</td></tr>
+            <tr><td><code>twitterCard</code></td><td><code>{ card, site, title, ... }</code></td><td>Adds Twitter/X card metadata.</td></tr>
+            <tr><td><code>jsonLd</code></td><td><code>schemaObject</code></td><td>Adds JSON-LD structured data.</td></tr>
+          </tbody>
+        </table></div>
+        <h3>CSS and document attributes</h3>
+        <pre><code>doc.lang('en')
+  .bodyClass('app')
+  .bodyId('dashboard')
+  .bodyCss({ backgroundColor: '#07111f' });
+
+doc.cssVars({ primary: '#56d6b3', radius: '8px' });
+doc.globalStyle('body', { fontFamily: 'system-ui' });
+doc.sharedClass('card', { padding: '16px', borderRadius: '8px' });</code></pre>
+        <p><code>render()</code> returns the complete HTML string. <code>renderStream()</code> returns a stream that flushes the head before the body. <code>clear()</code> resets body content and per-render state but intentionally keeps head configuration.</p>
+      </section>
+
+      <section id="elements" data-search="element text html attr css class children events forms layout">
+        <h2>Elements</h2>
+        <pre><code>const card = doc.section()
+  .id('profile')
+  .addClass('card', 'featured')
+  .data('user-id', 42)
+  .aria('label', 'User profile')
+  .css({ padding: '20px' });
+
+card.h2().text('Grace Hopper');
+card.a('/users/42', 'View profile');</code></pre>
+        <p>Text and attribute values are escaped. Use <code>raw()</code>, <code>rawHead()</code>, <code>html()</code>, <code>inlineScript()</code>, or <code>inlineStyle()</code> only with trusted content.</p>
+        <div class="table-wrap"><table>
+          <thead><tr><th>Category</th><th>Methods</th><th>Parameters</th></tr></thead>
+          <tbody>
+            <tr><td>Content</td><td><code>text</code>, <code>html</code>, <code>empty</code></td><td>Text or trusted HTML; empty takes no parameters.</td></tr>
+            <tr><td>Attributes</td><td><code>attr</code>, <code>setAttrs</code>, <code>data</code>, <code>aria</code></td><td>Key/value or an attribute object.</td></tr>
+            <tr><td>Classes</td><td><code>addClass</code>, <code>removeClass</code>, <code>toggleClass</code>, <code>classIf</code>, <code>classMap</code></td><td>Class names and optional conditions.</td></tr>
+            <tr><td>CSS</td><td><code>css</code>, <code>style</code>, <code>hover</code>, <code>focusCss</code>, <code>pseudo</code>, <code>media</code></td><td>Rules object; pseudo selector or media query where needed.</td></tr>
+            <tr><td>Tree</td><td><code>child</code>, <code>prependChild</code>, <code>insertAt</code>, <code>before</code>, <code>after</code>, <code>remove</code>, <code>wrap</code></td><td>Child/replacement element and optional index.</td></tr>
+            <tr><td>Queries</td><td><code>find</code>, <code>findAll</code>, <code>findById</code>, <code>closest</code></td><td>Tag, selector-like query, or id depending on method.</td></tr>
+            <tr><td>Forms</td><td><code>required</code>, <code>readonly</code>, <code>checked</code>, <code>min</code>, <code>max</code>, <code>pattern</code></td><td>Boolean state or form constraint value.</td></tr>
+          </tbody>
+        </table></div>
+      </section>
+
+      <section id="components" data-search="component register props children extend use">
+        <h2>Components</h2>
+        <pre><code>const { components } = require('@trebor/buildhtml');
+
+components.register('Card', (el, props) => {
+  el.addClass('card');
+  el.h2().text(props.title);
+  el.p(props.body);
+}, { tag: 'article' });
+
+doc.component('Card', { title: 'Hello', body: 'Reusable server UI.' });</code></pre>
+        <div class="table-wrap"><table>
+          <thead><tr><th>Operation</th><th>Parameters</th><th>Result</th></tr></thead>
+          <tbody>
+            <tr><td><code>components.register</code></td><td><code>name, fn, options?</code></td><td>Registers a named component. <code>options.tag</code> selects the root tag.</td></tr>
+            <tr><td><code>doc.component</code></td><td><code>name, props?, children?</code></td><td>Builds a registered component.</td></tr>
+            <tr><td><code>doc.use</code></td><td><code>fn, props?, children?</code></td><td>Builds an inline component function.</td></tr>
+            <tr><td><code>components.extend</code></td><td><code>newName, baseName, extendFn, options?</code></td><td>Runs a base component, then its extension.</td></tr>
+            <tr><td><code>components.unregister</code></td><td><code>name</code></td><td>Removes a component registration.</td></tr>
+          </tbody>
+        </table></div>
+        <p>Components execute on the server and produce ordinary elements. They do not independently hydrate or hold browser component state.</p>
+      </section>
+
+      <section id="builder" data-search="builder build json node def renderJSON fromJSON">
+        <h2>Declarative builder and JSON</h2>
+        <pre><code>doc.build({
+  tag: 'section',
+  class: ['card', 'featured'],
+  css: { padding: '16px' },
+  children: [
+    { tag: 'h2', text: 'From an object' },
+    { tag: 'p', text: 'Safe text content' }
+  ]
+});</code></pre>
+        <p>Common node fields are <code>tag</code>, <code>text</code>, <code>html</code>, <code>id</code>, <code>class</code>, <code>attrs</code>, <code>data</code>, <code>aria</code>, <code>css</code>, <code>on</code>, <code>bind</code>, <code>children</code>, <code>component</code>, <code>props</code>, <code>if</code>, <code>each</code>, and lifecycle hooks.</p>
+        <div class="table-wrap"><table>
+          <thead><tr><th>Function</th><th>Parameters</th><th>Returns</th></tr></thead>
+          <tbody>
+            <tr><td><code>doc.build</code></td><td><code>node | node[]</code></td><td>The document.</td></tr>
+            <tr><td><code>doc.fromJSON</code></td><td><code>pageDefinition</code></td><td>Populates the document.</td></tr>
+            <tr><td><code>doc.toJSON</code></td><td>none</td><td>A serializable document definition.</td></tr>
+            <tr><td><code>renderJSON</code></td><td><code>definition, setup?, options?</code></td><td>Complete HTML string.</td></tr>
+          </tbody>
+        </table></div>
+      </section>
+
+      <section id="templates" data-search="bhtml template compile render file engine interpolation if each">
+        <h2><code>.bhtml</code> templates</h2>
+        <pre><code>---
+title "Dashboard"
+viewport
+---
+
+:reset
+div#app.container
+  h1 "Welcome #{user.name}"
+  ?if user.isAdmin
+    button "Admin"
+  ul
+    ?each item in items
+      li "#{item}"</code></pre>
+        <div class="table-wrap"><table>
+          <thead><tr><th>Function</th><th>Parameters</th><th>Returns</th></tr></thead>
+          <tbody>
+            <tr><td><code>compileTemplate</code></td><td><code>source, variables?</code></td><td>A modifiable <code>Document</code>.</td></tr>
+            <tr><td><code>renderTemplate</code></td><td><code>source, variables?</code></td><td>Rendered HTML.</td></tr>
+            <tr><td><code>compileFile</code></td><td><code>path, variables?</code></td><td>A <code>Document</code>; file reading is synchronous.</td></tr>
+            <tr><td><code>renderFile</code></td><td><code>path, variables?</code></td><td>Rendered HTML; file reading is synchronous.</td></tr>
+            <tr><td><code>templateEngine</code></td><td><code>path, options, callback</code></td><td>Express view-engine callback result.</td></tr>
+          </tbody>
+        </table></div>
+      </section>
+
+      <section id="state" data-search="state events binding bind show class attr style prop input lifecycle oncreate">
+        <h2>Reactive state, bindings, and events</h2>
+        <pre><code>doc.states({ count: 0, open: false, name: '' });
+
+doc.span().bind('count', (value) => `Count: ${value}`);
+doc.div('Panel').bindShow('open');
+doc.input('text').bindInput('name');
+doc.button('+1').onClick(function () {
+  State.count++;
+});</code></pre>
+        <div class="table-wrap"><table>
+          <thead><tr><th>Method</th><th>Parameters / callback</th><th>Browser result</th></tr></thead>
+          <tbody>
+            <tr><td><code>state</code></td><td><code>key, initialValue</code></td><td>Defines one global reactive key.</td></tr>
+            <tr><td><code>states</code></td><td><code>object</code></td><td>Defines multiple reactive keys.</td></tr>
+            <tr><td><code>bind</code></td><td><code>key, fn?(value, State)</code></td><td>Updates text content.</td></tr>
+            <tr><td><code>bindShow</code></td><td><code>key, fn?(value, State)</code></td><td>Toggles visibility.</td></tr>
+            <tr><td><code>bindClass</code></td><td><code>key, fn(value, State)</code></td><td>Sets computed class name.</td></tr>
+            <tr><td><code>bindAttr</code></td><td><code>key, name, fn(value, State)</code></td><td>Sets/removes an attribute; null removes it.</td></tr>
+            <tr><td><code>bindStyle</code></td><td><code>key, fn(value, State)</code></td><td>Applies returned CSS rules.</td></tr>
+            <tr><td><code>bindProp</code></td><td><code>key, name, fn?</code></td><td>Assigns a DOM property.</td></tr>
+            <tr><td><code>bindInput</code></td><td><code>key</code></td><td>Two-way input value synchronization.</td></tr>
+            <tr><td><code>on</code></td><td><code>eventName, fn(event)</code></td><td>Adds an event listener; <code>this</code> is the DOM element.</td></tr>
+            <tr><td><code>oncreate</code></td><td><code>fn(State)</code></td><td>Runs after the page is ready.</td></tr>
+            <tr><td><code>onMount</code></td><td><code>fn(State)</code></td><td>Runs when the element exists; may return cleanup.</td></tr>
+            <tr><td><code>onUpdate</code></td><td><code>key, fn(value, State)</code></td><td>Runs after changes, not for the initial value.</td></tr>
+            <tr><td><code>onDestroy</code></td><td><code>fn(State)</code></td><td>Runs when the element is removed.</td></tr>
+          </tbody>
+        </table></div>
+        <p>Nested objects and arrays remain reactive. Assignments, deletions, and mutating array methods notify watchers for the root state key. State must remain JSON-serializable.</p>
+      </section>
+
+      <section id="fetch" data-search="fetch client async api loading error oncreate">
+        <h2>Client-side <code>fetch()</code></h2>
+        <pre><code>doc.states({ loading: false, message: '', error: '' });
+doc.p().bind('message');
+doc.p().bind('error');
+
+doc.button('Load').onClick(async function () {
+  State.loading = true;
+  State.error = '';
+  try {
+    const response = await fetch('/api/data');
+    if (!response.ok) throw new Error('HTTP ' + response.status);
+    State.message = (await response.json()).message;
+  } catch (error) {
+    State.error = error.message;
+  } finally {
+    State.loading = false;
+  }
+});</code></pre>
+        <p>Because the function runs in the browser, use literal URLs, values in <code>State</code>, or <code>data-*</code> attributes for runtime configuration. Use <code>doc.oncreate(async function () { ... })</code> to fetch automatically on page load.</p>
+      </section>
+
+      <section id="spa" data-search="spa live list router hash history route params fallback">
+        <h2>SPA features and routing</h2>
+        <h3>Reactive lists</h3>
+        <pre><code>const list = doc.liveList('tasks', function (task, index) {
+  return {
+    tag: 'li',
+    text: task.title,
+    attrs: { 'data-index': index }
+  };
+}, {
+  filter: function (task, state) {
+    return state.view === 'all' || task.status === state.view;
+  },
+  filterKeys: ['view']
+});</code></pre>
+        <div class="table-wrap"><table>
+          <thead><tr><th>Parameter</th><th>Type</th><th>Purpose</th></tr></thead>
+          <tbody>
+            <tr><td><code>stateKey</code></td><td>string</td><td>State array to render and watch.</td></tr>
+            <tr><td><code>itemFn</code></td><td><code>(item, index) =&gt; NodeDef</code></td><td>Creates each item on the server and browser.</td></tr>
+            <tr><td><code>filter</code></td><td><code>(item, State) =&gt; boolean</code></td><td>Optional browser-side filter.</td></tr>
+            <tr><td><code>filterKeys</code></td><td>string[]</td><td>Extra state keys that trigger rendering.</td></tr>
+          </tbody>
+        </table></div>
+        <h3>Hash and History routers</h3>
+        <pre><code>doc.states({ view: 'home', routeParams: {} });
+doc.historyRouter({
+  base: '/app',
+  stateKey: 'view',
+  routes: {
+    '/': 'home',
+    '/users/:id': 'user',
+    '*': 'not-found'
+  }
+});</code></pre>
+        <div class="table-wrap"><table>
+          <thead><tr><th>Option</th><th>Hash default</th><th>History default</th><th>Purpose</th></tr></thead>
+          <tbody>
+            <tr><td><code>stateKey</code></td><td><code>'view'</code></td><td><code>'view'</code></td><td>Receives matched route value.</td></tr>
+            <tr><td><code>default</code></td><td><code>'all'</code></td><td><code>'/'</code></td><td>Used for an empty URL value.</td></tr>
+            <tr><td><code>routes</code></td><td>none</td><td>none</td><td>Pattern-to-state map supporting <code>:params</code> and <code>*</code>.</td></tr>
+            <tr><td><code>paramsKey</code></td><td><code>'routeParams'</code></td><td><code>'routeParams'</code></td><td>Receives decoded named parameters.</td></tr>
+            <tr><td><code>notFound</code></td><td><code>'not-found'</code></td><td><code>'not-found'</code></td><td>Value used when no route matches.</td></tr>
+            <tr><td><code>navSelector</code></td><td>none</td><td>none</td><td>Links receiving active/inactive styles.</td></tr>
+            <tr><td><code>activeStyle</code></td><td>none</td><td>none</td><td>Rules applied to active link.</td></tr>
+            <tr><td><code>inactiveStyle</code></td><td>none</td><td>none</td><td>Rules applied to inactive links.</td></tr>
+            <tr><td><code>base</code></td><td>n/a</td><td><code>'/'</code></td><td>Prefix removed before History route matching.</td></tr>
+            <tr><td><code>linkSelector</code></td><td>n/a</td><td><code>'a[data-route]'</code></td><td>Opt-in same-origin links intercepted by History routing.</td></tr>
+          </tbody>
+        </table></div>
+        <div class="callout warning"><strong>History fallback required:</strong> the server must return the same application HTML for direct GET requests such as <code>/app/users/42</code>. Register the fallback after static files and API routes. Hash routing does not require this fallback.</div>
+      </section>
+
+      <section id="express" data-search="express middleware cache render stream nonce health">
+        <h2>Express, streaming, and caching</h2>
+        <pre><code>app.get('/dashboard', createCachedRenderer(
+  async function (req) {
+    return buildDashboard(req.user);
+  },
+  function (req) {
+    return 'dashboard:' + req.user.id;
+  },
+  {
+    nonce: function (req) { return req.cspNonce; }
+  }
+));</code></pre>
+        <div class="table-wrap"><table>
+          <thead><tr><th>Parameter</th><th>Type</th><th>Purpose</th></tr></thead>
+          <tbody>
+            <tr><td><code>builderFn</code></td><td><code>(req) =&gt; Document | Promise&lt;Document&gt;</code></td><td>Builds on a cache miss.</td></tr>
+            <tr><td><code>cacheKeyOrFn</code></td><td>string or function</td><td>Selects the cache entry; null/empty skips caching.</td></tr>
+            <tr><td><code>options.nonce</code></td><td><code>(req) =&gt; string</code></td><td>Sets a per-build CSP nonce.</td></tr>
+          </tbody>
+        </table></div>
+        <p>Concurrent misses for one key share a build. Include every response-changing value in the key—especially user identity, locale, and permissions. Use <code>clearCache(pattern?)</code>, <code>getCacheStats()</code>, <code>healthCheck()</code>, and <code>resetPools()</code> for operations.</p>
+      </section>
+
+      <section id="security" data-search="security xss csp nonce escaping limitations closures state json eval">
+        <h2>Security and limitations</h2>
+        <ul>
+          <li>Text and attributes are escaped by default.</li>
+          <li>URL helpers reject executable protocols and inline <code>on*</code> attributes are blocked.</li>
+          <li>Generated event listeners use <code>addEventListener</code>, not inline handler attributes.</li>
+          <li>CSP nonces are supported for generated inline scripts and styles.</li>
+          <li><code>new Function()</code> and <code>eval</code> are rejected inside serialized callbacks.</li>
+          <li>State cannot contain functions, circular references, DOM nodes, <code>Map</code>, <code>Set</code>, or live <code>Date</code> objects.</li>
+          <li>This is not virtual-DOM hydration. Use a dedicated client framework for highly complex interactive applications.</li>
+        </ul>
+      </section>
+
+      <section id="reference" data-search="api reference methods all exports parameters">
+        <h2>Compact API reference</h2>
+        <p class="muted">Methods are chainable unless their result is described otherwise. A trailing <code>?</code> marks an optional parameter.</p>
+
+        <div class="api-group" data-search="document render head css state routing json">
+          <h3>Document</h3>
+          <div class="table-wrap"><table>
+            <thead><tr><th>Methods</th><th>Parameters / result</th></tr></thead>
+            <tbody>
+              <tr><td><code>render</code></td><td>No parameters → complete HTML string.</td></tr>
+              <tr><td><code>renderStream</code></td><td>No parameters → readable HTML stream.</td></tr>
+              <tr><td><code>clear</code></td><td>Resets body, state, and per-render scripts; preserves head.</td></tr>
+              <tr><td><code>element</code></td><td><code>tag</code> → new element.</td></tr>
+              <tr><td><code>title</code>, <code>charset</code>, <code>lang</code></td><td>String value.</td></tr>
+              <tr><td><code>htmlAttr</code>, <code>bodyAttr</code></td><td><code>key, value</code>.</td></tr>
+              <tr><td><code>bodyId</code>, <code>bodyClass</code>, <code>bodyCss</code></td><td>Id, class names, or rules.</td></tr>
+              <tr><td><code>globalStyle</code>, <code>sharedClass</code></td><td><code>selector/name, rules</code>.</td></tr>
+              <tr><td><code>keyframes</code></td><td><code>name, frames</code>.</td></tr>
+              <tr><td><code>mediaQuery</code></td><td><code>query, selectorRules</code>.</td></tr>
+              <tr><td><code>cssVar</code>, <code>cssVars</code></td><td><code>name, value</code> or variables object.</td></tr>
+              <tr><td><code>darkMode</code>, <code>print</code></td><td>Selector-to-rules object.</td></tr>
+              <tr><td><code>state</code>, <code>states</code></td><td><code>key, value</code> or state object.</td></tr>
+              <tr><td><code>build</code>, <code>fromJSON</code></td><td>Node/page definition.</td></tr>
+              <tr><td><code>toJSON</code></td><td>No parameters → serializable definition.</td></tr>
+              <tr><td><code>liveList</code></td><td><code>stateKey, itemFn, options?</code> → container element.</td></tr>
+              <tr><td><code>hashRouter</code>, <code>historyRouter</code></td><td>Router options.</td></tr>
+            </tbody>
+          </table></div>
+        </div>
+
+        <div class="api-group" data-search="element attr class css tree lifecycle bind event">
+          <h3>Element</h3>
+          <div class="table-wrap"><table>
+            <thead><tr><th>Methods</th><th>Parameters / result</th></tr></thead>
+            <tbody>
+              <tr><td><code>text</code>, <code>html</code></td><td>Text or trusted HTML value.</td></tr>
+              <tr><td><code>attr</code>, <code>data</code>, <code>aria</code></td><td><code>key, value</code>.</td></tr>
+              <tr><td><code>setAttrs</code></td><td>Attribute object.</td></tr>
+              <tr><td><code>addClass</code>, <code>removeClass</code></td><td>One or more class names.</td></tr>
+              <tr><td><code>toggleClass</code>, <code>classIf</code></td><td><code>name, condition</code>.</td></tr>
+              <tr><td><code>classMap</code></td><td>Class-to-boolean object.</td></tr>
+              <tr><td><code>css</code>, <code>style</code></td><td>Rules object; style also supports property/value.</td></tr>
+              <tr><td><code>hover</code>, <code>focusCss</code>, <code>active</code></td><td>Rules object.</td></tr>
+              <tr><td><code>pseudo</code></td><td><code>name, rules</code>.</td></tr>
+              <tr><td><code>media</code></td><td><code>query, rules</code>.</td></tr>
+              <tr><td><code>transition</code></td><td>Transition string or options object.</td></tr>
+              <tr><td><code>transform</code>, <code>opacity</code>, <code>zIndex</code></td><td>CSS value.</td></tr>
+              <tr><td><code>child</code></td><td><code>tag?</code> → new child element.</td></tr>
+              <tr><td><code>each</code></td><td><code>items, fn(self, item, index)</code>.</td></tr>
+              <tr><td><code>when</code></td><td><code>condition, fn(self)</code>.</td></tr>
+              <tr><td><code>find</code>, <code>findAll</code>, <code>closest</code></td><td>Query → matching element(s).</td></tr>
+              <tr><td><code>clone</code></td><td>No parameters → cloned element.</td></tr>
+              <tr><td><code>remove</code>, <code>empty</code></td><td>No parameters.</td></tr>
+              <tr><td><code>on</code></td><td><code>eventName, handler</code>.</td></tr>
+              <tr><td><code>onClick</code>, <code>onInput</code>, <code>onChange</code>, <code>onSubmit</code></td><td>Browser event handler.</td></tr>
+              <tr><td><code>bind</code>, <code>bindShow</code>, <code>bindClass</code></td><td><code>stateKey, computedFn?</code>.</td></tr>
+              <tr><td><code>bindAttr</code>, <code>bindProp</code></td><td><code>stateKey, name, computedFn?</code>.</td></tr>
+              <tr><td><code>bindStyle</code></td><td><code>stateKey, computedFn</code>.</td></tr>
+              <tr><td><code>bindInput</code></td><td><code>stateKey</code>.</td></tr>
+              <tr><td><code>onMount</code>, <code>onDestroy</code></td><td>Lifecycle callback.</td></tr>
+              <tr><td><code>onUpdate</code></td><td><code>stateKey, callback</code>.</td></tr>
+            </tbody>
+          </table></div>
+        </div>
+
+        <div class="api-group" data-search="shortcuts html tags forms layouts helpers">
+          <h3>Creation shortcuts</h3>
+          <p><code>div</code>, <code>span</code>, <code>section</code>, <code>header</code>, <code>footer</code>, <code>main</code>, <code>nav</code>, <code>article</code>, <code>aside</code>, <code>form</code>, <code>table</code>, <code>tr</code>, <code>ul</code>, <code>ol</code>, <code>h1</code>–<code>h6</code>, <code>p</code>, <code>a</code>, <code>button</code>, <code>img</code>, <code>input</code>, <code>select</code>, <code>textarea</code>, <code>label</code>, <code>details</code>, <code>dialog</code>, <code>pre</code>, <code>code</code>, <code>hr</code>, and <code>br</code> create and return elements.</p>
+          <p>Higher-level helpers include <code>formGroup</code>, <code>checkbox</code>, <code>radio</code>, <code>fieldset</code>, <code>hiddenInput</code>, <code>grid</code>, <code>flex</code>, <code>stack</code>, <code>row</code>, <code>center</code>, <code>container</code>, <code>spacer</code>, <code>divider</code>, <code>columns</code>, <code>list</code>, and <code>dataTable</code>.</p>
+        </div>
+
+        <div class="api-group" data-search="exports configure metrics cache components template">
+          <h3>Package exports</h3>
+          <p><code>Document</code>, <code>Element</code>, <code>Head</code>, <code>page</code>, <code>components</code>, <code>configure</code>, <code>CONFIG</code>, <code>Metrics</code>, <code>metrics</code>, <code>renderJSON</code>, template functions, SPA compilers, caching middleware, cache controls, health checks, and pool controls are exported from the package root.</p>
+          <div class="table-wrap"><table>
+            <thead><tr><th>Configuration option</th><th>Purpose</th></tr></thead>
+            <tbody>
+              <tr><td><code>mode</code></td><td><code>'dev'</code> or <code>'prod'</code> behavior.</td></tr>
+              <tr><td><code>poolSize</code></td><td>Maximum reusable object pool size.</td></tr>
+              <tr><td><code>cacheLimit</code></td><td>Response LRU entry limit.</td></tr>
+              <tr><td><code>maxComputedFnSize</code></td><td>Maximum serialized computed callback size.</td></tr>
+              <tr><td><code>maxEventFnSize</code></td><td>Maximum serialized event callback size.</td></tr>
+              <tr><td><code>enableMetrics</code></td><td>Enables runtime counters and timings.</td></tr>
+            </tbody>
+          </table></div>
+        </div>
+      </section>
+
+      <footer>
+        <p>For source code, tests, and issue tracking, visit the <a href="https://github.com/0trebor0/buildhtml">buildhtml repository</a>.</p>
+      </footer>
+    </main>
+  </div>
+  <script>
+    (function () {
+      var search = document.getElementById('search');
+      var menu = document.getElementById('menu');
+      var sidebar = document.getElementById('sidebar');
+      var searchable = Array.from(document.querySelectorAll('main > section, .api-group'));
+
+      search.addEventListener('input', function () {
+        var query = search.value.trim().toLowerCase();
+        searchable.forEach(function (node) {
+          var text = ((node.dataset.search || '') + ' ' + node.textContent).toLowerCase();
+          node.hidden = query && !text.includes(query);
+        });
+      });
+
+      menu.addEventListener('click', function () {
+        var open = sidebar.classList.toggle('open');
+        menu.setAttribute('aria-expanded', String(open));
+      });
+
+      sidebar.querySelector('nav').addEventListener('click', function () {
+        sidebar.classList.remove('open');
+        menu.setAttribute('aria-expanded', 'false');
+      });
+    })();
+  </script>
+</body>
+</html>

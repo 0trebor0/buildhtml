@@ -1,1626 +1,260 @@
 # @trebor/buildhtml
 
-**Server-side HTML compiler for Node.js. Describe your page with a JS API — reactive state, events, and DOM bindings compile automatically into a small client runtime. Zero dependencies and zero client framework.**
+**Build secure, reactive HTML entirely in Node.js—without a frontend framework, bundler, or hydration step.**
 
----
+`@trebor/buildhtml` is a zero-dependency server-side HTML compiler. Describe pages with JavaScript, render complete HTML on the server, and opt into browser behavior with declarative state, bindings, events, reactive lists, and routing.
 
-## Who it's for
-
-If you build pages where the structure comes from data — dashboards, reports, admin panels, data tables, config-driven UIs — you've probably been here:
-
-```javascript
-const rows = data.map(r => `<tr><td>${r.name}</td></tr>`).join(''); // no escaping
-res.send(`<html><body><table>${rows}</table></body></html>`);
-```
-
-It works until it doesn't. Escaping is manual. Adding interactivity means context-switching to hand-rolled client JS. Templating languages help with the HTML, but you're still managing two files and two languages.
-
-This library lets you stay in Node.js. You describe the page with a JS API; it emits safe, complete HTML with reactivity compiled in automatically.
-
-**Not the right fit** for a complex SPA with lots of client-side routing or component state — use React, Svelte, or SvelteKit for that.
-
----
-
-## Why
-
-- **No template files** — stay in Node.js; no `.ejs`, `.pug`, or `.hbs` context-switching
-- **Reactivity is compiled, not written** — `.onClick()`, `.bind()`, `.liveList()` describe behavior; the library emits the `addEventListener` calls. You never write client JS manually
-- **Zero dependencies** — nothing to audit, nothing to break, nothing to update
-- **Security by default** — XSS escaping, URL sanitization, CSP nonce support, `addEventListener` instead of inline `onclick`
-- **Progressive** — start with static HTML, add `.states()` and `.bind()` only when you need them
-
----
-
-## Quick Start
+[Complete guide and API reference](https://github.com/0trebor0/buildhtml/blob/main/docs/index.html) · [Examples](https://github.com/0trebor0/buildhtml/tree/main/example) · [Report an issue](https://github.com/0trebor0/buildhtml/issues)
 
 ```bash
 npm install @trebor/buildhtml
 ```
 
 ```javascript
-const { Document } = require('@trebor/buildhtml');
+const { page } = require('@trebor/buildhtml');
 
-const doc = new Document();
-doc.title('Hello').viewport().resetCss();
-doc.h1().text('Hello World');
-doc.p('No bundlers. No client JS. Just a page.');
+const doc = page('Hello');
+doc.h1('Hello world');
+doc.p('Rendered safely on the server. No build step required.');
 
 console.log(doc.render());
 ```
 
-Run it:
+## Why buildhtml?
 
-```bash
-node index.js > index.html
+Use one JavaScript API for the page, styles, state, and browser interactions:
+
+- **Server-rendered by default** — send complete HTML immediately or generate static files at startup.
+- **Reactive when needed** — compile state bindings and events only for pages that use them.
+- **No client framework** — no React, virtual DOM, hydration protocol, or application bundle.
+- **Secure defaults** — escaped text and attributes, sanitized URLs, blocked inline `on*` attributes, and CSP nonce support.
+- **Zero runtime dependencies** — a small supply chain and straightforward deployment.
+- **Flexible output** — strings, streams, static files, Express responses, JSON-driven pages, or `.bhtml` templates.
+- **SPA-capable** — reactive lists plus hash or History API routing for focused applications.
+
+```text
+Node.js API  →  complete HTML  →  optional compiled browser runtime
 ```
 
-Open `index.html`. That's it.
+The browser receives only the behavior the page uses. A static page stays static. Adding `.states()`, `.bind()`, or `.onClick()` automatically adds the required client runtime.
 
----
-
-## Before / After
-
-**Before** — generating a filterable data table in vanilla Node.js:
-
-```javascript
-// String templates + hand-rolled client JS
-const rows = users
-  .map(u => `<tr><td>${u.name}</td><td>${u.role}</td></tr>`) // no XSS escaping
-  .join('');
-
-res.send(`<!DOCTYPE html><html><head><title>Users</title></head><body>
-  <input id="q" oninput="filter(this.value)">  <!-- CSP will block this -->
-  <table id="t">${rows}</table>
-  <script>
-    var data = ${JSON.stringify(users)};  // manual serialization
-    function filter(q) {
-      document.getElementById('t').innerHTML = data
-        .filter(u => u.name.toLowerCase().includes(q.toLowerCase()))
-        .map(u => '<tr><td>' + u.name + '</td><td>' + u.role + '</td></tr>')
-        .join('');
-    }
-  </script>
-</body></html>`);
-```
-
-**After** — server API, compiled output:
+## A reactive page without client framework code
 
 ```javascript
 const { page } = require('@trebor/buildhtml');
 
-const doc = page('Users');
-doc.states({ users, query: '' });
+const doc = page('Counter');
+doc.states({ count: 0 });
 
-doc.input('text', { placeholder: 'Filter...' }).bindInput('query');
+doc.h1().bind('count', (count) => `Count: ${count}`);
 
-doc.liveList('users', function(u) {
-  return {
-    tag: 'tr',
-    children: [{ tag: 'td', text: u.name }, { tag: 'td', text: u.role }],
-  };
-}, {
-  filter: function(u, state) {
-    return u.name.toLowerCase().includes(state.query.toLowerCase());
-  },
-  filterKeys: ['query'],
+doc.button('+1').onClick(function () {
+  State.count++;
 });
 
-res.send(doc.render());
-// ↑ Full HTML page + compiled client runtime. XSS-safe and CSP nonce-ready.
-// Type in the input — the list filters. Zero client JS written.
+doc.button('Reset').onClick(function () {
+  State.count = 0;
+});
+
+const html = doc.render();
 ```
 
----
+The callbacks are written in the server file but compiled to browser JavaScript. Mutating `State.count` updates every binding watching `count`.
 
-## Features
+## Quick navigation
 
-- **Deep reactive bindings** — `bind`, `bindShow`, `bindClass`, `bindAttr`, `bindStyle`, `bindProp`, and `bindInput` react to top-level assignments, nested changes, array mutations, and deletions
-- **Reactive lists** — `liveList(stateKey, itemFn)` server-renders the initial list and re-renders it client-side whenever state changes
-- **Components** — register named components or pass functions directly; supports inheritance and deep nesting
-- **Declarative builder** — `doc.build({...})` for JSON-driven pages, config files, and serialized templates
-- **Client routing** — `doc.hashRouter()` supports portable hash routes; `doc.historyRouter()` adds clean URLs, route parameters, and back/forward navigation
-- **Express ready** — `renderStream()` flushes `<head>` immediately for faster TTFB; `createCachedRenderer()` caches rendered pages with LRU eviction
-
----
-
-## How It Works
-
-1. You call server-side API methods — `doc.states()`, `.bind()`, `.onClick()` — describing what the page should do
-2. `doc.render()` walks the element tree, collecting events, bindings, and computed values
-3. It emits one `<script>` IIFE containing a `State` Proxy, `watchState()`, and all compiled `addEventListener` calls
-4. The browser runs the script synchronously at end of `<body>` — no async loading, no hydration step
-5. Mutate `State.key`, a nested property, or a state array from any event handler; every element bound to the root key updates automatically
-
----
-
-## Table of Contents
-
-- [Feature Guide & Parameter Conventions](#feature-guide--parameter-conventions)
-- [Document API](#document-api)
-- [Element API](#element-api)
+- [Create pages and elements](#create-pages-and-elements)
+- [Serve HTML with Express](#serve-html-with-express)
+- [Generate static files](#generate-static-files)
+- [Reactive state and events](#reactive-state-and-events)
+- [Client-side fetch](#client-side-fetch)
 - [Components](#components)
-- [Declarative Builder](#declarative-builder)
-- [JSON Import](#json-import)
-- [Templates (.bhtml)](#templates-bhtml)
-- [State & Events](#state--events)
-- [Client-Side Fetch](#client-side-fetch)
-- [Express Integration](#express-integration)
-- [Limitations](#limitations)
-- [Benchmarks](#benchmarks)
-- [Contributing](#contributing)
-- [Exports](#exports)
+- [Declarative builder and JSON](#declarative-builder-and-json)
+- [Templates](#bhtml-templates)
+- [Reactive lists](#reactive-lists)
+- [SPA routing](#spa-routing)
+- [Streaming and caching](#streaming-and-caching)
+- [Security](#security)
+- [API overview](#api-overview)
+- [Full documentation](#full-documentation)
 
----
+## Create pages and elements
 
-## Feature Guide & Parameter Conventions
-
-Use the smallest feature that matches the page:
-
-| Need | Feature | What it does |
-|------|---------|--------------|
-| A complete HTML page | `new Document()` or `page()` | Builds and renders the document on the server |
-| Reusable UI | Components | Reuses server-side element-building functions |
-| Data/config-driven markup | `build()` or `.bhtml` templates | Turns plain objects or template source into elements |
-| Browser updates without a framework | `states()` plus bindings/events | Compiles state, DOM updates, and event listeners into the page |
-| A reactive array | `liveList()` | Server-renders the initial list and re-renders it when watched state changes |
-| SPA navigation | `hashRouter()` or `historyRouter()` | Synchronizes the URL with reactive route state |
-| Repeated Express responses | `createCachedRenderer()` | Caches rendered HTML and coalesces concurrent cache misses |
-| Faster initial response | `renderStream()` | Streams the document head before the body |
-
-Parameter conventions used throughout this guide:
-
-- A parameter ending in `?` is optional. Defaults are shown in the nearby table.
-- Most document and element methods are chainable. Creation methods such as `doc.div()` return the new `Element`; configuration methods generally return the object they modify.
-- `rules` means a JavaScript object of CSS properties, using camelCase or CSS property names.
-- `attrs` means an HTML attribute object. Text and attribute values are escaped by default.
-- Event handlers, computed bindings, lifecycle hooks, and `oncreate()` are serialized and run in the browser. They can use their arguments, `this`, browser globals, and `State`, but not server-side closure variables.
-- State values must be JSON-serializable.
-- Methods named `raw*`, `html()`, `inlineScript()`, and `inlineStyle()` accept trusted raw content and bypass normal text escaping.
-
----
-
-## Document API
-
-### Convenience Factory
+Use `page()` for sensible defaults:
 
 ```javascript
 const { page } = require('@trebor/buildhtml');
 
-// Equivalent to: new Document() + title() + viewport() + resetCss() + lang()
-const doc = page('My Page');
-const doc = page('My Page', { lang: 'fr', nonce: 'abc' });
-```
-
-### Constructor
-
-Create with `new Document(options)`.
-
-```javascript
-new Document({
-  cache: true,       // Enable response caching
-  cacheKey: 'home',  // Cache key
-  nonce: 'abc123'    // CSP nonce for inline scripts/styles
-})
-```
-
-| Option | Type | Default | What it does |
-|--------|------|---------|--------------|
-| `cache` | `boolean` | `false` | Enables the document render cache |
-| `cacheKey` | `string` | none | Identifies the cached render; document caching only takes effect when this and `cache` are both set |
-| `nonce` | `string` | none | Adds the CSP nonce to generated inline scripts and styles |
-
-`page(title, options)` is the batteries-included factory. In addition to the constructor options above, it accepts:
-
-| Option | Type | Default | What it does |
-|--------|------|---------|--------------|
-| `lang` | `string` | `'en'` | Sets the root `<html lang>` attribute |
-| `viewport` | `boolean` | `true` | Set to `false` to omit the standard responsive viewport meta tag |
-| `resetCss` | `boolean` | `true` | Includes the built-in CSS reset |
-
-Use `new Document()` when you want to choose every head setting yourself. Use `page()` for the normal title, viewport, language, and reset setup in one call.
-
-### Head & Meta
-
-| Method | Description |
-|--------|-------------|
-| `title(t)` | Set page title |
-| `meta(name, content)` | Add `<meta>` tag |
-| `viewport(v?)` | Add viewport meta (default: responsive) |
-| `charset(c?)` | Set charset (default: UTF-8) |
-| `favicon(href)` | Add favicon link |
-| `addMeta(obj)` | Add meta with full attribute object |
-| `addLink(href)` | Add stylesheet link |
-| `addScript(src)` | Add external script |
-| `addStyle(css)` | Add CSS string to `<head>` |
-
-### SEO & Social
-
-| Method | Description |
-|--------|-------------|
-| `canonical(url)` | `<link rel="canonical">` |
-| `ogTags({ title, description, image })` | Open Graph meta tags |
-| `twitterCard({ card, site, title })` | Twitter Card meta tags |
-| `jsonLd(schemaObj)` | JSON-LD structured data |
-| `noindex(nofollow?)` | Add robots noindex (and optionally nofollow) |
-
-### Resource Hints
-
-| Method | Description |
-|--------|-------------|
-| `preload(href, as, type?)` | `<link rel="preload">` |
-| `prefetch(href)` | `<link rel="prefetch">` |
-| `preconnect(href)` | `<link rel="preconnect">` |
-
-### Head Injection
-
-| Method | Description |
-|--------|-------------|
-| `rawHead(html)` | Inject arbitrary HTML into `<head>` |
-| `inlineScript(code)` | Add inline `<script>` block |
-| `inlineStyle(css)` | Add raw CSS string to `<head>` |
-
-### HTML & Body Attributes
-
-| Method | Description |
-|--------|-------------|
-| `lang(l)` | Set `<html lang="...">` |
-| `htmlAttr(key, value)` | Set any `<html>` attribute |
-| `bodyId(id)` | Set `<body id="...">` |
-| `bodyClass(...names)` | Add classes to `<body>` |
-| `bodyAttr(key, value)` | Set any `<body>` attribute |
-| `bodyCss(rules)` | Style `<body>` via global CSS rule |
-
-```javascript
-doc.lang('en')
-  .bodyClass('dark-mode', 'no-scroll')
-  .bodyCss({ backgroundColor: '#1a1a1a', color: '#fff' });
-```
-
-### Global CSS
-
-| Method | Description |
-|--------|-------------|
-| `globalStyle(selector, rules)` | Add global CSS rule |
-| `sharedClass(name, rules)` | Define reusable class |
-| `defineClass(selector, rules, isRaw?)` | Define class or raw selector |
-| `resetCss()` | Box-sizing reset + normalize basics |
-
-```javascript
-doc.resetCss();
-doc.globalStyle('body', { fontFamily: 'system-ui', lineHeight: '1.6' });
-doc.sharedClass('btn', { padding: '8px 16px', borderRadius: '4px' });
-```
-
-### CSS Features
-
-| Method | Description |
-|--------|-------------|
-| `keyframes(name, frames)` | Define `@keyframes` animation |
-| `mediaQuery(query, selectorRules)` | `@media` block with selector-rules map |
-| `cssVar(name, value)` | CSS custom property on `:root` |
-| `cssVars(obj)` | Set multiple CSS variables at once |
-| `darkMode(selectorRules)` | `@media (prefers-color-scheme: dark)` shorthand |
-| `print(selectorRules)` | `@media print` shorthand |
-
-```javascript
-doc.cssVars({ primary: '#007bff', radius: '8px', spacing: '16px' });
-
-doc.keyframes('fadeIn', {
-  from: { opacity: '0', transform: 'translateY(-10px)' },
-  to: { opacity: '1', transform: 'translateY(0)' }
+const doc = page('Dashboard', {
+  lang: 'en',
+  nonce: 'request-csp-nonce'
 });
 
-doc.darkMode({
-  body: { backgroundColor: '#1a1a1a', color: '#eee' },
-  '.card': { borderColor: '#333' }
+doc.header((header) => {
+  header.h1('Dashboard');
+  header.nav()
+    .a('/', 'Home')
+    .a('/reports', 'Reports');
 });
 
-doc.print({
-  '.no-print': { display: 'none' },
-  body: { fontSize: '12pt' }
+doc.main((main) => {
+  main.h2('Today');
+  main.p('Everything here is escaped automatically.');
 });
 
-doc.mediaQuery('(max-width: 768px)', {
-  '.sidebar': { display: 'none' },
-  '.content': { width: '100%' }
-});
+const html = doc.render();
 ```
 
-### State & Lifecycle
-
-| Method | Description |
-|--------|-------------|
-| `state(key, value)` | Set a global reactive state key |
-| `states(obj)` | Set multiple state keys at once |
-| `oncreate(fn)` | Run function on page load |
-| `element.onMount(fn)` | Run once when the rendered element is available |
-| `element.onUpdate(key, fn)` | Run after the named state key changes |
-| `element.onDestroy(fn)` | Run once when the element is removed from the DOM |
-
-### SPA Compilation
-
-buildhtml compiles reactive SPAs entirely server-side — no raw client JS needed.
-
-| Method | Description |
-|--------|-------------|
-| `liveList(stateKey, itemFn, options?)` | Reactive list — server-renders initial items, client re-renders on state change |
-| `hashRouter(options?)` | Hash-based router — syncs `location.hash` → `State[stateKey]`, highlights active nav |
-| `historyRouter(options?)` | History API router — clean URLs, named parameters, opted-in links, and back/forward navigation |
-
-`liveList` — `itemFn(item, index)` must return a **NodeDef plain object** (tag, css, children, on, attrs, text). The server renders the initial list; the client re-renders whenever `State[stateKey]` changes. Children support an `if` key for conditional rendering — both server and client skip the node when `if` is falsy.
-
-#### `liveList` parameters
-
-| Parameter | Type | What it does |
-|-----------|------|--------------|
-| `stateKey` | `string` | Names the state array to render and watch |
-| `itemFn` | `(item, index) => NodeDef` | Creates one plain-object node definition for each item |
-| `options.filter` | `(item, State) => boolean` | Optionally includes only items for which the browser callback returns truthy |
-| `options.filterKeys` | `string[]` | Additional state keys that cause the list to filter and render again |
-
-The method returns the list container `Element`, so container styles, classes, and attributes can be chained onto it. Common `NodeDef` keys include `tag`, `text`, `html`, `attrs`, `css`, `class`, `data`, `on`, `children`, and `if`.
+Use `new Document()` when you want to configure the document manually:
 
 ```javascript
-doc.states({ tasks: [{ id: 1, title: 'Buy milk', done: false }], view: 'all' });
+const { Document } = require('@trebor/buildhtml');
 
-const list = doc.liveList('tasks', function(task) {
-  return {
-    tag: 'div',
-    css: { display: 'flex', gap: '8px', padding: '12px' },
-    children: [
-      { tag: 'input', attrs: { type: 'checkbox', 'data-id': String(task.id), ...(task.done ? { checked: 'checked' } : {}) },
-        on: { change: function() {
-          var id = Number(this.dataset.id), ck = this.checked;
-          State.tasks = State.tasks.map(function(t) { return t.id === id ? { id: t.id, title: t.title, done: ck } : t; });
-        }}
-      },
-      { tag: 'span', text: task.title },
-      { tag: 'em', text: 'done', if: task.done },  // skipped when if is falsy
-    ]
-  };
-}, {
-  filter: function(task, state) {
-    if (state.view === 'active') return !task.done;
-    if (state.view === 'done')   return  task.done;
-    return true;
-  },
-  filterKeys: ['view'],  // re-render when State.view changes too
-});
-
-list.css({ display: 'flex', flexDirection: 'column' });
+const doc = new Document();
+doc.title('Custom setup').viewport().resetCss().lang('en');
 ```
 
-`hashRouter` — maps `#all` → `State.view = 'all'` and optionally applies active/inactive styles to nav links:
+### Document options
 
-#### Router parameters
+| Option | Type | Default | Purpose |
+|--------|------|---------|---------|
+| `lang` | string | `'en'` | Root HTML language when using `page()` |
+| `viewport` | boolean | `true` | Set false to omit the viewport meta added by `page()` |
+| `resetCss` | boolean | `true` | Set false to omit the reset added by `page()` |
+| `nonce` | string | none | CSP nonce for generated inline scripts and styles |
+| `cache` | boolean | `false` | Enables document render caching |
+| `cacheKey` | string | none | Required stable key when document caching is enabled |
 
-| Option | Hash default | History default | What it does |
-|--------|--------------|-----------------|--------------|
-| `stateKey` | `'view'` | `'view'` | State key receiving the matched route value |
-| `default` | `'all'` | `'/'` | Route used when the hash or path is empty |
-| `routes` | none | none | Object mapping literal or `:parameter` patterns to state values; `'*'` is the fallback |
-| `paramsKey` | `'routeParams'` | `'routeParams'` | State key receiving captured route parameters |
-| `notFound` | `'not-found'` | `'not-found'` | Value used when no route and no `'*'` entry matches |
-| `navSelector` | none | none | CSS selector for links that receive active/inactive styles |
-| `activeStyle` | none | none | CSS rules applied to the active navigation link |
-| `inactiveStyle` | none | none | CSS rules applied to inactive navigation links |
-| `base` | n/a | `'/'` | URL prefix removed before matching history routes |
-| `linkSelector` | n/a | `'a[data-route]'` | Opt-in links intercepted for client-side history navigation |
-
-Both methods return the `Document` for chaining. The history router only intercepts eligible, unmodified, same-origin link clicks; other links continue through normal browser navigation.
+### Familiar element API
 
 ```javascript
-doc.hashRouter({
-  stateKey: 'view',
-  default: 'all',
-  navSelector: 'header a',
-  activeStyle:   { background: '#3b82f6', color: '#fff' },
-  inactiveStyle: { background: 'transparent', color: '#94a3b8' },
-});
+const card = doc.section()
+  .id('welcome')
+  .addClass('card', 'featured')
+  .data('user-id', 42)
+  .aria('label', 'Welcome card')
+  .css({
+    padding: '20px',
+    borderRadius: '12px',
+    backgroundColor: '#0f172a',
+    color: '#f8fafc'
+  });
+
+card.h2('Welcome');
+card.p('Compose elements using normal JavaScript.');
+card.a('/start', 'Get started').addClass('button');
 ```
 
-Pass `routes` to map hashes to named views, capture `:parameters`, and handle unknown routes:
+Shortcuts include semantic tags, headings, forms, tables, lists, media, and layout helpers. Most methods are chainable.
 
-```javascript
-doc.states({ view: 'home', routeParams: {} });
-
-doc.hashRouter({
-  stateKey: 'view',
-  default: 'home',
-  routes: {
-    home: 'home',
-    'users/:id': 'user',
-    '*': 'not-found',
-  },
-});
-
-// #users/42 sets:
-// State.view = 'user'
-// State.routeParams = { id: '42' }
-```
-
-Set `paramsKey` to store parameters under a different state key. When no pattern matches, the router uses the `'*'` route if present, otherwise `notFound` (default: `'not-found'`).
-
-`historyRouter` uses the same route table with clean paths. Add `data-route` to links that should navigate without reloading:
-
-```javascript
-const nav = doc.nav();
-nav.a('/app/', 'Home').attr('data-route', '');
-nav.a('/app/users/42', 'User 42').attr('data-route', '');
-
-doc.states({ view: 'home', routeParams: {} });
-doc.historyRouter({
-  base: '/app',
-  stateKey: 'view',
-  routes: {
-    '/': 'home',
-    '/users/:id': 'user',
-    '*': 'not-found',
-  },
-});
-```
-
-The router intercepts same-origin links matching `a[data-route]`, calls `history.pushState()`, and updates state on `popstate`. Set `linkSelector` to use a different opt-in selector.
-
-Clean URLs require the server to return the same generated document when an application route is loaded or refreshed. Register this fallback after static files and API routes:
+## Serve HTML with Express
 
 ```javascript
 const express = require('express');
-const app = express();
-const html = buildAppHtml();
-
-app.use(express.static('public'));
-app.use('/api', apiRouter);
-
-app.use('/app', function (req, res, next) {
-  if (req.method !== 'GET' || !req.accepts('html')) return next();
-  res.type('html').send(html);
-});
-```
-
-Without this fallback, direct requests such as `/app/users/42` will return the server's 404 response before the client router can start. Hash routing does not require a server fallback.
-
-#### Complete Hash SPA
-
-This task manager is server-rendered initially, then handles routing, filtering, form submission, updates, and deletion in the browser. Every interaction is expressed through the buildhtml API:
-
-```javascript
 const { page } = require('@trebor/buildhtml');
 
-const doc = page('Task Manager');
-doc.states({
-  tasks: [
-    { id: 1, title: 'Learn buildhtml', done: true },
-    { id: 2, title: 'Build an SPA', done: false },
-  ],
-  view: 'all',
-  nextId: 3,
-});
+const app = express();
 
-// Hash navigation: #all, #active, #done
-const header = doc.header();
-header.h1().text('Tasks');
-header.a('#all', 'All');
-header.a('#active', 'Active');
-header.a('#done', 'Done');
-
-const main = doc.main();
-
-// Add tasks without a page reload
-const form = main.form().id('task-form');
-form.input('text', { placeholder: 'What needs doing?' }).id('task-title');
-form.button('Add task').attr('type', 'submit');
-
-form.onSubmit(function (event) {
-  event.preventDefault();
-  var input = document.getElementById('task-title');
-  var title = input.value.trim();
-  if (!title) return;
-
-  State.tasks = State.tasks.concat([{
-    id: State.nextId++,
-    title: title,
-    done: false,
-  }]);
-  input.value = '';
-});
-
-// Server-rendered initially; rebuilt automatically when tasks or view changes
-main.liveList('tasks', function (task) {
-  return {
-    tag: 'article',
-    attrs: { 'data-task-id': String(task.id) },
-    css: {
-      display: 'flex',
-      gap: '8px',
-      alignItems: 'center',
-      padding: '8px',
-    },
-    children: [
-      {
-        tag: 'input',
-        attrs: {
-          type: 'checkbox',
-          'data-id': String(task.id),
-          ...(task.done ? { checked: 'checked' } : {}),
-        },
-        on: {
-          change: function () {
-            var id = Number(this.dataset.id);
-            var done = this.checked;
-            State.tasks = State.tasks.map(function (item) {
-              return item.id === id
-                ? { id: item.id, title: item.title, done: done }
-                : item;
-            });
-          },
-        },
-      },
-      {
-        tag: 'span',
-        text: task.title,
-        css: {
-          flex: '1',
-          textDecoration: task.done ? 'line-through' : 'none',
-        },
-      },
-      {
-        tag: 'button',
-        text: 'Delete',
-        attrs: { 'data-id': String(task.id) },
-        on: {
-          click: function () {
-            var id = Number(this.dataset.id);
-            State.tasks = State.tasks.filter(function (item) {
-              return item.id !== id;
-            });
-          },
-        },
-      },
-    ],
-  };
-}, {
-  filter: function (task, state) {
-    if (state.view === 'active') return !task.done;
-    if (state.view === 'done') return task.done;
-    return true;
-  },
-  filterKeys: ['view'],
-});
-
-// Reactive summary and bulk action
-const footer = doc.footer();
-footer.span().bind('tasks', function (tasks) {
-  var remaining = tasks.filter(function (task) {
-    return !task.done;
-  }).length;
-  return remaining + ' remaining';
-});
-
-footer.button('Clear completed').onClick(function () {
-  State.tasks = State.tasks.filter(function (task) {
-    return !task.done;
-  });
-});
-
-doc.hashRouter({
-  stateKey: 'view',
-  default: 'all',
-  navSelector: 'header a',
-  activeStyle: { fontWeight: '700' },
-  inactiveStyle: { fontWeight: '400' },
-});
-
-const html = doc.render();
-```
-
-Serve `html` from any Node HTTP server. The resulting page supports `#all`, `#active`, and `#done`; adding, toggling, deleting, filtering, and clearing tasks happen without page reloads. No raw client script is required.
-
-### Element Creation
-
-| Method | Description |
-|--------|-------------|
-| `create(tag)` / `child(tag)` | Create element (auto-attached) |
-| `div()`, `span()`, `section()`, `header()`, `footer()`, `main()`, `nav()`, `article()`, `aside()`, `form()`, `ul()`, `ol()`, `li(text?)`, `table()`, `tr()`, `th(text?)`, `td(text?)`, `details()`, `pre()`, `code()`, `blockquote()`, `dialog()` | Tag shortcuts |
-| `h1()` `h2()` `h3()` `h4()` `h5()` `h6()` | Heading elements |
-| `p(text?)` | Paragraph |
-| `a(href, text?)` | Anchor |
-| `button(text?)` | Button |
-| `img(src, alt?)` | Image |
-| `input(type?, attrs?)` | Input |
-| `textarea(attrs?)` | Textarea |
-| `select(options, attrs?)` | Select dropdown |
-| `hr()` | Horizontal rule |
-| `br()` | Line break |
-
-```javascript
-doc.h1().text('Title');
-doc.p('A paragraph of text.');
-doc.a('/about', 'About Us');
-doc.img('/photo.jpg', 'A photo');
-doc.input('email', { placeholder: 'you@example.com', required: true });
-doc.select([
-  { value: 'us', text: 'United States' },
-  { value: 'uk', text: 'United Kingdom', selected: true },
-], { name: 'country' });
-```
-
-### Form Helpers
-
-| Method | Description |
-|--------|-------------|
-| `formGroup(label, type?, attrs?)` | Label + input pair in wrapper |
-| `checkbox(name, label, checked?)` | Checkbox with label |
-| `radio(name, options)` | Radio button group |
-| `fieldset(legend, setupFn?)` | Fieldset with legend |
-| `hiddenInput(name, value)` | Hidden input |
-
-```javascript
-doc.formGroup('Email', 'email', { name: 'email', placeholder: 'you@example.com' });
-doc.checkbox('terms', 'I agree to the terms', false);
-doc.radio('size', [
-  { value: 's', label: 'Small' },
-  { value: 'm', label: 'Medium', checked: true },
-  { value: 'l', label: 'Large' },
-]);
-doc.fieldset('Shipping Address', (fs) => {
-  fs.input('text', { name: 'street', placeholder: 'Street' });
-  fs.input('text', { name: 'city', placeholder: 'City' });
-});
-doc.hiddenInput('csrf', 'abc123');
-```
-
-### Layout Helpers
-
-| Method | Description |
-|--------|-------------|
-| `grid(columns, items?, gap?)` | CSS Grid wrapper |
-| `flex(items?, options?)` | Flex container |
-| `stack(items?, gap?)` | Vertical stack (flex column) |
-| `row(items?, gap?)` | Horizontal row (flex row) |
-| `center(childFn?)` | Centered flex wrapper |
-| `container(childFn?, maxWidth?)` | Max-width centered container |
-| `spacer(height?)` | Empty spacer div |
-| `divider(options?)` | Styled `<hr>` |
-| `columns(count, columnFns?, gap?)` | Multi-column grid |
-
-```javascript
-doc.container((c) => {
-  c.h1().text('Dashboard');
-}, '960px');
-
-doc.grid(3, ['Card 1', 'Card 2', 'Card 3'], '20px');
-
-doc.columns(2, [
-  (col) => col.p('Left side'),
-  (col) => col.p('Right side'),
-]);
-
-doc.stack([
-  (el) => el.h2().text('Section 1'),
-  (el) => el.h2().text('Section 2'),
-], '24px');
-```
-
-### Data Helpers
-
-| Method | Description |
-|--------|-------------|
-| `list(items, renderer?, tag?)` | Create `<ul>` or `<ol>` from array |
-| `dataTable(headers, rows, options?)` | Create `<table>` from data |
-
-```javascript
-doc.list(['Apples', 'Bananas', 'Cherries']);
-doc.list(users, (li, user) => li.text(`${user.name} (${user.age})`));
-
-doc.dataTable(['Name', 'Age'], [['Alice', 30], ['Bob', 25]]);
-doc.dataTable(null, [
-  { name: 'Alice', age: 30 },
-  { name: 'Bob', age: 25 },
-], { autoHeaders: true, class: 'data-table' });
-```
-
-### Utility Methods
-
-| Method | Description |
-|--------|-------------|
-| `comment(text)` | HTML comment in body |
-| `raw(html)` | Raw HTML string in body (no wrapper) |
-| `each(items, fn)` | Loop helper: `fn(doc, item, index)` |
-| `when(condition, fn)` | Conditional: runs `fn(doc)` if truthy |
-| `group(fn)` | Logical grouping: runs `fn(doc)`, no wrapper element |
-| `template(name, fn)` | Define reusable document-level fragment |
-| `useTemplate(name, vars)` | Stamp out a defined template |
-| `isEmpty()` | Check if body has content |
-| `elementCount()` | Total elements in body (recursive) |
-
-```javascript
-doc.comment('Navigation section');
-
-doc.template('userCard', (d, { name, role }) => {
-  const card = d.div().addClass('user-card');
-  card.h3().text(name);
-  card.span().text(role);
-});
-
-doc.each(users, (d, user) => {
-  d.useTemplate('userCard', user);
-});
-
-doc.when(isAdmin, (d) => {
-  d.button('Admin Panel');
-});
-
-doc.group((d) => {
-  d.h2().text('Section');
-  d.p('Content without a wrapper element.');
-});
-```
-
-### Rendering
-
-| Method | Description |
-|--------|-------------|
-| `render()` | Return full HTML string |
-| `renderStream()` | Return a Node.js `Readable` stream — sends `<head>` immediately for faster TTFB |
-| `output()` | Get last rendered HTML |
-| `save(path)` | Write rendered HTML to file |
-| `toJSON()` | Export document structure as JSON |
-
-```javascript
-// Streaming — browser starts loading CSS/fonts while body is still building
 app.get('/', (req, res) => {
-  res.setHeader('Content-Type', 'text/html');
   const doc = page('Home');
-  doc.h1().text('Hello');
-  doc.renderStream().pipe(res);
-});
-```
+  doc.h1('Welcome');
+  doc.p('Built for this request.');
 
----
-
-## Element API
-
-Created via `doc.create(tag)`, `parent.child(tag)`, or any tag shortcut. All methods return `this` for chaining (or the new child element for creation methods).
-
-### Tag Shortcuts (create child elements)
-
-All the same tag shortcuts available on `Document` work on `Element` too — they create and return a child element:
-
-```javascript
-const card = doc.div().addClass('card');
-
-card.h2().text('Title');
-card.p('Body text.');
-card.a('/more', 'Read more').hover({ textDecoration: 'underline' });
-card.img('/photo.jpg', 'A photo').size('100%', '200px');
-card.button('Submit').onClick(function() { State.submitted = true; });
-card.input('email', { placeholder: 'you@example.com' });
-card.hr();
-card.br();
-```
-
-**Available:** `div()`, `span()`, `section()`, `header()`, `footer()`, `main()`, `nav()`, `article()`, `aside()`, `form()`, `ul()`, `ol()`, `table()`, `details()`, `summary()`, `dialog()`, `pre()`, `code()`, `blockquote()`, `h1()` `h2()` `h3()` `h4()` `h5()` `h6()`, `p(text?)`, `a(href, text?)`, `button(text?)`, `img(src, alt?)`, `input(type?, attrs?)`, `textarea(attrs?)`, `select(options, attrs?)`, `hr()`, `br()`
-
-### Tree Manipulation
-
-| Method | Description |
-|--------|-------------|
-| `child(tag)` / `create(tag)` | Create child element |
-| `append(child)` | Append element or text |
-| `appendUnsafe(html)` | Append raw HTML |
-| `text(content)` | Append escaped text |
-| `before(sibling)` | Insert before this element |
-| `after(sibling)` | Insert after this element |
-| `wrap(tag)` | Wrap this element in a new parent |
-| `remove()` | Remove from parent |
-| `empty()` | Clear all children |
-| `clone()` | Deep copy element |
-| `replaceWith(el)` | Swap this element for another in parent |
-| `prependChild(child)` | Insert child at beginning |
-| `insertAt(index, child)` | Insert child at position |
-| `find(tag)` | Find first descendant by tag |
-| `findById(id)` | Find descendant by id |
-| `findAll(tag)` | Find all descendants by tag |
-| `closest(tag)` | Walk up to find ancestor by tag |
-| `parent()` | Get parent element |
-| `siblings()` | Get sibling elements (excluding self) |
-| `nextSibling()` | Next sibling element |
-| `prevSibling()` | Previous sibling element |
-| `childCount()` | Number of children |
-| `index()` | Position in parent's children |
-| `isVoid()` | Check if self-closing (img, br, input, etc.) |
-| `html()` / `toString()` | Render this element to HTML string |
-
-```javascript
-const div = doc.div();
-const p = div.p('Hello');
-p.wrap('section');                  // <section><p>Hello</p></section>
-const cloned = div.clone();        // deep copy
-p.replaceWith(doc.create('span')); // swap p for span
-div.prependChild(doc.create('h1').text('First'));
-console.log(div.childCount());     // 3
-console.log(p.parent());           // section element
-console.log(p.siblings());         // sibling elements
-```
-
-### Attributes
-
-| Method | Description |
-|--------|-------------|
-| `attr(key, value)` | Set any attribute |
-| `id(v?)` | Set id (auto-generated if omitted) |
-| `setAttrs(obj)` | Set multiple attributes |
-| `data(obj)` | Set `data-*` attributes |
-| `aria(obj)` | Set `aria-*` attributes |
-
-**Attribute shortcuts:** `href()`, `src()`, `type()`, `placeholder()`, `value()`, `name()`, `role()`, `for()`, `title()`, `tabindex()`, `action()`, `method()`, `target()`, `rel()`, `alt()`, `width()`, `height()`, `min()`, `max()`, `step()`, `pattern()`, `autocomplete()`
-
-**Boolean shortcuts:** `disabled()`, `hidden()`, `required()`, `readonly()`, `autofocus()`, `multiple()`, `checked()`, `selected()`, `contentEditable()`, `draggable()`
-
-**Visibility toggles:** `show()`, `hide()`, `enable()`, `disable()`, `focus()`
-
-**Form validation:** `minLength(n)`, `maxLength(n)`, `accept(types)`, `rows(n)`, `cols(n)`
-
-**Utility:** `tooltip(text)` — sets `title` + `aria-describedby`
-
-```javascript
-doc.input('email')
-  .name('email')
-  .placeholder('you@example.com')
-  .required()
-  .minLength(5)
-  .maxLength(100)
-  .focus();
-
-doc.textarea().rows(10).cols(80).placeholder('Write here...');
-
-doc.div()
-  .data({ userId: 42, role: 'admin' })
-  .aria({ label: 'User card', expanded: 'false' })
-  .tooltip('Click to expand');
-
-const btn = doc.button('Submit');
-btn.disable();  // disabled="disabled"
-btn.enable();   // removes disabled
-btn.hide();     // hidden="hidden"
-btn.show();     // removes hidden
-```
-
-### CSS & Classes
-
-| Method | Description |
-|--------|-------------|
-| `css(obj)` | Scoped CSS (generates unique class) |
-| `style(prop, value)` / `style(obj)` | Inline `style` attribute |
-| `addClass(...names)` | Add class names |
-| `removeClass(...names)` | Remove class names |
-| `classIf(cond, trueClass, falseClass?)` | Conditional class |
-| `classMap(obj)` | Map of classes with boolean conditions |
-| `toggleClass(cond, name)` | Conditional add (no else) |
-| `hasClass(name)` | Check if class is present |
-
-```javascript
-el.css({ padding: '16px', borderRadius: '8px' });      // scoped class
-el.style('color', 'red');                                // inline style=""
-el.style({ color: 'blue', margin: '10px' });            // object form
-el.addClass('btn', 'btn-primary');
-el.classIf(isActive, 'active', 'inactive');
-el.classMap({ bold: true, italic: false, underline: true });
-```
-
-### CSS Pseudo-classes & Responsive
-
-| Method | Description |
-|--------|-------------|
-| `hover(rules)` | `:hover` styles |
-| `focusCss(rules)` | `:focus` styles |
-| `active(rules)` | `:active` styles |
-| `firstChild(rules)` | `:first-child` styles |
-| `lastChild(rules)` | `:last-child` styles |
-| `nthChild(n, rules)` | `:nth-child(n)` styles |
-| `pseudo('before', rules)` | `::before` pseudo-element |
-| `pseudo('after', rules)` | `::after` pseudo-element |
-| `media(query, rules)` | Responsive CSS scoped to this element |
-
-```javascript
-doc.button('Save')
-  .css({ padding: '8px 16px', backgroundColor: '#007bff', color: '#fff', border: 'none' })
-  .hover({ backgroundColor: '#0056b3' })
-  .active({ transform: 'scale(0.98)' })
-  .focusCss({ outline: '2px solid #80bdff' })
-  .transition({ property: 'background-color', duration: '0.2s' });
-
-doc.div().css({ display: 'flex', gap: '16px' })
-  .media('(max-width: 768px)', { flexDirection: 'column', gap: '8px' });
-
-doc.h2()
-  .pseudo('before', { content: '"§ "', color: '#999' })
-  .pseudo('after', { content: '""', display: 'block', height: '2px', backgroundColor: '#007bff' });
-
-doc.tr()
-  .nthChild('2n', { backgroundColor: '#f5f5f5' })
-  .firstChild({ fontWeight: 'bold' });
-```
-
-### CSS Animation & Style Shorthands
-
-| Method | Description |
-|--------|-------------|
-| `transition(props)` | CSS transition (string or `{ property, duration, timing, delay }`) |
-| `transform(value)` | CSS transform |
-| `animate(name, options)` | Link to `@keyframes` (`{ duration, timing, delay, iterations, direction, fillMode }`) |
-| `opacity(n)` | Set opacity |
-| `zIndex(n)` | Set z-index |
-| `cursor(type)` | Set cursor |
-| `overflow(value)` | Set overflow |
-| `display(value)` | Set display |
-| `position(value)` | Set position |
-| `size(w, h?)` | Set width + height (square if h omitted) |
-
-```javascript
-doc.keyframes('fadeIn', {
-  from: { opacity: '0' },
-  to: { opacity: '1' }
+  res.type('html').send(doc.render());
 });
 
-doc.div()
-  .animate('fadeIn', { duration: '0.5s' })
-  .opacity(0.9)
-  .cursor('pointer')
-  .position('relative')
-  .zIndex(10)
-  .size('200px', '100px')
-  .overflow('hidden');
-
-doc.a('/page', 'Link')
-  .transition('color 0.2s ease')
-  .hover({ color: '#007bff' });
+app.listen(3000);
 ```
 
-### Slots
+You can also use Node's native HTTP server, Fastify, Hono, Bun, or any server that can send an HTML string.
 
-For components that accept arbitrary child content:
+## Generate static files
+
+Build pages once during startup and serve them as normal static assets:
 
 ```javascript
-function Modal(el) {
-  el.addClass('modal');
-  el.div().addClass('modal-header').slot('header');
-  el.div().addClass('modal-body').slot('default');
-  el.div().addClass('modal-footer').slot('footer');
-}
+const fs = require('node:fs');
+const path = require('node:path');
+const express = require('express');
+const { page } = require('@trebor/buildhtml');
 
-const modal = doc.use(Modal);
-modal.fillSlot('header', (slot) => slot.h2().text('Title'));
-modal.fillSlot('default', (slot) => slot.p('Body'));
-modal.fillSlot('footer', (slot) => slot.button('Close'));
+const publicDir = path.join(__dirname, 'public');
+const doc = page('Home');
+
+doc.h1('Generated at server startup');
+doc.p('This file can be served without rendering it again.');
+
+fs.mkdirSync(publicDir, { recursive: true });
+fs.writeFileSync(path.join(publicDir, 'index.html'), doc.render());
+
+const app = express();
+app.use(express.static(publicDir));
+app.listen(3000);
 ```
 
-### State & Events
+Generate once when every visitor receives the same page. Render per request when the result depends on authentication, locale, request data, or permissions.
 
-| Method | Description |
-|--------|-------------|
-| `state(value)` | Set element state for hydration |
-| `bind(stateKey, fn?)` | Reactive text content — `fn(val)` return value sets `textContent` |
-| `bindShow(stateKey, fn?)` | Show/hide — `fn(val)` truthy = visible, falsy = `display:none` |
-| `bindClass(stateKey, fn)` | Reactive class — `fn(val)` return string sets `className` |
-| `bindAttr(stateKey, attr, fn?)` | Reactive attribute — `null`/`false` removes, anything else sets |
-| `bindStyle(stateKey, fn)` | Reactive inline style — `fn(val)` returns `{ prop: value }` object |
-| `bindProp(stateKey, prop, fn?)` | Reactive DOM property — sets `el[prop]` (e.g. `value`, `checked`) |
-| `bindInput(stateKey)` | Two-way input binding — syncs `State[key]` → `input.value` and `input` event → `State[key]` |
-| `computed(fn)` | Compute content from state |
-| `on(event, fn)` | Attach event handler |
-| `bindState(target, event, fn)` | Cross-element state binding |
+## Reactive state and events
 
-**Event shorthands:** `onClick`, `onChange`, `onInput`, `onSubmit`, `onKeydown`, `onKeyup`, `onKeypress`, `onFocus`, `onBlur`, `onMouseenter`, `onMouseleave`, `onMousedown`, `onMouseup`, `onMousemove`, `onDblclick`, `onContextmenu`, `onScroll`, `onLoad`, `onError`, `onDragstart`, `onDragend`, `onDragover`, `onDrop`, `onTouchstart`, `onTouchend`, `onTouchmove`
-
-All event handlers and bindings are **server-compiled** — the server serializes the function, attaches it via `addEventListener` (not inline `onclick`), and wires it to the reactive `State` proxy. You never write client JS manually.
-
-```javascript
-doc.states({ count: 0, theme: 'light', open: false });
-
-// Text binding
-doc.span().bind('count', (val) => `Count: ${val}`);
-
-// Show/hide
-doc.div().text('Alert!').bindShow('open');
-doc.div().text('Alert!').bindShow('count', (val) => val > 5);
-
-// Class binding
-doc.div().bindClass('theme', (val) => val + '-mode');
-
-// Attribute binding (e.g. disable a button when loading)
-doc.input('text').bindAttr('open', 'disabled', (val) => val ? null : 'disabled');
-
-// Style binding
-doc.div().bindStyle('count', (val) => ({ width: val * 10 + 'px', background: val > 5 ? 'red' : 'green' }));
-
-// DOM property binding (input value)
-doc.input('text').bindProp('count', 'value', (val) => String(val));
-
-// Two-way input binding — State.name ↔ input.value (shorthand for bindProp + onInput)
-doc.input('text').bindInput('name');
-
-// Events — State mutations trigger all bound elements automatically
-doc.button('+1').onClick(function() { State.count++; });
-doc.button('Toggle').onClick(function() { State.open = !State.open; });
-```
-
-State is deeply reactive. A binding watches its top-level key and receives the complete updated root value after nested object changes, array mutations, or deletions:
+Define JSON-serializable state on the document:
 
 ```javascript
 doc.states({
-  profile: { name: 'Ada', address: { city: 'London' } },
-  tasks: [{ title: 'First task', done: false }],
+  name: '',
+  open: false,
+  progress: 25,
+  user: { profile: { name: 'Grace' } },
+  tasks: []
+});
+```
+
+Bind elements to that state:
+
+```javascript
+doc.input('text').bindInput('name');
+doc.p().bind('name', (name) => `Hello ${name || 'stranger'}`);
+
+doc.button('Toggle').onClick(function () {
+  State.open = !State.open;
 });
 
-doc.span().bind('profile', function (profile) {
-  return profile.name + ' — ' + profile.address.city;
-});
+doc.section('Visible panel').bindShow('open');
+doc.div().bindStyle('progress', (value) => ({
+  width: value + '%'
+}));
+```
 
-doc.button('Move').onClick(function () {
-  State.profile.address.city = 'New York';
+Nested objects and arrays are reactive:
+
+```javascript
+doc.button('Update profile').onClick(function () {
+  State.user.profile.name = 'Ada';
 });
 
 doc.button('Add task').onClick(function () {
-  State.tasks.push({ title: 'Another task', done: false });
+  State.tasks.push({ title: 'Ship it', done: false });
 });
 ```
 
-### Layout Helpers (on Element)
+### Binding parameters
 
-The same layout helpers available on `Document` work on any `Element`:
+| Method | Parameters | Result |
+|--------|------------|--------|
+| `bind(key, fn?)` | `(value, State)` callback | Updates text content |
+| `bindShow(key, fn?)` | `(value, State)` callback | Shows or hides the element |
+| `bindClass(key, fn)` | `(value, State)` callback | Sets a computed class |
+| `bindAttr(key, name, fn)` | `(value, State)` callback | Sets or removes an attribute |
+| `bindStyle(key, fn)` | `(value, State)` callback | Applies returned CSS rules |
+| `bindProp(key, name, fn?)` | `(value, State)` callback | Assigns a DOM property |
+| `bindInput(key)` | state key | Two-way input value binding |
+| `on(event, fn)` | browser event callback | Adds an event listener |
 
-| Method | Description |
-|--------|-------------|
-| `grid(columns, items?, gap?)` | CSS Grid child |
-| `flex(items?, options?)` | Flex child |
-| `stack(items?, gap?)` | Vertical stack child |
-| `row(items?, gap?)` | Horizontal row child |
-| `center(childFn?)` | Centered flex child |
-| `container(childFn?, maxWidth?)` | Max-width centered child |
-| `spacer(height?)` | Empty spacer div child |
-| `divider(options?)` | Styled `<hr>` child |
-| `columns(count, fns?, gap?)` | Multi-column grid child |
+Event shortcuts include `.onClick()`, `.onInput()`, `.onChange()`, `.onSubmit()`, `.onKeydown()`, and more.
 
-```javascript
-const sidebar = doc.aside();
-
-sidebar.stack([
-  (el) => el.a('/home', 'Home'),
-  (el) => el.a('/about', 'About'),
-], '8px');
-
-sidebar.divider();
-
-sidebar.container((c) => {
-  c.p('Footer text');
-}, '240px');
-```
-
-### Form Helpers (on Element)
-
-| Method | Description |
-|--------|-------------|
-| `formGroup(label, type?, attrs?)` | Label + input pair |
-| `checkbox(name, label, checked?)` | Checkbox with label |
-| `radio(name, options)` | Radio button group |
-| `fieldset(legend, setupFn?)` | Fieldset with legend |
-| `hiddenInput(name, value)` | Hidden input |
+### Element lifecycle
 
 ```javascript
-const form = doc.form().attr('action', '/submit').attr('method', 'post');
-
-form.formGroup('Email', 'email', { name: 'email', required: true });
-form.formGroup('Password', 'password', { name: 'password' });
-form.checkbox('remember', 'Remember me');
-form.button('Sign in').type('submit');
-form.hiddenInput('csrf', token);
-```
-
-### Data Helpers (on Element)
-
-| Method | Description |
-|--------|-------------|
-| `list(items, renderer?, tag?)` | `<ul>/<ol>` from array |
-| `dataTable(headers, rows, options?)` | `<table>` from data |
-
-```javascript
-const sidebar = doc.nav();
-sidebar.list(['Home', 'About', 'Contact'], (li, item) => {
-  li.a('/' + item.toLowerCase(), item);
-});
-
-const main = doc.main();
-main.dataTable(['Name', 'Role'], [['Alice', 'Engineer'], ['Bob', 'Designer']]);
-```
-
-### Component Helpers (on Element)
-
-| Method | Description |
-|--------|-------------|
-| `component(name, props?, overrides?)` | Use registered component as child |
-| `use(fn, props?, tag?)` | Use inline component function as child |
-
-```javascript
-const grid = doc.div().css({ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: '16px' });
-
-grid.component('Card', { title: 'One', body: 'First card' });
-grid.component('Card', { title: 'Two', body: 'Second card' });
-grid.use(Alert, { message: 'All done!', type: 'success' });
-```
-
-### Utility Helpers (on Element)
-
-| Method | Description |
-|--------|-------------|
-| `each(items, fn)` | Loop: `fn(el, item, index)` |
-| `when(condition, fn)` | Conditional: runs `fn(el)` if truthy |
-
-```javascript
-const ul = doc.ul();
-ul.each(users, (el, user) => {
-  el.li(user.name);
-});
-
-const nav = doc.nav();
-nav.when(isLoggedIn, (el) => {
-  el.a('/logout', 'Log out');
-});
-```
-
----
-
-## Components
-
-Define reusable UI pieces as functions that receive `(el, props)`:
-
-```javascript
-const { Document, components } = require('@trebor/buildhtml');
-
-// Define
-function Card(el, { title, body, footer }) {
-  el.addClass('card').css({ border: '1px solid #ddd', borderRadius: '8px', padding: '16px' });
-  el.h2().text(title);
-  el.p(body);
-  if (footer) el.footer().text(footer);
-}
-
-// Register globally
-components.register('Card', Card);
-
-// Use by name
-doc.component('Card', { title: 'Hello', body: 'World' });
-
-// Or use inline (no registration)
-doc.use(Card, { title: 'Hello', body: 'World' });
-```
-
-### Component Registry
-
-| Method | Description |
-|--------|-------------|
-| `components.register(name, fn, options?)` | Register component |
-| `components.unregister(name)` | Remove component |
-| `components.has(name)` | Check if registered |
-| `components.get(name)` | Get component definition |
-| `components.list()` | List all registered names |
-| `components.extend(newName, baseName, extendFn)` | Extend existing component |
-| `components.clear()` | Remove all |
-
-### Component Inheritance
-
-```javascript
-components.register('Card', Card);
-components.extend('CardWithImage', 'Card', (el, { image }) => {
-  if (image) el.img(image);
-});
-
-doc.component('CardWithImage', { title: 'Photo', body: 'Nice pic', image: '/photo.jpg' });
-```
-
-### Nested Components
-
-```javascript
-function NavLink(el, { href, text, active }) {
-  el.a(href, text).classIf(active, 'active');
-}
-
-function Navbar(el, { links }) {
-  el.addClass('navbar').css({ display: 'flex', gap: '16px' });
-  for (const link of links) {
-    NavLink(el.div(), link);
-  }
-}
-
-doc.use(Navbar, {
-  links: [
-    { href: '/', text: 'Home', active: true },
-    { href: '/about', text: 'About' },
-  ]
-});
-```
-
----
-
-## Declarative Builder
-
-Build element trees from plain objects:
-
-```javascript
-doc.build({
-  tag: 'div', class: 'container', children: [
-    { tag: 'h1', text: 'Dashboard', class: 'title' },
-    { tag: 'p', text: 'Welcome back', css: { color: '#666' } },
-    { tag: 'ul', children: [
-      { tag: 'li', text: 'Home' },
-      { tag: 'li', text: 'Settings' },
-    ]}
-  ]
-});
-```
-
-### Conditionals & Iteration
-
-```javascript
-doc.build({
-  tag: 'div', children: [
-    { tag: 'p', text: 'Admin only', if: user.isAdmin },
-    {
-      each: users,
-      itemTemplate: (user, i) => ({
-        tag: 'li', children: [
-          { tag: 'strong', text: user.name },
-          { tag: 'span', text: ` — ${user.email}` },
-        ]
-      })
-    }
-  ]
-});
-```
-
-### Components in Builder
-
-```javascript
-doc.build({
-  tag: 'div', children: [
-    { component: 'Card', props: { title: 'One', body: 'First' } },
-    { use: Alert, props: { message: 'Inline!', type: 'info' } },
-  ]
-});
-```
-
-### Builder Node Options
-
-| Key | Type | Description |
-|-----|------|-------------|
-| `tag` | string | HTML tag (default: `'div'`) |
-| `text` | string | Text content |
-| `html` | string | Raw HTML (unsafe) |
-| `class` | string/array | CSS classes |
-| `id` | string | Element ID |
-| `css` | object | Scoped CSS |
-| `style` | object | Inline style |
-| `attrs` | object | HTML attributes |
-| `data` | object | `data-*` attributes |
-| `aria` | object | `aria-*` attributes |
-| `on` | object | Events `{ click: fn }` |
-| `children` | array | Child nodes |
-| `component` | string | Registered component name |
-| `use` | function | Inline component function |
-| `props` | object | Component props |
-| `if` | boolean | Conditional rendering |
-| `each` | array | Iteration source |
-| `itemTemplate` | function | `(item, index) => nodeDef` |
-| `state` | any | Element state |
-| `bind` | object/array | State binding — see below |
-| `liveList` | object | Reactive list — `{ stateKey, itemFn, filter?, filterKeys? }` |
-| `setup` | function | `(el) => { ... }` custom setup |
-
-**`bind` descriptor** — supports a `type` field for all reactive bind methods:
-
-```javascript
-// Text content (default)
-{ bind: { key: 'count', fn: val => `Count: ${val}` } }
-
-// Show/hide
-{ bind: { key: 'open', type: 'show' } }
-{ bind: { key: 'count', type: 'show', fn: val => val > 0 } }
-
-// Class
-{ bind: { key: 'theme', type: 'class', fn: val => val + '-mode' } }
-
-// Attribute
-{ bind: { key: 'loading', type: 'attr', attr: 'disabled', fn: val => val ? 'disabled' : null } }
-
-// Style
-{ bind: { key: 'progress', type: 'style', fn: val => ({ width: val + '%' }) } }
-
-// DOM property
-{ bind: { key: 'val', type: 'prop', prop: 'value' } }
-
-// Multiple bindings on one element
-{ bind: [{ key: 'open', type: 'show' }, { key: 'theme', type: 'class', fn: val => val + '-mode' }] }
-```
-
----
-
-## JSON Import
-
-Define an entire page as a plain object — useful for config-driven pages, APIs, or serialized templates.
-
-### `renderJSON(def, setup?, options?)`
-
-Builds and renders a full page from a definition object. Returns an HTML string. Pass an optional `setup` callback to add elements or scripts after the JSON is loaded.
-
-```javascript
-const { renderJSON } = require('@trebor/buildhtml');
-
-const html = renderJSON({
-  title: 'Dashboard',
-  lang: 'en',
-  viewport: true,
-  resetCss: true,
-  favicon: '/favicon.ico',
-  canonical: 'https://example.com/dashboard',
-  cssVars: { primary: '#007bff', radius: '8px' },
-  globalStyles: {
-    body: { fontFamily: 'system-ui', margin: '0' }
-  },
-  sharedClasses: {
-    card: { border: '1px solid #ddd', borderRadius: '8px', padding: '16px' }
-  },
-  darkMode: {
-    body: { backgroundColor: '#111', color: '#eee' }
-  },
-  ogTags: { title: 'Dashboard', description: 'My dashboard' },
-  state: { count: 0 },
-  bodyCss: { padding: '20px' },
-  bodyClass: 'app light-theme',
-  body: {
-    tag: 'div', class: 'container', children: [
-      { tag: 'h1', text: 'Hello World' },
-      { tag: 'p', text: 'Built from JSON.', css: { color: '#666' } },
-    ]
-  }
-});
-```
-
-```javascript
-// With a setup callback
-const html = renderJSON(
-  { title: 'Dashboard', body: { tag: 'h1', text: 'Hello' } },
-  (doc) => {
-    doc.addScript('/app.js');
-    doc.nav().a('/', 'Home').a('/about', 'About');
-  }
-);
-```
-
-### `doc.fromJSON(def)`
-
-Populate an existing Document from a definition object. Useful when you need to further manipulate the document after loading.
-
-```javascript
-const { Document } = require('@trebor/buildhtml');
-
-const doc = new Document();
-doc.fromJSON({
-  title: 'My Page',
-  viewport: true,
-  body: { tag: 'h1', text: 'Hello' }
-});
-
-// Further manipulation
-doc.addScript('/app.js');
-console.log(doc.render());
-```
-
-### JSON Definition Fields
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `title` | string | Page title |
-| `lang` | string | HTML lang attribute |
-| `charset` | string | Charset (default UTF-8) |
-| `viewport` | boolean/string | Add viewport meta |
-| `resetCss` | boolean | Box-sizing reset |
-| `favicon` | string | Favicon URL |
-| `canonical` | string | Canonical URL |
-| `noindex` | boolean/`'nofollow'` | Robots noindex |
-| `meta` | array | `[{ name, content }]` |
-| `links` | array | Stylesheet URLs |
-| `scripts` | array | Script URLs |
-| `cssVars` | object | CSS custom properties |
-| `globalStyles` | object | `{ selector: rules }` |
-| `sharedClasses` | object | `{ name: rules }` |
-| `keyframes` | object | `{ name: frames }` |
-| `darkMode` | object | Dark mode selector rules |
-| `print` | object | Print media rules |
-| `bodyCss` | object | Body CSS rules |
-| `bodyClass` | string/array | Body class names |
-| `ogTags` | object | Open Graph tags |
-| `twitterCard` | object | Twitter Card tags |
-| `state` | object | Initial global state |
-| `body` | object/array | Body content (builder nodes) |
-
----
-
-## Templates (.bhtml)
-
-An indentation-based template language that compiles to buildhtml documents:
-
-```
----
-title "My App"
-viewport
-link "https://cdn.example.com/styles.css"
----
-
-:reset
-:global body { font-family: system-ui; line-height: 1.6 }
-:class container { max-width: 1200px; margin: 0 auto }
-
-div#app.container
-  header
-    h1 "Welcome #{user.name}"
-    nav
-      a(href="/") "Home"
-      a(href="/about") "About"
-
-  main
-    .card { padding: 16px; border: 1px solid #eee }
-      h2 "Dashboard"
-
-      ?if user.isAdmin
-        button "Admin Panel"
-      ?else
-        span "Read only"
-
-      ul
-        ?each item in items
-          li "#{item}"
-
-  footer
-    | Copyright 2025
-```
-
-### Template Syntax
-
-| Syntax | Description |
-|--------|-------------|
-| `div` | Element |
-| `div#id.class` | ID and classes (CSS selector style) |
-| `.card` | Implicit div with class |
-| `(href="/about")` | Attributes |
-| `"Hello"` | Inline text |
-| `\| text` | Multiline text (pipe prefix) |
-| `! <b>raw</b>` | Raw HTML |
-| `{ color: red }` | Scoped CSS |
-| `[userId=42]` | Data attributes |
-| `// comment` | Comment (ignored) |
-| `@Card(title="Hi")` | Component |
-| `?if condition` | Conditional |
-| `?else` | Else branch |
-| `?each item in items` | Loop |
-| `#{variable}` | Interpolation |
-
-### Template API
-
-```javascript
-const { renderTemplate, compileTemplate, renderFile, compileFile, templateEngine } = require('@trebor/buildhtml');
-
-// Render to HTML string
-const html = renderTemplate(source, { user: { name: 'Alice' }, items: [1, 2, 3] });
-
-// Get a Document back (for further manipulation)
-const doc = compileTemplate(source, { name: 'World' });
-doc.addScript('/extra.js');
-const html = doc.render();
-
-// File-based
-const html = renderFile('./views/home.bhtml', { user });
-const doc = compileFile('./views/home.bhtml', { user });
-
-// Express view engine
-app.engine('bhtml', templateEngine);
-app.set('view engine', 'bhtml');
-// Then: res.render('home', { name: 'World', items: [1, 2, 3] });
-```
-
-| Function | Parameters | Returns | Use it when |
-|----------|------------|---------|-------------|
-| `compileTemplate(source, variables?)` | template string, interpolation/condition/loop values | `Document` | You need to modify the compiled document before rendering |
-| `renderTemplate(source, variables?)` | template string, values | HTML `string` | You want rendered HTML directly |
-| `compileFile(path, variables?)` | `.bhtml` path, values | `Document` | You need a modifiable document from a template file |
-| `renderFile(path, variables?)` | `.bhtml` path, values | HTML `string` | You want to render a file directly |
-| `templateEngine(path, options, callback)` | supplied by Express | callback result | You are registering `.bhtml` as an Express view engine |
-
-`variables` supplies values used by `#{...}`, `?if`, and `?each`. The direct file helpers read and compile synchronously; the Express adapter follows the view-engine callback contract.
-
----
-
-## State & Events
-
-buildhtml is a **server-side compiler** — all interactivity is expressed through the server API and compiled to client JavaScript automatically. You never write raw client JS.
-
-### How it works
-
-1. Call `.states()` on the document to define initial state
-2. Attach `.onClick()`, `.bind()`, `.bindShow()` etc. on elements
-3. Call `doc.render()` — the generated HTML includes the `State` Proxy and feature scripts required by the APIs you used
-4. In the browser, top-level assignments and nested mutations automatically update every element bound to the root state key
-
-### Reactive State
-
-```javascript
-doc.states({ count: 0, theme: 'light', open: false });
-
-// Text update
-doc.span().bind('count', (val) => `Count: ${val}`);
-
-// Show/hide
-doc.div().text('Panel').bindShow('open');
-doc.div().text('High!').bindShow('count', (val) => val > 5);
-
-// CSS class toggle
-doc.div().bindClass('theme', (val) => val + '-mode');
-
-// Attribute toggle (e.g. disable a button when loading)
-doc.button('Save').bindAttr('open', 'disabled', (val) => val ? null : 'disabled');
-
-// Inline style update
-doc.div().bindStyle('count', (val) => ({ width: val * 10 + 'px' }));
-
-// DOM property (input value, checkbox checked)
-doc.input('text').bindProp('count', 'value', (val) => String(val));
-
-// Two-way input binding — shorthand for bindProp('value') + onInput handler
-doc.input('text').bindInput('name');  // State.name ↔ input.value
-
-// Events — State mutations trigger all bound elements automatically
-doc.button('+1').onClick(function() { State.count++; });
-doc.button('Toggle').onClick(function() { State.open = !State.open; });
-```
-
-#### Binding and event parameters
-
-| Method | Browser callback arguments | Result |
-|--------|----------------------------|--------|
-| `bind(key, fn?)` | `(value, State)` | Sets text content; without `fn`, uses the state value |
-| `bindShow(key, fn?)` | `(value, State)` | Shows or hides the element from the callback truthiness |
-| `bindClass(key, fn)` | `(value, State)` | Replaces the computed class value |
-| `bindAttr(key, name, fn)` | `(value, State)` | Sets the named attribute; return `null`/`undefined` to remove it |
-| `bindStyle(key, fn)` | `(value, State)` | Applies the returned CSS rules object |
-| `bindProp(key, name, fn?)` | `(value, State)` | Assigns a DOM property such as `value` or `checked` |
-| `bindInput(key)` | none | Two-way synchronization between the control value and `State[key]` |
-| `on(event, fn)` | browser `Event`; `this` is the element | Adds an event listener; shortcuts include `onClick`, `onInput`, and `onSubmit` |
-| `bindState(key, fn)` | `(value, State)` | Runs a custom browser-side state watcher |
-
-Bindings apply the initial value when the page starts and then react to later changes. `onUpdate(key, fn)` is intentionally different: it receives `(value, State)` only after the key changes.
-
-Objects and arrays are reactive at every nested level. For example, `State.user.name = 'Grace'`, `State.tasks.push(task)`, and `delete State.settings.compact` notify bindings watching `user`, `tasks`, and `settings` respectively.
-
-Client watchers can be stopped explicitly. `watchState()` returns an idempotent unsubscribe function, including when it is called from inside the watcher:
-
-```javascript
-const stop = watchState('count', function (count) {
-  console.log(count);
-  if (count >= 10) stop();
-});
-```
-
-Compiled bindings and `liveList` watchers are disposed automatically when their target element is removed from the DOM. This uses one shared `MutationObserver`; it disconnects when no tracked targets remain. In environments without `MutationObserver`, a missing target is disposed on its next state notification.
-
-### Element Lifecycle
-
-Lifecycle hooks let an element set up and clean up client-side behavior without a component runtime:
-
-```javascript
-doc.states({ count: 0 });
-
-doc.div()
-  .text('Tracked element')
+doc.div('Tracked')
   .onMount(function (state) {
     const timer = setInterval(() => console.log(state.count), 1000);
 
@@ -1629,32 +263,32 @@ doc.div()
     };
   })
   .onUpdate('count', function (value, state) {
-    console.log('count changed to', value, state);
+    console.log('Count changed:', value);
   })
   .onDestroy(function (state) {
-    console.log('element removed', state);
+    console.log('Element removed');
   });
 ```
 
-Hooks use the rendered DOM element as `this`. `onMount` runs once after DOM readiness and receives the complete `State`; it can return a cleanup function. `onUpdate` does not run for the initial value—it receives `(value, State)` only after its named state key changes. When the element is removed, mount cleanups run in reverse registration order, followed by `onDestroy` hooks.
+- `onMount(fn)` runs when the rendered element is available and may return cleanup.
+- `onUpdate(key, fn)` runs after the state key changes, not for its initial value.
+- `onDestroy(fn)` runs when the element is removed.
+- Mount cleanup functions run before destroy hooks.
 
-Removal detection uses `MutationObserver`. Without it, `onUpdate` hooks still dispose themselves when their next state notification finds that the element is gone, but a standalone `onDestroy` hook cannot observe removal.
+## Client-side fetch
 
----
-
-## Client-Side Fetch
-
-Use the browser's `fetch()` inside an event handler or `oncreate()` callback. buildhtml serializes the async function into the compiled client script, so no `inlineScript()` is needed.
+Use the browser's native `fetch()` inside an event handler:
 
 ```javascript
-const { Document } = require('@trebor/buildhtml');
+doc.states({
+  loading: false,
+  message: 'Ready',
+  error: ''
+});
 
-const doc = new Document();
-doc.states({ loading: false, message: 'Ready', error: '' });
-
-doc.p().bindShow('loading').text('Loading...');
-doc.p().bind('message', (value) => value);
-doc.p().bind('error', (value) => value);
+doc.p('Loading…').bindShow('loading');
+doc.p().bind('message');
+doc.p().bind('error');
 
 doc.button('Load data').onClick(async function () {
   State.loading = true;
@@ -1681,326 +315,599 @@ doc.oncreate(async function () {
   const response = await fetch('/api/data');
   if (!response.ok) throw new Error('HTTP ' + response.status);
 
-  const data = await response.json();
-  State.message = data.message;
+  State.message = (await response.json()).message;
 });
 ```
 
-Compiled functions run in the browser and cannot access server-side closure variables. Use literal URLs, `State` values, or `data-*` attributes for runtime configuration.
+Serialized browser callbacks cannot capture server variables. Use literal values, `State`, browser APIs, or `data-*` attributes for browser-time configuration.
 
-The runnable Express example is available at `GET /fetch-demo`, with its JSON endpoint at `GET /api/client-data`.
+## Components
 
----
-
-## Express Integration
-
-### Basic Route
+Register reusable server-side components:
 
 ```javascript
-const express = require('express');
-const { Document } = require('@trebor/buildhtml');
+const { components } = require('@trebor/buildhtml');
 
-app.get('/', (req, res) => {
-  const doc = new Document();
-  doc.title('Home').viewport().resetCss();
-  doc.container((c) => {
-    c.h1().text('Welcome');
-    c.p('Built with buildhtml');
-  });
-  res.send(doc.render());
+components.register('Card', (el, props) => {
+  el.addClass('card');
+  el.h2(props.title);
+  el.p(props.body);
+}, {
+  tag: 'article'
+});
+
+doc.component('Card', {
+  title: 'Reusable UI',
+  body: 'Components produce ordinary server-rendered elements.'
 });
 ```
 
-### Cached Renderer
+Use an inline component when global registration is unnecessary:
+
+```javascript
+function Badge(el, props) {
+  el.addClass('badge').text(props.label);
+}
+
+doc.use(Badge, { label: 'New' });
+```
+
+Components can be nested and extended. They run on the server and do not create a client component runtime.
+
+## Declarative builder and JSON
+
+Build pages from plain objects:
+
+```javascript
+doc.build({
+  tag: 'main',
+  class: 'container',
+  children: [
+    { tag: 'h1', text: 'Object-driven UI' },
+    {
+      tag: 'section',
+      css: { padding: '16px', border: '1px solid #ddd' },
+      children: [
+        { tag: 'p', text: 'Useful for configuration and generated pages.' }
+      ]
+    }
+  ]
+});
+```
+
+Conditional and repeated nodes are supported:
+
+```javascript
+doc.build({
+  tag: 'ul',
+  children: [
+    { tag: 'li', text: 'Admin', if: user.isAdmin },
+    {
+      each: users,
+      itemTemplate: (user) => ({ tag: 'li', text: user.name })
+    }
+  ]
+});
+```
+
+Render a complete JSON page directly:
+
+```javascript
+const { renderJSON } = require('@trebor/buildhtml');
+
+const html = renderJSON({
+  title: 'Report',
+  resetCss: true,
+  cssVars: { primary: '#2563eb' },
+  body: {
+    tag: 'h1',
+    text: 'Generated from JSON'
+  }
+});
+```
+
+Use `doc.toJSON()` and `doc.fromJSON()` for document serialization and restoration.
+
+## `.bhtml` templates
+
+For teams that prefer an indentation-based template syntax:
+
+```text
+---
+title "Dashboard"
+viewport
+---
+
+:reset
+div#app.container
+  h1 "Welcome #{user.name}"
+
+  ?if user.isAdmin
+    button "Admin"
+
+  ul
+    ?each item in items
+      li "#{item}"
+```
+
+```javascript
+const {
+  renderTemplate,
+  compileTemplate,
+  renderFile,
+  compileFile,
+  templateEngine
+} = require('@trebor/buildhtml');
+
+const html = renderTemplate(source, {
+  user: { name: 'Alice', isAdmin: true },
+  items: ['A', 'B', 'C']
+});
+```
+
+| Function | Returns |
+|----------|---------|
+| `compileTemplate(source, variables?)` | `Document` |
+| `renderTemplate(source, variables?)` | HTML string |
+| `compileFile(path, variables?)` | `Document` |
+| `renderFile(path, variables?)` | HTML string |
+| `templateEngine(path, options, callback)` | Express view-engine result |
+
+The direct file helpers are synchronous.
+
+## Reactive lists
+
+`liveList()` server-renders an array and updates it in the browser when watched state changes:
+
+```javascript
+doc.states({
+  tasks: [
+    { id: 1, title: 'Build page', done: false }
+  ],
+  view: 'all'
+});
+
+const list = doc.liveList('tasks', function (task) {
+  return {
+    tag: 'li',
+    children: [
+      { tag: 'span', text: task.title },
+      { tag: 'em', text: 'done', if: task.done }
+    ]
+  };
+}, {
+  filter: function (task, state) {
+    if (state.view === 'active') return !task.done;
+    if (state.view === 'done') return task.done;
+    return true;
+  },
+  filterKeys: ['view']
+});
+
+list.addClass('task-list');
+```
+
+### `liveList()` parameters
+
+| Parameter | Type | Purpose |
+|-----------|------|---------|
+| `stateKey` | string | State array to render and watch |
+| `itemFn` | `(item, index) => NodeDef` | Produces each item on the server and browser |
+| `options.filter` | `(item, State) => boolean` | Optional browser-side filter |
+| `options.filterKeys` | string[] | Extra state keys that trigger rendering |
+
+The method returns the list container `Element`.
+
+## SPA routing
+
+### Hash routing
+
+Hash routing works on static hosting without server fallback configuration:
+
+```javascript
+doc.states({ view: 'home', routeParams: {} });
+
+doc.hashRouter({
+  stateKey: 'view',
+  default: 'home',
+  routes: {
+    home: 'home',
+    'users/:id': 'user',
+    '*': 'not-found'
+  },
+  navSelector: 'nav a',
+  activeStyle: { color: '#2563eb', fontWeight: '700' },
+  inactiveStyle: { color: '#64748b' }
+});
+```
+
+`#users/42` sets:
+
+```javascript
+State.view = 'user';
+State.routeParams = { id: '42' };
+```
+
+### History routing
+
+Use clean URLs and opt links into client navigation with `data-route`:
+
+```javascript
+doc.nav()
+  .a('/app/', 'Home').attr('data-route', '')
+  .a('/app/users/42', 'User').attr('data-route', '');
+
+doc.historyRouter({
+  base: '/app',
+  stateKey: 'view',
+  routes: {
+    '/': 'home',
+    '/users/:id': 'user',
+    '*': 'not-found'
+  }
+});
+```
+
+The History router handles same-origin opted-in links, `pushState()`, route parameters, and back/forward navigation.
+
+Clean URLs require the server to return the same application HTML for direct application-route requests:
+
+```javascript
+app.use(express.static('public'));
+app.use('/api', apiRouter);
+
+app.use('/app', (req, res, next) => {
+  if (req.method !== 'GET' || !req.accepts('html')) return next();
+  res.type('html').send(appHtml);
+});
+```
+
+Register the fallback after static files and API routes.
+
+### Router options
+
+| Option | Hash default | History default | Purpose |
+|--------|--------------|-----------------|---------|
+| `stateKey` | `'view'` | `'view'` | Receives the matched route value |
+| `default` | `'all'` | `'/'` | Used when the hash/path is empty |
+| `routes` | none | none | Pattern-to-state map with `:params` and `*` |
+| `paramsKey` | `'routeParams'` | `'routeParams'` | Receives decoded parameters |
+| `notFound` | `'not-found'` | `'not-found'` | Used when no route matches |
+| `navSelector` | none | none | Links receiving active/inactive styles |
+| `activeStyle` | none | none | CSS rules for active navigation |
+| `inactiveStyle` | none | none | CSS rules for inactive navigation |
+| `base` | n/a | `'/'` | Prefix removed before route matching |
+| `linkSelector` | n/a | `'a[data-route]'` | Links opted into History navigation |
+
+## Streaming and caching
+
+### Stream a document
+
+`renderStream()` flushes the head before the body and produces the same final markup as `render()`:
+
+```javascript
+app.get('/', (req, res) => {
+  const doc = buildPage();
+  res.type('html');
+  doc.renderStream().pipe(res);
+});
+```
+
+### Cache Express responses
 
 ```javascript
 const { createCachedRenderer } = require('@trebor/buildhtml');
 
 app.get('/about', createCachedRenderer(
   async (req) => {
-    const doc = new Document();
-    doc.title('About');
-    doc.p('This page is cached.');
+    const doc = page('About');
+    doc.p('This rendered response is cached.');
     return doc;
   },
   'about-page'
 ));
 ```
 
-`createCachedRenderer(builderFn, cacheKeyOrFn, options?)` returns Express middleware.
-
-| Parameter | Type | What it does |
-|-----------|------|--------------|
-| `builderFn` | `(req) => Document \| Promise<Document>` | Builds the page on a cache miss |
-| `cacheKeyOrFn` | `string \| (req) => string` | Selects the cache entry; return `null` or `''` to skip caching for that request |
-| `options.nonce` | `(req) => string` | Supplies a per-build CSP nonce before rendering |
-
-Concurrent misses for the same key share one build. Cached values are complete HTML strings and use the configured LRU cache limit. Include every response-changing input in a dynamic cache key, especially locale, permissions, or user identity:
+Use a function for personalized cache keys:
 
 ```javascript
 app.get('/dashboard', createCachedRenderer(
   (req) => buildDashboard(req.user),
-  (req) => 'dashboard:' + req.user.id
+  (req) => `dashboard:${req.user.id}`
 ));
 ```
 
-Do not use one shared key for personalized HTML.
+| Parameter | Type | Purpose |
+|-----------|------|---------|
+| `builderFn` | `(req) => Document \| Promise<Document>` | Builds on a cache miss |
+| `cacheKeyOrFn` | string or `(req) => string` | Selects the cache entry; empty skips caching |
+| `options.nonce` | `(req) => string` | Supplies a per-build CSP nonce |
 
-### Template View Engine
+Concurrent misses for the same key share one build. Include every value that changes the response in the cache key—especially identity, permissions, and locale.
+
+Cache helpers include `clearCache(pattern?)`, `getCacheStats()`, `healthCheck()`, and `resetPools()`.
+
+## Styling
+
+Use scoped element styles:
 
 ```javascript
-app.engine('bhtml', require('@trebor/buildhtml').templateEngine);
-app.set('view engine', 'bhtml');
-app.set('views', './views');
+doc.button('Save')
+  .css({
+    padding: '10px 16px',
+    border: '0',
+    borderRadius: '8px',
+    backgroundColor: '#2563eb',
+    color: '#fff'
+  })
+  .hover({ backgroundColor: '#1d4ed8' })
+  .focusCss({ outline: '2px solid #93c5fd' });
+```
 
-app.get('/', (req, res) => {
-  res.render('home', { user: req.user, items: ['A', 'B', 'C'] });
+Or document-level CSS helpers:
+
+```javascript
+doc.cssVars({
+  primary: '#2563eb',
+  radius: '8px'
+});
+
+doc.globalStyle('body', {
+  fontFamily: 'system-ui',
+  lineHeight: '1.6'
+});
+
+doc.sharedClass('card', {
+  padding: '16px',
+  borderRadius: 'var(--radius)'
+});
+
+doc.mediaQuery('(max-width: 768px)', {
+  '.sidebar': { display: 'none' }
+});
+
+doc.darkMode({
+  body: { backgroundColor: '#0f172a', color: '#f8fafc' }
 });
 ```
 
-### Middleware Helpers
+Other helpers include keyframes, print rules, pseudo-elements, transitions, transforms, and element media queries.
 
-| Function | Description |
-|----------|-------------|
-| `createCachedRenderer(builderFn, key, opts?)` | Express middleware with caching |
-| `clearCache(pattern?)` | Clear cached pages (all or by pattern) |
-| `getCacheStats()` | Cache, pool, and metrics stats |
-| `healthCheck()` | Health check data |
-| `resetPools()` | Reset object pools |
+## Security
 
----
+buildhtml is secure by default:
 
-## Limitations
+- Text and attribute values are escaped.
+- URL helpers sanitize executable protocols.
+- Inline `on*` attributes are blocked.
+- Event APIs compile to `addEventListener`.
+- CSP nonces apply to generated inline scripts and styles.
+- State is safely serialized into the document.
+- `new Function()` and `eval` are rejected in serialized callbacks.
+- Unsafe or malformed element tag names are rejected or normalized.
 
-**Event handlers are serialized** — the function body is extracted as a string and embedded in the compiled script. Closures over server variables won't survive:
+Raw APIs intentionally bypass normal escaping:
 
 ```javascript
-// ✅ Works — uses global State
+doc.raw('<strong>Trusted server HTML only</strong>');
+doc.rawHead('<meta name="custom" content="trusted">');
+doc.inlineScript('console.log("trusted code")');
+doc.inlineStyle('body { color: rebeccapurple; }');
+```
+
+Never pass untrusted user input to raw HTML, script, or style APIs.
+
+## Important browser callback rule
+
+Callbacks used by events, bindings, lifecycle hooks, `oncreate()`, and `liveList()` are serialized. Server-side closures do not exist in the browser:
+
+```javascript
+// Works: State exists in the browser
 doc.states({ count: 0 });
-btn.onClick(function() { State.count++; });
+doc.button('+1').onClick(function () {
+  State.count++;
+});
 
-// ❌ Won't work — count is a server variable, not available at runtime
-let count = 0;
-btn.onClick(function() { count++; });
+// Does not work: secret is only a server variable
+const secret = 'server only';
+doc.button('Bad example').onClick(function () {
+  console.log(secret);
+});
 ```
 
-**State must be JSON-serializable** — no functions, `Date` objects, `Map`, `Set`, DOM nodes, or circular references in `doc.states({...})`.
+Pass browser-time data through `State`, literal values in the function, or `data-*` attributes.
 
-**`new Function()` and `eval` are blocked** in event handlers and bindings — `sanitizeFunctionSource` rejects them. This is intentional; it prevents a class of injection attacks.
+## When to use it
 
-**Inline `on*` attributes are blocked** — `isValidAttrKey` rejects `onclick`, `onmouseover`, etc. Use `.onClick()` and other event methods, which compile to safe `addEventListener` calls.
+buildhtml is a strong fit for:
 
-**No SSR hydration protocol** — buildhtml emits a compiled script that runs once at page load. It is not a framework like Next.js or SvelteKit; there is no diffing or virtual DOM. Element lifecycle hooks provide targeted setup and cleanup, but components do not independently hydrate or re-render. For full-page reactive apps, use `liveList` and a router. For complex client-side UI, reach for a dedicated framework.
+- Dashboards and internal tools
+- Reports and data-driven pages
+- Admin panels
+- Server-rendered forms
+- Small reactive applications
+- Static HTML generation
+- Express applications that do not need a full frontend framework
+- Teams that want one JavaScript language across server rendering and browser behavior
 
-**`clear()` does not reset head content** — `doc.clear()` resets the body, state, and per-render script state. It does not reset `<head>` (stylesheets, meta tags, etc.). This is intentional — head content is typically static. Use a new `Document` instance for a completely fresh page.
+Consider a dedicated client framework when the product needs a large client-side component ecosystem, complex independent component state, advanced transitions, offline-first synchronization, or virtual-DOM diffing.
 
----
+## API overview
 
-## Benchmarks
+### Document
 
-Run the reproducible server-render benchmark:
+Head and metadata:
 
-```bash
-npm run benchmark
+```text
+title · meta · viewport · charset · favicon · canonical
+ogTags · twitterCard · jsonLd · noindex
+preload · prefetch · preconnect
+addLink · addScript · addStyle
 ```
 
-It validates every renderer's output before timing, warms up the runtime, calibrates batch sizes, and reports median throughput, median/p95 latency, full HTML size, gzip size, and buildhtml's compiled client JavaScript size. The static scenario measures end-to-end element construction and serialization for 50 equivalent rows. The reactive scenario is buildhtml-specific because it also compiles state, events, a reactive list, routing, and lifecycle hooks.
+Document and body:
 
-React and Preact comparisons are optional and are detected when their packages are available:
-
-```bash
-npm install --no-save --package-lock=false react react-dom preact preact-render-to-string
-npm run benchmark
+```text
+lang · htmlAttr · bodyId · bodyClass · bodyAttr · bodyCss
+render · renderStream · clear
 ```
 
-Use `BENCH_ITEMS`, `BENCH_SAMPLES`, and `BENCH_TIME_MS` to change the workload. Compare renderers only within the same run: CPU, Node version, power settings, package versions, and background activity materially affect results. The raw-string result is a lower-bound baseline, not a feature-equivalent library.
+CSS:
 
----
-
-## Contributing
-
-```bash
-git clone https://github.com/0trebor0/buildhtml
-cd buildhtml
-npm install  # no dependencies, but useful for running tests
+```text
+resetCss · globalStyle · sharedClass · defineClass
+cssVar · cssVars · keyframes · mediaQuery · darkMode · print
 ```
 
-Run the test suite:
+Data and behavior:
+
+```text
+state · states · oncreate · build · fromJSON · toJSON
+liveList · hashRouter · historyRouter
+```
+
+### Elements
+
+Content and attributes:
+
+```text
+text · html · id · attr · setAttrs · data · aria
+addClass · removeClass · toggleClass · classIf · classMap
+```
+
+Style:
+
+```text
+css · style · hover · focusCss · active · pseudo · media
+transition · transform · animate · opacity · zIndex
+display · position · size · overflow · cursor
+```
+
+Tree operations:
+
+```text
+child · prependChild · insertAt · before · after
+remove · replaceWith · wrap · empty · clone
+find · findAll · findById · closest
+parent · siblings · nextSibling · prevSibling
+```
+
+Browser behavior:
+
+```text
+on · onClick · onInput · onChange · onSubmit
+bind · bindShow · bindClass · bindAttr · bindStyle
+bindProp · bindInput · bindState
+onMount · onUpdate · onDestroy
+```
+
+### Creation helpers
+
+Standard HTML shortcuts include:
+
+```text
+div · span · section · header · footer · main · nav
+article · aside · form · table · ul · ol · h1–h6
+p · a · button · img · input · select · textarea
+label · details · dialog · pre · code · hr · br
+```
+
+Higher-level helpers include:
+
+```text
+formGroup · checkbox · radio · fieldset · hiddenInput
+grid · flex · stack · row · center · container
+spacer · divider · columns · list · dataTable
+```
+
+## TypeScript
+
+Type declarations are included:
+
+```typescript
+import {
+  Document,
+  page,
+  components,
+  type NodeDef,
+  type CSSRules
+} from '@trebor/buildhtml';
+
+const doc: Document = page('Typed page');
+const rules: CSSRules = { color: '#2563eb' };
+
+doc.h1('TypeScript ready').css(rules);
+```
+
+## Configuration
+
+```javascript
+const { configure } = require('@trebor/buildhtml');
+
+configure({
+  mode: 'prod',
+  poolSize: 1000,
+  cacheLimit: 200,
+  maxComputedFnSize: 10000,
+  maxEventFnSize: 20000,
+  enableMetrics: true
+});
+```
+
+| Option | Purpose |
+|--------|---------|
+| `mode` | Development or production behavior |
+| `poolSize` | Maximum reusable object pool size |
+| `cacheLimit` | LRU response-cache entry limit |
+| `maxComputedFnSize` | Maximum serialized computed callback size |
+| `maxEventFnSize` | Maximum serialized event callback size |
+| `enableMetrics` | Enables runtime counters and timings |
+
+## Full documentation
+
+The complete searchable guide contains detailed parameters, examples, and the compact API reference:
+
+**[Open the complete HTML guide](https://github.com/0trebor0/buildhtml/blob/main/docs/index.html)**
+
+The guide is also shipped with the npm package:
+
+```text
+node_modules/@trebor/buildhtml/docs/index.html
+```
+
+Open that file directly in a browser. It is responsive, searchable, and has no external dependencies.
+
+## Tests
 
 ```bash
 npm test
-npm run test:browser # requires Playwright and Chromium
-npm run test:types # requires TypeScript to be installed
 ```
 
-Install the optional test tools without adding them to the package manifest:
+Optional browser and TypeScript checks:
 
 ```bash
 npm install --no-save --package-lock=false playwright@1 typescript@5
 npx playwright install chromium
+
+npm run test:browser
+npm run test:types
 ```
 
-For manual browser integration testing, start the reusable fixture and open `http://127.0.0.1:3344/`:
+The test suite covers HTML output, escaping and sanitization, state and deep reactivity, bindings, events, lifecycle cleanup, components, templates, JSON round-trips, streaming, caching, reactive lists, fetch compilation, and both routers.
+
+## Benchmarks
 
 ```bash
-node test/browser-fixture.js
+npm run benchmark
 ```
 
-The fixture covers compiled events and bindings, nested object and array mutations, reactive lists, portals, hash and History API routing, URL sanitization, and element mount/update/destroy behavior. `npm run test:browser` drives the same fixture automatically when Playwright and Chromium are installed. GitHub Actions runs the automated browser test on every push and pull request.
+The benchmark validates renderer output before measuring throughput, latency, HTML size, gzip size, and compiled client-runtime size. Treat raw strings as a lower-bound baseline rather than a feature-equivalent renderer.
 
-All automated suites must pass before opening a pull request. There are no build steps, no transpilation, and no bundler.
+## Requirements
 
----
-
-## Exports
-
-```javascript
-const {
-  // Core
-  Document,
-  page,        // convenience factory: page(title, options?)
-  renderJSON,  // render a full page from a plain object
-  Element,
-  Head,
-  CONFIG,
-  configure,   // set CONFIG options programmatically
-
-  // Components
-  components,
-
-  // Templates
-  TemplateParser, parseTemplate, renderTemplate, compileTemplate,
-  renderFile, compileFile, templateEngine,
-
-  // Middleware
-  createCachedRenderer, clearCache, responseCache,
-  getCacheStats, resetPools, healthCheck,
-
-  // Metrics
-  Metrics, metrics,
-
-  // SPA compilation (low-level — normally called via Document methods)
-  compileLiveList, compileHashRouter, compileHistoryRouter,
-} = require('@trebor/buildhtml');
-```
-
-TypeScript types are included — no `@types/` package needed:
-```typescript
-import { page, Document, Element, components } from '@trebor/buildhtml';
-```
-
----
-
-## Project Structure
-
-```
-buildhtml/
-├── index.js            ← root entry
-├── lib/
-│   ├── index.js        ← assembles exports
-│   ├── document.js     ← Document class
-│   ├── element.js      ← Element class
-│   ├── head.js         ← Head class
-│   ├── components.js   ← Component registry
-│   ├── builder.js      ← Declarative builder
-│   ├── live.js         ← SPA compilation (liveList, hashRouter, _mkEl runtime)
-│   ├── template.js     ← .bhtml template parser
-│   ├── renderer.js     ← HTML rendering + client compiler
-│   ├── pools.js        ← Object pooling
-│   ├── cache.js        ← LRU cache
-│   ├── config.js       ← Configuration
-│   ├── metrics.js      ← Performance metrics
-│   ├── middleware.js    ← Express helpers
-│   └── utils.js        ← Shared utilities
-├── typescript/
-│   └── index.d.ts      ← TypeScript declarations
-└── test/
-    ├── test.js
-    ├── test-bindings.js
-    ├── test-spa.js
-    ├── test-template.js
-    ├── test-new-apis.js
-    └── test-apis-v2.js
-```
-
----
-
-## Complete Example
-
-```javascript
-const express = require('express');
-const { page, components, createCachedRenderer } = require('@trebor/buildhtml');
-
-// Design tokens
-function setupTheme(doc) {
-  doc.cssVars({ primary: '#007bff', radius: '8px', spacing: '16px' });
-  doc.keyframes('fadeIn', {
-    from: { opacity: '0', transform: 'translateY(-10px)' },
-    to: { opacity: '1', transform: 'translateY(0)' }
-  });
-  doc.darkMode({
-    body: { backgroundColor: '#111', color: '#eee' },
-    '.card': { borderColor: '#333', backgroundColor: '#222' }
-  });
-}
-
-// Component
-function Card(el, { title, body }) {
-  el.addClass('card')
-    .css({ border: '1px solid #ddd', borderRadius: 'var(--radius)', padding: 'var(--spacing)' })
-    .animate('fadeIn', { duration: '0.3s' })
-    .hover({ boxShadow: '0 4px 12px rgba(0,0,0,0.1)' })
-    .transition('box-shadow 0.2s ease');
-  el.h2().text(title).css({ marginBottom: '8px' });
-  el.p(body);
-}
-components.register('Card', Card);
-
-const app = express();
-
-app.get('/', (req, res) => {
-  const doc = page('My App');
-  doc.canonical('https://example.com')
-    .ogTags({ title: 'My App', description: 'Built with buildhtml' })
-    .bodyClass('light-theme')
-    .bodyCss({ fontFamily: 'system-ui', lineHeight: '1.6', margin: '0' });
-
-  setupTheme(doc);
-
-  doc.state('count', 0);
-
-  doc.container((c) => {
-    c.h1().text('Dashboard')
-      .hover({ color: 'var(--primary)' })
-      .pseudo('after', { content: '""', display: 'block', height: '3px', backgroundColor: 'var(--primary)', marginTop: '8px' });
-
-    c.div().bind('count', (val) => `Count: ${val}`)
-      .css({ fontSize: '24px', marginBottom: '16px' });
-
-    c.button('Increment')
-      .css({ padding: '8px 16px', cursor: 'pointer' })
-      .hover({ backgroundColor: '#e9ecef' })
-      .active({ transform: 'scale(0.98)' })
-      .transition('all 0.15s ease')
-      .onClick(function() { State.count++; });
-  }, '800px');
-
-  doc.each(['Getting Started', 'Components', 'Templates'], (d, title) => {
-    d.component('Card', { title, body: `Learn about ${title.toLowerCase()}.` });
-  });
-
-  doc.when(true, (d) => {
-    d.dataTable(['Name', 'Role'], [
-      ['Alice', 'Engineer'],
-      ['Bob', 'Designer'],
-    ]);
-  });
-
-  res.send(doc.render());
-});
-
-app.listen(3000, () => console.log('http://localhost:3000'));
-```
+- Node.js 16 or newer
+- CommonJS
+- No runtime dependencies
 
 ## License
 
