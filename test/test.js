@@ -450,6 +450,18 @@ test('portal() element still renders at its original position server-side', () =
   assert(html.includes('portaled content'), 'portaled element renders in-place server-side');
 });
 
+test('element tag names cannot escape the tag boundary', () => {
+  const doc = new Document();
+  let threw = false;
+  try {
+    doc.create('img src=x onerror=alert(1)');
+  } catch (err) {
+    threw = err instanceof TypeError;
+  }
+  assert(threw, 'unsafe document tag rejected');
+  assert(doc.body.length === 0, 'rejected tag is not added to the document');
+});
+
 test('portal() compiles automatic client relocation', () => {
   const doc = new Document();
   doc.div().id('overlay-root');
@@ -753,6 +765,36 @@ test('liveList filters unsafe attrs and URLs in SSR and client runtime', () => {
   assert(ssrHtml.includes('href="#"'), 'SSR executable URL sanitized');
   assert(MK_EL_SRC.includes('!/^on[a-z]/i.test(k)'), 'client runtime blocks event attributes');
   assert(MK_EL_SRC.includes('javascript|vbscript|data'), 'client runtime sanitizes URL protocols');
+});
+
+test('liveList normalizes custom tags and replaces unsafe tags in SSR and client runtime', () => {
+  const { MK_EL_SRC, nodeDefToHtml } = require('../lib/live');
+  const customHtml = nodeDefToHtml({ tag: 'userCard', text: 'safe' });
+  const unsafeHtml = nodeDefToHtml({ tag: 'img src=x onerror=alert(1)', text: 'safe' });
+  assert(customHtml === '<user-card>safe</user-card>', 'SSR normalizes camel-case custom tag');
+  assert(unsafeHtml === '<div>safe</div>', 'SSR replaces unsafe tag with div');
+
+  const created = [];
+  const context = {
+    window: {},
+    document: {
+      createTextNode: text => ({ text }),
+      createElement: tag => {
+        created.push(tag);
+        return {
+          style: {},
+          setAttribute() {},
+          addEventListener() {},
+          appendChild() {},
+        };
+      },
+    },
+  };
+  vm.runInNewContext(MK_EL_SRC, context);
+  context.window._mkEl({ tag: 'userCard' });
+  context.window._mkEl({ tag: 'img src=x onerror=alert(1)' });
+  assert(created[0] === 'user-card', 'client normalizes camel-case custom tag');
+  assert(created[1] === 'div', 'client replaces unsafe tag with div');
 });
 
 test('async client fetch event handlers compile without inlineScript()', () => {
