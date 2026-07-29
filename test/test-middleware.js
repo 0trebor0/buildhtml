@@ -1,10 +1,11 @@
 'use strict';
 
-const { Document } = require('../index');
+const { Document, responseCache } = require('../index');
 const { createCachedRenderer, clearCache, getCacheStats, inFlightCache } = require('../lib/middleware');
 
 let passed = 0;
 let failed = 0;
+let testQueue = Promise.resolve();
 
 function assert(condition, msg) {
   if (condition) { passed++; console.log(`  ✓ ${msg}`); }
@@ -13,10 +14,11 @@ function assert(condition, msg) {
 
 function test(name, fn) {
   console.log(`\n▸ ${name}`);
-  return Promise.resolve().then(fn).catch((e) => {
+  testQueue = testQueue.then(fn).catch((e) => {
     failed++;
     console.error(`  ✗ THREW: ${e.message}`);
   });
+  return testQueue;
 }
 
 function mockRes() {
@@ -173,6 +175,7 @@ const p7 = test('nonce option injects nonce into compiled scripts', async () => 
     async (req) => {
       const doc = new Document();
       doc.title('Nonce Test');
+      doc.globalStyle('body', { color: 'red' });
       doc.states({ x: 1 });
       doc.div().bind('x');
       return doc;
@@ -185,6 +188,7 @@ const p7 = test('nonce option injects nonce into compiled scripts', async () => 
   const res = mockRes();
   await middleware(req, res, (err) => { throw err; });
   assert(res._sent.includes('nonce="testnonce42"'), 'nonce injected into compiled script');
+  assert(res._sent.includes('<style nonce="testnonce42">'), 'nonce injected into head styles');
 });
 
 /* ---- clearCache removes entries ---- */
@@ -221,7 +225,34 @@ const p9 = test('getCacheStats() returns expected shape', async () => {
   assert(typeof stats.cache.limit === 'number', 'cache.limit is a number');
 });
 
-Promise.all([p1, p2, p3, p4, p5, p6, p7, p8, p9]).then(() => {
+Promise.all([p1, p2, p3, p4, p5, p6, p7, p8, p9]).then(() => test(
+  'clearCache(pattern) invalidates a matching in-flight render',
+  async () => {
+    resetCache();
+    let release;
+    let started;
+    const startedPromise = new Promise((resolve) => { started = resolve; });
+    const pending = new Promise((resolve) => { release = resolve; });
+    const key = 'page-stale-in-flight-test';
+    const middleware = createCachedRenderer(async () => {
+      started();
+      await pending;
+      const doc = new Document();
+      doc.title('Stale');
+      return doc;
+    }, key);
+
+    const request = middleware(mockReq(), mockRes(), (err) => { if (err) throw err; });
+    await startedPromise;
+    assert(inFlightCache.has(key), 'render is tracked while in flight');
+    clearCache('stale-in-flight');
+    assert(!inFlightCache.has(key), 'pattern clear removes matching in-flight key');
+    release();
+    await request;
+    await Promise.resolve();
+    assert(!responseCache.has(key), 'cleared in-flight render does not repopulate cache');
+  }
+)).then(() => {
   console.log(`\n${'='.repeat(40)}`);
   console.log(`Results: ${passed} passed, ${failed} failed`);
   console.log('='.repeat(40));
