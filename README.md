@@ -131,8 +131,8 @@ doc.title('Custom setup').viewport().resetCss().lang('en');
 const card = doc.section()
   .id('welcome')
   .addClass('card', 'featured')
-  .data('user-id', 42)
-  .aria('label', 'Welcome card')
+  .data({ userId: 42 })
+  .aria({ label: 'Welcome card' })
   .css({
     padding: '20px',
     borderRadius: '12px',

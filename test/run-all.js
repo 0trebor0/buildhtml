@@ -14,6 +14,8 @@ const suites = [
   'test-new-apis.js',
   'test-apis-v2.js',
   'test-debug.js',
+  'test-public-api.js',
+  'test-internal-functions.js',
 ];
 
 for (const suite of suites) {
