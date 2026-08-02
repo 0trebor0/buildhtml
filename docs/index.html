@@ -263,8 +263,8 @@ doc.sharedClass('card', { padding: '16px', borderRadius: '8px' });</code></pre>
         <pre><code>const card = doc.section()
   .id('profile')
   .addClass('card', 'featured')
-  .data('user-id', 42)
-  .aria('label', 'User profile')
+  .data({ userId: 42 })
+  .aria({ label: 'User profile' })
   .css({ padding: '20px' });
 
 card.h2().text('Grace Hopper');
