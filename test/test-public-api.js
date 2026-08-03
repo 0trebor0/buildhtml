@@ -213,6 +213,23 @@ test('Element.use builds an inline component below its parent', () => {
   assert(html.includes('nested inline component'));
 });
 
+test('create aliases return chainable body and nested elements', () => {
+  const doc = new api.Document();
+  const first = doc.create('section').id('created');
+  const second = doc.createElement('article').id('created-alias');
+  const third = doc.child('aside').id('child-alias');
+  const nestedCreate = first.create('custom-status').text('Ready');
+  const nestedChild = first.child('strong').text('Nested');
+  assert.strictEqual(doc.body[0], first);
+  assert.strictEqual(doc.body[1], second);
+  assert.strictEqual(doc.body[2], third);
+  assert.strictEqual(nestedCreate.parent(), first);
+  assert.strictEqual(nestedChild.parent(), first);
+  const html = doc.render();
+  assert(html.includes('<custom-status>Ready</custom-status>'));
+  assert(html.includes('<strong>Nested</strong>'));
+});
+
 test('configure validates values and Metrics reports and resets samples', () => {
   const original = { ...api.CONFIG };
   const warn = console.warn;

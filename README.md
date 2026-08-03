@@ -136,11 +136,59 @@ Both objects expose tag shortcuts, but they have different jobs:
 | Capability | `Document` | `Element` | Notes |
 |------------|:----------:|:---------:|-------|
 | Tag shortcuts | Yes | Yes | Creates a body element or a nested child |
+| `create(tag)` | Yes | Yes | Creates a body element or a nested child and returns it |
 | `build(definition)` | Yes | Yes | Builds into the document body or the element's children |
-| `child(tag)` | No | Yes | Creates a nested tag when no shortcut exists |
+| `child(tag)` | Yes | Yes | Alias for body creation on a document and nested creation on an element |
 | Metadata and global CSS | Yes | No | Head and page-wide configuration |
 | `states(initialValues)` | Yes | No | Declares browser state for the page |
 | Element attributes and bindings | No | Yes | Configures the returned element |
+
+### Create any HTML element
+
+`create(tag)` accepts a tag name and returns an `Element`. On a `Document`, the new element is added to the body. On an existing `Element`, it becomes a nested child:
+
+```javascript
+const { Document } = require('@trebor/buildhtml');
+
+const doc = new Document();
+const card = doc.create('section')
+  .id('account-card')
+  .addClass('card')
+  .css({ padding: '20px' });
+
+card.create('h2').text('Account');
+card.create('custom-status')
+  .attr('role', 'status')
+  .text('Ready');
+
+const html = doc.render();
+```
+
+Creation aliases:
+
+| Call | Where content is added | Returns |
+|------|------------------------|---------|
+| `doc.create(tag)` | Document body | `Element` |
+| `doc.createElement(tag)` | Document body | `Element` |
+| `doc.child(tag)` | Document body | `Element` |
+| `element.create(tag)` | Inside that element | `Element` |
+| `element.child(tag)` | Inside that element | `Element` |
+
+`create()` itself does not contain a separate set of methods. It returns the same chainable `Element` used by shortcuts such as `div()` and `h1()`. Common methods on that returned element include:
+
+| Purpose | Methods |
+|---------|---------|
+| Content | `text`, `html`, `append`, `appendUnsafe`, `empty` |
+| Identity and attributes | `id`, `attr`, `setAttrs`, `data`, `aria` |
+| Classes | `addClass`, `removeClass`, `toggleClass`, `classIf`, `classMap` |
+| Styling | `css`, `style`, `hover`, `focusCss`, `media`, `transition`, `animate` |
+| Nested content | `create`, `child`, `build`, tag shortcuts, form and layout helpers |
+| Events | `on`, `onClick`, `onInput`, `onChange`, `onSubmit` and other event shortcuts |
+| Reactive state | `bind`, `bindShow`, `bindClass`, `bindAttr`, `bindStyle`, `bindInput` |
+| Lifecycle | `onMount`, `onUpdate`, `onDestroy` |
+| Tree operations | `before`, `after`, `wrap`, `remove`, `replaceWith`, `clone`, `find`, `findAll` |
+
+Use a tag shortcut when its name is known, such as `doc.h1('Title')`. Use `create(tag)` for dynamic tags, custom elements, or tags without a shortcut. Ordinary text should use `text()` because it escapes content; only pass trusted HTML to `html()` or `appendUnsafe()`.
 
 ### Familiar element API
 
