@@ -20,6 +20,10 @@ function buildPage() {
     routeParams: {},
     lifecycleUpdates: 0,
     lifecycleDestroyed: false,
+    contextResult: '',
+    contextLabel: 'ready',
+    eventContract: '',
+    asyncEventContract: '',
   });
 
   doc.div().id('portal-source').text('Portaled').portal('portal-target');
@@ -27,6 +31,22 @@ function buildPage() {
 
   doc.span().id('count-output').bind('count', value => String(value));
   doc.button('Increment').id('increment').onClick(function () { State.count += 1; });
+  doc.button('Use context').id('use-context').onClick(function (event, state, element, context) {
+    state.contextResult = element.id + ':' + context.page;
+  }, { page: 'projects' });
+  doc.span().id('context-result').bind('contextResult', function (value, state, context) {
+    return context.prefix + value;
+  }, { prefix: 'result=' });
+  doc.button('Check event contract').id('event-contract').onClick(function (event, state, element) {
+    state.eventContract = [this === element, event.currentTarget === element, state === State].join(':');
+    return false;
+  });
+  doc.span().id('event-contract-result').bind('eventContract', value => value);
+  doc.button('Check async contract').id('async-event-contract').onClick(async function (event, state, element) {
+    await Promise.resolve();
+    state.asyncEventContract = [this === element, state === State].join(':');
+  });
+  doc.span().id('async-event-contract-result').bind('asyncEventContract', value => value);
 
   doc.input('text').id('name-input').bindInput('name');
   doc.span().id('name-output').bind('name', value => value);
@@ -36,6 +56,17 @@ function buildPage() {
 
   doc.div().id('class-output').bindClass('theme', value => 'theme-' + value);
   doc.button('Toggle theme').id('toggle-theme').onClick(function () { State.theme = State.theme === 'light' ? 'dark' : 'light'; });
+
+  doc.button('Overview view').id('overview-view').addClass('nav-item').classWhen('view', 'all', 'active').setStateOnClick('view', 'all');
+  doc.button('Done view').id('done-view').addClass('nav-item').classWhen('view', 'done', 'active').setStateOnClick('view', 'done');
+  doc.section('Overview section').id('overview-section').showWhen('view', 'all');
+  doc.section('Done section').id('done-section').showWhen('view', 'done');
+
+  doc.button('Summary panel').id('summary-panel-button').data({ viewNav: 'summary' });
+  doc.button('Activity panel').id('activity-panel-button').data({ viewNav: 'activity' });
+  doc.section('Summary panel content').id('summary-panel').data({ view: 'summary' });
+  doc.section('Activity panel content').id('activity-panel').data({ view: 'activity' });
+  doc.views({ stateKey: 'panel', default: 'summary', activeClass: 'selected' });
 
   doc.a('/safe', 'Reactive link').id('link-output').bindAttr('link', 'href', value => value);
   doc.button('Unsafe link').id('unsafe-link').onClick(function () { State.link = 'javascript:alert(1)'; });

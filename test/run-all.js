@@ -16,6 +16,12 @@ const suites = [
   'test-debug.js',
   'test-public-api.js',
   'test-internal-functions.js',
+  'test-readme-examples.js',
+  'test-dashboard-example.js',
+  'test-account-form-example.js',
+  'test-routing-example.js',
+  'test-production-patterns-example.js',
+  'test-auth-interface-example.js',
 ];
 
 for (const suite of suites) {

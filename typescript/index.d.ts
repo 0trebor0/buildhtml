@@ -7,6 +7,8 @@ export interface ConfigOptions {
   cacheLimit?: number;
   maxComputedFnSize?: number;
   maxEventFnSize?: number;
+  /** Exposes window.BuildHTMLDebug.inspect() in generated development pages. */
+  debug?: boolean;
   enableMetrics?: boolean;
 }
 
@@ -146,80 +148,137 @@ export interface RadioOption {
   checked?: boolean;
 }
 
+export type StateShape = Record<string, any>;
+export type StateKey<S extends StateShape> = Extract<keyof S, string>;
+export type StateValue<S extends StateShape, K extends StateKey<S>> = S[K];
+export type ArrayItem<T> = T extends readonly (infer Item)[] ? Item : never;
+export type ElementContent<S extends StateShape = StateShape> = string | number | ((element: Element<S>) => void);
+
+export interface FieldOptions<S extends StateShape = StateShape> {
+  type?: string;
+  id?: string;
+  name?: string;
+  bind?: StateKey<S>;
+  groupClass?: string;
+  attrs?: Record<string, any>;
+}
+
+export interface FieldResult<S extends StateShape = StateShape> {
+  group: Element<S>;
+  label: Element<S>;
+  input: Element<S>;
+}
+
+export interface ValidationIssue {
+  code: string;
+  message: string;
+  tag?: string;
+  id?: string | null;
+  callbackType?: string;
+  variables?: string[];
+  reason?: string;
+}
+
+export interface ValidationResult {
+  valid: boolean;
+  errors: ValidationIssue[];
+  warnings: ValidationIssue[];
+}
+
+export type ClientEventHandler<E extends Event = Event, C = any, S extends StateShape = StateShape> = (
+  this: HTMLElement,
+  event: E,
+  state: S,
+  element: HTMLElement,
+  context: C
+) => void | Promise<void>;
+
 // ─── Shortcut methods shared by Element and Document ─────────────────────────
 
-export interface SharedShortcuts<TSelf> {
+export interface SharedShortcuts<TSelf, S extends StateShape = StateShape> {
   // Simple tag shortcuts
-  div(): Element;
-  span(): Element;
-  section(): Element;
-  header(): Element;
-  footer(): Element;
-  main(): Element;
-  nav(): Element;
-  article(): Element;
-  aside(): Element;
-  form(): Element;
-  ul(): Element;
-  ol(): Element;
-  table(): Element;
-  tr(): Element;
-  details(): Element;
-  summary(): Element;
-  dialog(): Element;
-  pre(): Element;
-  code(): Element;
-  blockquote(): Element;
-  h1(): Element;
-  h2(): Element;
-  h3(): Element;
-  h4(): Element;
-  h5(): Element;
-  h6(): Element;
+  div(content?: ElementContent<S>): Element<S>;
+  span(content?: ElementContent<S>): Element<S>;
+  section(content?: ElementContent<S>): Element<S>;
+  header(content?: ElementContent<S>): Element<S>;
+  footer(content?: ElementContent<S>): Element<S>;
+  main(content?: ElementContent<S>): Element<S>;
+  nav(content?: ElementContent<S>): Element<S>;
+  article(content?: ElementContent<S>): Element<S>;
+  aside(content?: ElementContent<S>): Element<S>;
+  form(content?: ElementContent<S>): Element<S>;
+  ul(content?: ElementContent<S>): Element<S>;
+  ol(content?: ElementContent<S>): Element<S>;
+  table(content?: ElementContent<S>): Element<S>;
+  thead(content?: ElementContent<S>): Element<S>;
+  tbody(content?: ElementContent<S>): Element<S>;
+  tfoot(content?: ElementContent<S>): Element<S>;
+  tr(content?: ElementContent<S>): Element<S>;
+  details(content?: ElementContent<S>): Element<S>;
+  summary(content?: ElementContent<S>): Element<S>;
+  dialog(content?: ElementContent<S>): Element<S>;
+  pre(content?: ElementContent<S>): Element<S>;
+  code(content?: ElementContent<S>): Element<S>;
+  blockquote(content?: ElementContent<S>): Element<S>;
+  h1(content?: ElementContent<S>): Element<S>;
+  h2(content?: ElementContent<S>): Element<S>;
+  h3(content?: ElementContent<S>): Element<S>;
+  h4(content?: ElementContent<S>): Element<S>;
+  h5(content?: ElementContent<S>): Element<S>;
+  h6(content?: ElementContent<S>): Element<S>;
 
   // Tags with optional text
-  li(text?: string | number): Element;
-  th(text?: string | number): Element;
-  td(text?: string | number): Element;
-  p(text?: string | number): Element;
+  li(content?: ElementContent<S>): Element<S>;
+  th(content?: ElementContent<S>): Element<S>;
+  td(content?: ElementContent<S>): Element<S>;
+  p(content?: ElementContent<S>): Element<S>;
+  strong(content?: ElementContent<S>): Element<S>;
+  small(content?: ElementContent<S>): Element<S>;
+  label(content?: ElementContent<S>): Element<S>;
+  caption(content?: ElementContent<S>): Element<S>;
+  legend(content?: ElementContent<S>): Element<S>;
+  em(content?: ElementContent<S>): Element<S>;
+  b(content?: ElementContent<S>): Element<S>;
+  i(content?: ElementContent<S>): Element<S>;
 
   // Special tags
-  img(src: string, alt?: string): Element;
-  a(href: string, text?: string): Element;
-  button(text?: string): Element;
-  input(type?: string, attrs?: Record<string, any>): Element;
-  textarea(attrs?: Record<string, any>): Element;
-  select(options?: SelectOption[], attrs?: Record<string, any>): Element;
+  img(src: string, alt?: string): Element<S>;
+  a(href: string, text?: string): Element<S>;
+  button(text?: string): Element<S>;
+  input(type?: string, attrs?: Record<string, any>): Element<S>;
+  textarea(attrs?: Record<string, any>): Element<S>;
+  select(options?: SelectOption[], attrs?: Record<string, any>): Element<S>;
   br(): TSelf;
-  hr(): Element;
+  hr(): Element<S>;
 
   // Form helpers
-  formGroup(label: string, inputType?: string, inputAttrs?: Record<string, any>): Element;
-  checkbox(name: string, label: string, checked?: boolean): Element;
-  radio(name: string, options?: RadioOption[]): Element;
-  fieldset(legend?: string, setupFn?: (fs: Element) => void): Element;
-  hiddenInput(name: string, value: string): Element;
+  formGroup(label: string, inputType?: string, inputAttrs?: Record<string, any>): Element<S>;
+  field(label: string, options?: FieldOptions<S>): FieldResult<S>;
+  checkbox(name: string, label: string, checked?: boolean): Element<S>;
+  radio(name: string, options?: RadioOption[]): Element<S>;
+  fieldset(legend?: string, setupFn?: (fs: Element<S>) => void): Element<S>;
+  hiddenInput(name: string, value: string): Element<S>;
 
   // Layout helpers
-  grid(columns: number | string, items?: Array<((el: Element) => void) | Element | string>, gap?: string): Element;
-  flex(items?: Array<((el: Element) => void) | Element | string>, options?: {
+  grid(columns: number | string, items?: Array<((el: Element<S>) => void) | Element<S> | string>, gap?: string): Element<S>;
+  flex(items?: Array<((el: Element<S>) => void) | Element<S> | string>, options?: {
     direction?: 'row' | 'column' | 'row-reverse' | 'column-reverse';
     gap?: string;
     align?: string;
     justify?: string;
     wrap?: string;
-  }): Element;
-  stack(items?: Array<((el: Element) => void) | Element | string>, gap?: string): Element;
-  row(items?: Array<((el: Element) => void) | Element | string>, gap?: string): Element;
-  center(childFn?: (el: Element) => void): Element;
-  container(childFn?: (el: Element) => void, maxWidth?: string): Element;
-  spacer(height?: string): Element;
-  divider(options?: { color?: string; margin?: string }): Element;
-  columns(count: number, columnFns?: Array<(col: Element) => void>, gap?: string): Element;
+  }): Element<S>;
+  stack(items?: Array<((el: Element<S>) => void) | Element<S> | string>, gap?: string): Element<S>;
+  row(items?: Array<((el: Element<S>) => void) | Element<S> | string>, gap?: string): Element<S>;
+  center(childFn?: (el: Element<S>) => void): Element<S>;
+  container(childFn?: (el: Element<S>) => void, maxWidth?: string): Element<S>;
+  spacer(height?: string): Element<S>;
+  divider(options?: { color?: string; margin?: string }): Element<S>;
+  columns(count: number, columnFns?: Array<(col: Element<S>) => void>, gap?: string): Element<S>;
 
   // Data helpers
-  list<T>(items: T[], renderer?: (li: Element, item: T, index: number) => void, tag?: string): Element;
-  dataTable(headers: string[] | null, rows: any[][], options?: { class?: string; autoHeaders?: boolean }): Element;
+  list<T>(items: T[], renderer?: (li: Element<S>, item: T, index: number) => void, tag?: string): Element<S>;
+  dataTable(headers: string[] | null, rows: any[][], options?: { class?: string; autoHeaders?: boolean }): Element<S>;
 
   // Utility
   each<T>(items: T[], fn: (self: TSelf, item: T, index: number) => void): TSelf;
@@ -228,7 +287,7 @@ export interface SharedShortcuts<TSelf> {
 
 // ─── Element ──────────────────────────────────────────────────────────────────
 
-export declare class Element implements SharedShortcuts<Element> {
+export declare class Element<S extends StateShape = StateShape> implements SharedShortcuts<Element<S>, S> {
   tag: string;
   attrs: Record<string, any>;
   children: Array<Element | string>;
@@ -237,89 +296,90 @@ export declare class Element implements SharedShortcuts<Element> {
   hydrate: boolean;
 
   // Tree building
-  child(tag: string): Element;
-  create(tag: string): Element;
-  append(child: Element | string | number | null): Element;
-  appendUnsafe(html: string): Element;
-  text(content: string | number | null): Element;
+  child(tag: string): Element<S>;
+  create(tag: string): Element<S>;
+  build(defs: NodeDef | NodeDef[]): this;
+  append(child: Element<S> | string | number | null): this;
+  appendUnsafe(html: string): this;
+  text(content: string | number | null): this;
   set textContent(value: string | null);
-  before(sibling: Element | string): Element;
-  after(sibling: Element | string): Element;
-  wrap(tag: string): Element;
-  remove(): Element;
-  empty(): Element;
-  clone(): Element;
-  find(tag: string): Element | null;
-  findById(id: string): Element | null;
-  findAll(tag: string): Element[];
-  closest(tag: string): Element | null;
+  before(sibling: Element<S> | string): this;
+  after(sibling: Element<S> | string): this;
+  wrap(tag: string): this;
+  remove(): this;
+  empty(): this;
+  clone(): Element<S>;
+  find(tag: string): Element<S> | null;
+  findById(id: string): Element<S> | null;
+  findAll(tag: string): Element<S>[];
+  closest(tag: string): Element<S> | null;
   html(): string;
   toString(): string;
 
   // Attributes
-  attr(key: string, value: any): Element;
-  attribute(key: string, value: any): Element;
-  id(value?: string): Element;
-  setAttrs(obj: Record<string, any>): Element;
-  data(obj: Record<string, string | number>): Element;
-  aria(obj: Record<string, string>): Element;
+  attr(key: string, value: any): this;
+  attribute(key: string, value: any): this;
+  id(value?: string): this;
+  setAttrs(obj: Record<string, any>): this;
+  data(obj: Record<string, string | number>): this;
+  aria(obj: Record<string, string>): this;
 
   // Attribute shortcuts
-  href(url: string): Element;
-  src(url: string): Element;
-  type(t: string): Element;
-  placeholder(t: string): Element;
-  value(v: string | number): Element;
-  name(n: string): Element;
-  role(r: string): Element;
-  for(id: string): Element;
-  title(t: string): Element;
-  tabindex(n: number | string): Element;
-  action(url: string): Element;
-  method(m: string): Element;
-  target(t: string): Element;
-  rel(r: string): Element;
-  alt(a: string): Element;
-  width(w: string | number): Element;
-  height(h: string | number): Element;
-  min(v: string | number): Element;
-  max(v: string | number): Element;
-  step(v: string | number): Element;
-  pattern(p: string): Element;
-  required(v?: boolean): Element;
-  readonly(v?: boolean): Element;
-  autofocus(v?: boolean): Element;
-  autocomplete(v?: string): Element;
-  multiple(v?: boolean): Element;
-  checked(v?: boolean): Element;
-  selected(v?: boolean): Element;
-  disabled(v?: boolean): Element;
-  hidden(v?: boolean): Element;
-  contentEditable(v?: boolean): Element;
-  draggable(v?: boolean): Element;
+  href(url: string): this;
+  src(url: string): this;
+  type(t: string): this;
+  placeholder(t: string): this;
+  value(v: string | number): this;
+  name(n: string): this;
+  role(r: string): this;
+  for(id: string): this;
+  title(t: string): this;
+  tabindex(n: number | string): this;
+  action(url: string): this;
+  method(m: string): this;
+  target(t: string): this;
+  rel(r: string): this;
+  alt(a: string): this;
+  width(w: string | number): this;
+  height(h: string | number): this;
+  min(v: string | number): this;
+  max(v: string | number): this;
+  step(v: string | number): this;
+  pattern(p: string): this;
+  required(v?: boolean): this;
+  readonly(v?: boolean): this;
+  autofocus(v?: boolean): this;
+  autocomplete(v?: string): this;
+  multiple(v?: boolean): this;
+  checked(v?: boolean): this;
+  selected(v?: boolean): this;
+  disabled(v?: boolean): this;
+  hidden(v?: boolean): this;
+  contentEditable(v?: boolean): this;
+  draggable(v?: boolean): this;
 
   // CSS / Classes
-  css(rules: CSSRules): Element;
-  style(prop: CSSRules): Element;
-  style(prop: string, value: string | number): Element;
-  addClass(...names: string[]): Element;
-  removeClass(...names: string[]): Element;
-  toggleClass(condition: boolean, name: string): Element;
-  classIf(condition: boolean, trueClass: string, falseClass?: string): Element;
-  classMap(map: Record<string, boolean>): Element;
+  css(rules: CSSRules): this;
+  style(prop: CSSRules): this;
+  style(prop: string, value: string | number): this;
+  addClass(...names: string[]): this;
+  removeClass(...names: string[]): this;
+  toggleClass(condition: boolean, name: string): this;
+  classIf(condition: boolean, trueClass: string, falseClass?: string): this;
+  classMap(map: Record<string, boolean>): this;
   hasClass(name: string): boolean;
 
   // CSS pseudo-class & responsive
-  hover(rules: CSSRules): Element;
-  focusCss(rules: CSSRules): Element;
-  active(rules: CSSRules): Element;
-  firstChild(rules: CSSRules): Element;
-  lastChild(rules: CSSRules): Element;
-  nthChild(n: string | number, rules: CSSRules): Element;
-  pseudo(which: 'before' | 'after' | string, rules: CSSRules): Element;
-  media(query: string, rules: CSSRules): Element;
-  transition(props: string | TransitionOptions): Element;
-  transform(value: string): Element;
+  hover(rules: CSSRules): this;
+  focusCss(rules: CSSRules): this;
+  active(rules: CSSRules): this;
+  firstChild(rules: CSSRules): this;
+  lastChild(rules: CSSRules): this;
+  nthChild(n: string | number, rules: CSSRules): this;
+  pseudo(which: 'before' | 'after' | string, rules: CSSRules): this;
+  media(query: string, rules: CSSRules): this;
+  transition(props: string | TransitionOptions): this;
+  transform(value: string): this;
   animate(keyframeName: string, options?: {
     duration?: string;
     timing?: string;
@@ -327,168 +387,183 @@ export declare class Element implements SharedShortcuts<Element> {
     iterations?: string | number;
     direction?: string;
     fillMode?: string;
-  }): Element;
+  }): this;
 
   // CSS property shorthands
-  opacity(n: number | string): Element;
-  zIndex(n: number | string): Element;
-  cursor(type: string): Element;
-  overflow(value: string): Element;
-  display(value: string): Element;
-  position(value: string): Element;
-  size(w: string, h?: string): Element;
+  opacity(n: number | string): this;
+  zIndex(n: number | string): this;
+  cursor(type: string): this;
+  overflow(value: string): this;
+  display(value: string): this;
+  position(value: string): this;
+  size(w: string, h?: string): this;
 
   // Form validation attributes
-  minLength(n: number): Element;
-  maxLength(n: number): Element;
-  accept(types: string): Element;
-  rows(n: number): Element;
-  cols(n: number): Element;
+  minLength(n: number): this;
+  maxLength(n: number): this;
+  accept(types: string): this;
+  rows(n: number): this;
+  cols(n: number): this;
 
   // Visibility / state toggles
-  show(): Element;
-  hide(): Element;
-  enable(): Element;
-  disable(): Element;
-  focus(): Element;
+  show(): this;
+  hide(): this;
+  enable(): this;
+  disable(): this;
+  focus(): this;
 
   // Slots
-  slot(name?: string): Element;
-  fillSlot(name: string, contentFn: (slotEl: Element) => void): Element;
+  slot(name?: string): this;
+  fillSlot(name: string, contentFn: (slotEl: Element<S>) => void): this;
 
   // Portal
-  portal(targetId: string): Element;
+  portal(targetId: string): this;
 
   // State & events
-  bind(stateKey: string, templateFn?: (val: any) => any): Element;
-  bindShow(stateKey: string, fn?: (val: any) => boolean | any): Element;
-  bindClass(stateKey: string, fn: (val: any) => string): Element;
-  bindAttr(stateKey: string, attrName: string, fn?: (val: any) => string | null | false): Element;
-  bindStyle(stateKey: string, fn: (val: any) => Record<string, string>): Element;
-  bindProp(stateKey: string, prop: string, fn?: (val: any) => any): Element;
-  bindInput(stateKey: string): Element;
-  state(value: any): Element;
-  computed(fn: () => any): Element;
-  on(event: string, fn: (e: Event) => void): Element;
-  bindState(target: Element, event: string, fn: (e: Event) => void): Element;
-  onMount(fn: (this: HTMLElement, state: Record<string, any>) => void | (() => void)): Element;
-  onUpdate(stateKey: string, fn: (this: HTMLElement, value: any, state: Record<string, any>) => void): Element;
-  onDestroy(fn: (this: HTMLElement, state: Record<string, any>) => void): Element;
+  bind<K extends StateKey<S>, C = any>(stateKey: K, templateFn?: (val: StateValue<S, K>, state: S, context: C) => any, context?: C): Element<S>;
+  bindShow<K extends StateKey<S>, C = any>(stateKey: K, fn?: (val: StateValue<S, K>, state: S, context: C) => boolean | any, context?: C): Element<S>;
+  showWhen<K extends StateKey<S>>(stateKey: K, expectedValue: StateValue<S, K>): Element<S>;
+  bindClass<K extends StateKey<S>, C = any>(stateKey: K, fn: (val: StateValue<S, K>, state: S, context: C) => string, context?: C): Element<S>;
+  classWhen<K extends StateKey<S>>(stateKey: K, expectedValue: StateValue<S, K>, className: string): Element<S>;
+  bindAttr<K extends StateKey<S>, C = any>(stateKey: K, attrName: string, fn?: (val: StateValue<S, K>, state: S, context: C) => string | null | false, context?: C): Element<S>;
+  bindStyle<K extends StateKey<S>, C = any>(stateKey: K, fn: (val: StateValue<S, K>, state: S, context: C) => Record<string, string>, context?: C): Element<S>;
+  bindProp<K extends StateKey<S>, C = any>(stateKey: K, prop: string, fn?: (val: StateValue<S, K>, state: S, context: C) => any, context?: C): Element<S>;
+  bindInput<K extends StateKey<S>>(stateKey: K): Element<S>;
+  state(value: any): this;
+  computed(fn: () => any): this;
+  on<C = any>(event: string, fn: ClientEventHandler<Event, C, S>, context?: C): Element<S>;
+  bindState<C = any>(target: Element<S>, event: string, fn: ClientEventHandler<Event, C, S>, context?: C): Element<S>;
+  setStateOnClick<K extends StateKey<S>>(stateKey: K, value: StateValue<S, K>): Element<S>;
+  onMount(fn: (this: HTMLElement, state: S) => void | (() => void)): Element<S>;
+  onUpdate<K extends StateKey<S>>(stateKey: K, fn: (this: HTMLElement, value: StateValue<S, K>, state: S) => void): Element<S>;
+  onDestroy(fn: (this: HTMLElement, state: S) => void): Element<S>;
 
   // Event shorthands
-  onClick(fn: (e: MouseEvent) => void): Element;
-  onChange(fn: (e: Event) => void): Element;
-  onInput(fn: (e: InputEvent) => void): Element;
-  onSubmit(fn: (e: SubmitEvent) => void): Element;
-  onKeydown(fn: (e: KeyboardEvent) => void): Element;
-  onKeyup(fn: (e: KeyboardEvent) => void): Element;
-  onKeypress(fn: (e: KeyboardEvent) => void): Element;
-  onFocus(fn: (e: FocusEvent) => void): Element;
-  onBlur(fn: (e: FocusEvent) => void): Element;
-  onMouseenter(fn: (e: MouseEvent) => void): Element;
-  onMouseleave(fn: (e: MouseEvent) => void): Element;
-  onMousedown(fn: (e: MouseEvent) => void): Element;
-  onMouseup(fn: (e: MouseEvent) => void): Element;
-  onMousemove(fn: (e: MouseEvent) => void): Element;
-  onDblclick(fn: (e: MouseEvent) => void): Element;
-  onContextmenu(fn: (e: MouseEvent) => void): Element;
-  onScroll(fn: (e: Event) => void): Element;
-  onLoad(fn: (e: Event) => void): Element;
-  onError(fn: (e: Event) => void): Element;
-  onDragstart(fn: (e: DragEvent) => void): Element;
-  onDragend(fn: (e: DragEvent) => void): Element;
-  onDragover(fn: (e: DragEvent) => void): Element;
-  onDrop(fn: (e: DragEvent) => void): Element;
-  onTouchstart(fn: (e: TouchEvent) => void): Element;
-  onTouchend(fn: (e: TouchEvent) => void): Element;
-  onTouchmove(fn: (e: TouchEvent) => void): Element;
+  onClick<C = any>(fn: ClientEventHandler<MouseEvent, C, S>, context?: C): Element<S>;
+  onChange<C = any>(fn: ClientEventHandler<Event, C, S>, context?: C): Element<S>;
+  onInput<C = any>(fn: ClientEventHandler<InputEvent, C, S>, context?: C): Element<S>;
+  onSubmit<C = any>(fn: ClientEventHandler<SubmitEvent, C, S>, context?: C): Element<S>;
+  onKeydown<C = any>(fn: ClientEventHandler<KeyboardEvent, C, S>, context?: C): Element<S>;
+  onKeyup<C = any>(fn: ClientEventHandler<KeyboardEvent, C, S>, context?: C): Element<S>;
+  onKeypress<C = any>(fn: ClientEventHandler<KeyboardEvent, C, S>, context?: C): Element<S>;
+  onFocus<C = any>(fn: ClientEventHandler<FocusEvent, C, S>, context?: C): Element<S>;
+  onBlur<C = any>(fn: ClientEventHandler<FocusEvent, C, S>, context?: C): Element<S>;
+  onMouseenter<C = any>(fn: ClientEventHandler<MouseEvent, C, S>, context?: C): Element<S>;
+  onMouseleave<C = any>(fn: ClientEventHandler<MouseEvent, C, S>, context?: C): Element<S>;
+  onMousedown<C = any>(fn: ClientEventHandler<MouseEvent, C, S>, context?: C): Element<S>;
+  onMouseup<C = any>(fn: ClientEventHandler<MouseEvent, C, S>, context?: C): Element<S>;
+  onMousemove<C = any>(fn: ClientEventHandler<MouseEvent, C, S>, context?: C): Element<S>;
+  onDblclick<C = any>(fn: ClientEventHandler<MouseEvent, C, S>, context?: C): Element<S>;
+  onContextmenu<C = any>(fn: ClientEventHandler<MouseEvent, C, S>, context?: C): Element<S>;
+  onScroll<C = any>(fn: ClientEventHandler<Event, C, S>, context?: C): Element<S>;
+  onLoad<C = any>(fn: ClientEventHandler<Event, C, S>, context?: C): Element<S>;
+  onError<C = any>(fn: ClientEventHandler<Event, C, S>, context?: C): Element<S>;
+  onDragstart<C = any>(fn: ClientEventHandler<DragEvent, C, S>, context?: C): Element<S>;
+  onDragend<C = any>(fn: ClientEventHandler<DragEvent, C, S>, context?: C): Element<S>;
+  onDragover<C = any>(fn: ClientEventHandler<DragEvent, C, S>, context?: C): Element<S>;
+  onDrop<C = any>(fn: ClientEventHandler<DragEvent, C, S>, context?: C): Element<S>;
+  onTouchstart<C = any>(fn: ClientEventHandler<TouchEvent, C, S>, context?: C): Element<S>;
+  onTouchend<C = any>(fn: ClientEventHandler<TouchEvent, C, S>, context?: C): Element<S>;
+  onTouchmove<C = any>(fn: ClientEventHandler<TouchEvent, C, S>, context?: C): Element<S>;
 
   // Tree manipulation
-  replaceWith(other: Element): Element;
-  prependChild(child: Element | string): Element;
-  insertAt(index: number, child: Element | string): Element;
+  replaceWith(other: Element<S>): Element<S>;
+  prependChild(child: Element<S> | string): this;
+  insertAt(index: number, child: Element<S> | string): this;
   childCount(): number;
-  parent(): Element | null;
+  parent(): Element<S> | null;
   index(): number;
-  siblings(): Element[];
-  nextSibling(): Element | null;
-  prevSibling(): Element | null;
+  siblings(): Element<S>[];
+  nextSibling(): Element<S> | null;
+  prevSibling(): Element<S> | null;
   isVoid(): boolean;
-  tooltip(text: string): Element;
+  tooltip(text: string): this;
 
   // Component system
-  component(name: string, props?: Record<string, any>, overrides?: ComponentOptions): Element;
-  use<TProps = Record<string, any>>(fn: ComponentFn<TProps>, props?: TProps, tag?: string): Element;
+  component(name: string, props?: Record<string, any>, overrides?: ComponentOptions): Element<S>;
+  use<TProps = Record<string, any>>(fn: ComponentFn<TProps>, props?: TProps, tag?: string): Element<S>;
 
   // SPA compilation
-  liveList(stateKey: string, itemFn: (item: any, index: number) => NodeDef, options?: LiveListOptions): Element;
+  liveList<K extends StateKey<S>>(stateKey: K, itemFn: (item: ArrayItem<S[K]>, index: number) => NodeDef, options?: LiveListOptions<S, ArrayItem<S[K]>>): Element<S>;
 
   // Fragment rendering
   renderFragment(): Fragment;
 
   // SharedShortcuts implementations (see interface above)
-  div(): Element;
-  span(): Element;
-  section(): Element;
-  header(): Element;
-  footer(): Element;
-  main(): Element;
-  nav(): Element;
-  article(): Element;
-  aside(): Element;
-  form(): Element;
-  ul(): Element;
-  ol(): Element;
-  table(): Element;
-  tr(): Element;
-  details(): Element;
-  summary(): Element;
-  dialog(): Element;
-  pre(): Element;
-  code(): Element;
-  blockquote(): Element;
-  h1(): Element;
-  h2(): Element;
-  h3(): Element;
-  h4(): Element;
-  h5(): Element;
-  h6(): Element;
-  li(text?: string | number): Element;
-  th(text?: string | number): Element;
-  td(text?: string | number): Element;
-  p(text?: string | number): Element;
-  img(src: string, alt?: string): Element;
-  a(href: string, text?: string): Element;
-  button(text?: string): Element;
-  input(type?: string, attrs?: Record<string, any>): Element;
-  textarea(attrs?: Record<string, any>): Element;
-  select(options?: SelectOption[], attrs?: Record<string, any>): Element;
-  br(): Element;
-  hr(): Element;
-  formGroup(label: string, inputType?: string, inputAttrs?: Record<string, any>): Element;
-  checkbox(name: string, label: string, checked?: boolean): Element;
-  radio(name: string, options?: RadioOption[]): Element;
-  fieldset(legend?: string, setupFn?: (fs: Element) => void): Element;
-  hiddenInput(name: string, value: string): Element;
-  grid(columns: number | string, items?: Array<((el: Element) => void) | Element | string>, gap?: string): Element;
-  flex(items?: Array<((el: Element) => void) | Element | string>, options?: {
+  div(content?: ElementContent<S>): Element<S>;
+  span(content?: ElementContent<S>): Element<S>;
+  section(content?: ElementContent<S>): Element<S>;
+  header(content?: ElementContent<S>): Element<S>;
+  footer(content?: ElementContent<S>): Element<S>;
+  main(content?: ElementContent<S>): Element<S>;
+  nav(content?: ElementContent<S>): Element<S>;
+  article(content?: ElementContent<S>): Element<S>;
+  aside(content?: ElementContent<S>): Element<S>;
+  form(content?: ElementContent<S>): Element<S>;
+  ul(content?: ElementContent<S>): Element<S>;
+  ol(content?: ElementContent<S>): Element<S>;
+  table(content?: ElementContent<S>): Element<S>;
+  thead(content?: ElementContent<S>): Element<S>;
+  tbody(content?: ElementContent<S>): Element<S>;
+  tfoot(content?: ElementContent<S>): Element<S>;
+  tr(content?: ElementContent<S>): Element<S>;
+  details(content?: ElementContent<S>): Element<S>;
+  summary(content?: ElementContent<S>): Element<S>;
+  dialog(content?: ElementContent<S>): Element<S>;
+  pre(content?: ElementContent<S>): Element<S>;
+  code(content?: ElementContent<S>): Element<S>;
+  blockquote(content?: ElementContent<S>): Element<S>;
+  h1(content?: ElementContent<S>): Element<S>;
+  h2(content?: ElementContent<S>): Element<S>;
+  h3(content?: ElementContent<S>): Element<S>;
+  h4(content?: ElementContent<S>): Element<S>;
+  h5(content?: ElementContent<S>): Element<S>;
+  h6(content?: ElementContent<S>): Element<S>;
+  li(content?: ElementContent<S>): Element<S>;
+  th(content?: ElementContent<S>): Element<S>;
+  td(content?: ElementContent<S>): Element<S>;
+  p(content?: ElementContent<S>): Element<S>;
+  strong(content?: ElementContent<S>): Element<S>;
+  small(content?: ElementContent<S>): Element<S>;
+  label(content?: ElementContent<S>): Element<S>;
+  caption(content?: ElementContent<S>): Element<S>;
+  legend(content?: ElementContent<S>): Element<S>;
+  em(content?: ElementContent<S>): Element<S>;
+  b(content?: ElementContent<S>): Element<S>;
+  i(content?: ElementContent<S>): Element<S>;
+  img(src: string, alt?: string): Element<S>;
+  a(href: string, text?: string): Element<S>;
+  button(text?: string): Element<S>;
+  input(type?: string, attrs?: Record<string, any>): Element<S>;
+  textarea(attrs?: Record<string, any>): Element<S>;
+  select(options?: SelectOption[], attrs?: Record<string, any>): Element<S>;
+  br(): this;
+  hr(): Element<S>;
+  formGroup(label: string, inputType?: string, inputAttrs?: Record<string, any>): Element<S>;
+  field(label: string, options?: FieldOptions<S>): FieldResult<S>;
+  checkbox(name: string, label: string, checked?: boolean): Element<S>;
+  radio(name: string, options?: RadioOption[]): Element<S>;
+  fieldset(legend?: string, setupFn?: (fs: Element<S>) => void): Element<S>;
+  hiddenInput(name: string, value: string): Element<S>;
+  grid(columns: number | string, items?: Array<((el: Element<S>) => void) | Element<S> | string>, gap?: string): Element<S>;
+  flex(items?: Array<((el: Element<S>) => void) | Element<S> | string>, options?: {
     direction?: string;
     gap?: string;
     align?: string;
     justify?: string;
     wrap?: string;
-  }): Element;
-  stack(items?: Array<((el: Element) => void) | Element | string>, gap?: string): Element;
-  row(items?: Array<((el: Element) => void) | Element | string>, gap?: string): Element;
-  center(childFn?: (el: Element) => void): Element;
-  container(childFn?: (el: Element) => void, maxWidth?: string): Element;
-  spacer(height?: string): Element;
-  divider(options?: { color?: string; margin?: string }): Element;
-  columns(count: number, columnFns?: Array<(col: Element) => void>, gap?: string): Element;
-  list<T>(items: T[], renderer?: (li: Element, item: T, index: number) => void, tag?: string): Element;
-  dataTable(headers: string[] | null, rows: any[][], options?: { class?: string; autoHeaders?: boolean }): Element;
-  each<T>(items: T[], fn: (self: Element, item: T, index: number) => void): Element;
-  when(condition: boolean | any, fn: (self: Element) => void): Element;
+  }): Element<S>;
+  stack(items?: Array<((el: Element<S>) => void) | Element<S> | string>, gap?: string): Element<S>;
+  row(items?: Array<((el: Element<S>) => void) | Element<S> | string>, gap?: string): Element<S>;
+  center(childFn?: (el: Element<S>) => void): Element<S>;
+  container(childFn?: (el: Element<S>) => void, maxWidth?: string): Element<S>;
+  spacer(height?: string): Element<S>;
+  divider(options?: { color?: string; margin?: string }): Element<S>;
+  columns(count: number, columnFns?: Array<(col: Element<S>) => void>, gap?: string): Element<S>;
+  list<T>(items: T[], renderer?: (li: Element<S>, item: T, index: number) => void, tag?: string): Element<S>;
+  dataTable(headers: string[] | null, rows: any[][], options?: { class?: string; autoHeaders?: boolean }): Element<S>;
+  each<T>(items: T[], fn: (self: Element<S>, item: T, index: number) => void): this;
+  when(condition: boolean | any, fn: (self: Element<S>) => void): this;
 }
 
 // ─── Document ────────────────────────────────────────────────────────────────
@@ -521,6 +596,9 @@ export interface LiveListNodeDef {
   itemFn: (item: any, index: number) => NodeDef;
   filter?: (item: any, state: Record<string, any>) => boolean;
   filterKeys?: string[];
+  sort?: (a: any, b: any, state: Record<string, any>) => number;
+  sortKeys?: string[];
+  empty?: NodeDef | string;
 }
 
 export interface NodeDef {
@@ -584,165 +662,179 @@ export interface PageDef {
   body?: NodeDef | NodeDef[];
 }
 
-export declare class Document implements SharedShortcuts<Document> {
-  body: Array<Element | string>;
+export declare class Document<S extends StateShape = StateShape> implements SharedShortcuts<Document<S>, S> {
+  body: Array<Element<S> | string>;
   head: Head;
 
   constructor(options?: DocumentOptions);
 
   // HTML & BODY attributes
-  lang(l: string): Document;
-  htmlAttr(key: string, value: string): Document;
-  bodyId(id: string): Document;
-  bodyClass(...names: string[]): Document;
-  bodyAttr(key: string, value: string): Document;
-  bodyCss(rules: CSSRules): Document;
+  lang(l: string): this;
+  htmlAttr(key: string, value: string): this;
+  bodyId(id: string): this;
+  bodyClass(...names: string[]): this;
+  bodyAttr(key: string, value: string): this;
+  bodyCss(rules: CSSRules): this;
 
   // Head shortcuts
-  title(t: string): Document;
-  addMeta(attrs: MetaAttrs): Document;
-  addLink(href: string): Document;
-  addStyle(css: string): Document;
-  addScript(src: string): Document;
-  meta(name: string, content: string): Document;
-  viewport(v?: string): Document;
-  charset(c?: string): Document;
-  favicon(href: string, type?: string): Document;
-  rawHead(html: string): Document;
-  inlineScript(code: string): Document;
-  inlineStyle(css: string): Document;
-  preload(href: string, as: string, type?: string): Document;
-  prefetch(href: string): Document;
-  preconnect(href: string): Document;
-  canonical(url: string): Document;
-  ogTags(og: Record<string, string>): Document;
-  twitterCard(tc: Record<string, string>): Document;
-  jsonLd(schema: object): Document;
-  noindex(nofollow?: boolean): Document;
+  title(t: string): this;
+  addMeta(attrs: MetaAttrs): this;
+  addLink(href: string): this;
+  addStyle(css: string): this;
+  addScript(src: string): this;
+  meta(name: string, content: string): this;
+  viewport(v?: string): this;
+  charset(c?: string): this;
+  favicon(href: string, type?: string): this;
+  rawHead(html: string): this;
+  inlineScript(code: string): this;
+  inlineStyle(css: string): this;
+  preload(href: string, as: string, type?: string): this;
+  prefetch(href: string): this;
+  preconnect(href: string): this;
+  canonical(url: string): this;
+  ogTags(og: Record<string, string>): this;
+  twitterCard(tc: Record<string, string>): this;
+  jsonLd(schema: object): this;
+  noindex(nofollow?: boolean): this;
 
   // Global CSS
-  globalStyle(selector: string, rules: CSSRules): Document;
-  sharedClass(name: string, rules: CSSRules): Document;
-  defineClass(selector: string, rules: CSSRules, isRawSelector?: boolean): Document;
-  resetCss(): Document;
+  globalStyle(selector: string, rules: CSSRules): this;
+  sharedClass(name: string, rules: CSSRules): this;
+  defineClass(selector: string, rules: CSSRules, isRawSelector?: boolean): this;
+  resetCss(): this;
 
   // CSS features
-  keyframes(name: string, frames: Record<string, CSSRules>): Document;
-  mediaQuery(query: string, selectorRules: Record<string, CSSRules>): Document;
-  cssVar(name: string, value: string | number): Document;
-  cssVars(obj: Record<string, string | number>): Document;
-  darkMode(selectorRules: Record<string, CSSRules>): Document;
-  print(selectorRules: Record<string, CSSRules>): Document;
+  keyframes(name: string, frames: Record<string, CSSRules>): this;
+  mediaQuery(query: string, selectorRules: Record<string, CSSRules>): this;
+  cssVar(name: string, value: string | number): this;
+  cssVars(obj: Record<string, string | number>): this;
+  darkMode(selectorRules: Record<string, CSSRules>): this;
+  print(selectorRules: Record<string, CSSRules>): this;
 
   // State
-  state(key: string, value: any): Document;
-  states(obj: Record<string, any>): Document;
+  state<K extends StateKey<S>>(key: K, value: StateValue<S, K>): Document<S>;
+  states(obj: S): Document<S>;
 
   // Lifecycle
-  oncreate(fn: () => void | Promise<void>): Document;
+  oncreate(fn: () => void | Promise<void>): this;
 
   // Element creation
-  createElement(tag: string): Element;
-  create(tag: string): Element;
-  child(tag: string): Element;
+  createElement(tag: string): Element<S>;
+  create(tag: string): Element<S>;
+  child(tag: string): Element<S>;
 
   // Component system
-  component(name: string, props?: Record<string, any>, overrides?: ComponentOptions): Element;
-  use<TProps = Record<string, any>>(fn: ComponentFn<TProps>, props?: TProps, tag?: string): Element;
-  useFragment(fn: (doc: Document) => void): Document;
+  component(name: string, props?: Record<string, any>, overrides?: ComponentOptions): Element<S>;
+  use<TProps = Record<string, any>>(fn: ComponentFn<TProps>, props?: TProps, tag?: string): Element<S>;
+  useFragment(fn: (doc: Document<S>) => void): Document<S>;
 
   // Declarative builder
-  build(defs: NodeDef | NodeDef[]): Document;
+  build(defs: NodeDef | NodeDef[]): this;
 
   // SPA compilation
-  liveList(stateKey: string, itemFn: (item: any, index: number) => NodeDef, options?: LiveListOptions): Element;
-  hashRouter(options?: HashRouterOptions): Document;
-  historyRouter(options?: HistoryRouterOptions): Document;
+  liveList<K extends StateKey<S>>(stateKey: K, itemFn: (item: ArrayItem<S[K]>, index: number) => NodeDef, options?: LiveListOptions<S, ArrayItem<S[K]>>): Element<S>;
+  hashRouter(options?: HashRouterOptions<S>): Document<S>;
+  historyRouter(options?: HistoryRouterOptions<S>): Document<S>;
+  views(options?: ViewsOptions<S>): Document<S>;
 
   // Utility APIs
-  comment(text: string): Document;
-  raw(html: string): Document;
-  stamp(fragment: Fragment): Document;
-  group(fn: (doc: Document) => void): Document;
-  template(name: string, fn: (doc: Document, vars: Record<string, any>) => void): Document;
-  useTemplate(name: string, vars?: Record<string, any>): Document;
+  comment(text: string): this;
+  raw(html: string): this;
+  stamp(fragment: Fragment): this;
+  group(fn: (doc: Document<S>) => void): this;
+  template(name: string, fn: (doc: Document<S>, vars: Record<string, any>) => void): this;
+  useTemplate(name: string, vars?: Record<string, any>): this;
   isEmpty(): boolean;
   elementCount(): number;
+  validate(): ValidationResult;
 
   // JSON import / export
-  fromJSON(def: PageDef): Document;
+  fromJSON(def: PageDef): this;
   toJSON(): object;
 
   // Rendering
   render(): string;
   renderStream(): import('stream').Readable;
   output(): string;
-  save(path: string): Document;
+  save(path: string): this;
   clear(): void;
 
   // SharedShortcuts implementations
-  div(): Element;
-  span(): Element;
-  section(): Element;
-  header(): Element;
-  footer(): Element;
-  main(): Element;
-  nav(): Element;
-  article(): Element;
-  aside(): Element;
-  form(): Element;
-  ul(): Element;
-  ol(): Element;
-  table(): Element;
-  tr(): Element;
-  details(): Element;
-  summary(): Element;
-  dialog(): Element;
-  pre(): Element;
-  code(): Element;
-  blockquote(): Element;
-  h1(): Element;
-  h2(): Element;
-  h3(): Element;
-  h4(): Element;
-  h5(): Element;
-  h6(): Element;
-  li(text?: string | number): Element;
-  th(text?: string | number): Element;
-  td(text?: string | number): Element;
-  p(text?: string | number): Element;
-  img(src: string, alt?: string): Element;
-  a(href: string, text?: string): Element;
-  button(text?: string): Element;
-  input(type?: string, attrs?: Record<string, any>): Element;
-  textarea(attrs?: Record<string, any>): Element;
-  select(options?: SelectOption[], attrs?: Record<string, any>): Element;
-  br(): Document;
-  hr(): Element;
-  formGroup(label: string, inputType?: string, inputAttrs?: Record<string, any>): Element;
-  checkbox(name: string, label: string, checked?: boolean): Element;
-  radio(name: string, options?: RadioOption[]): Element;
-  fieldset(legend?: string, setupFn?: (fs: Element) => void): Element;
-  hiddenInput(name: string, value: string): Element;
-  grid(columns: number | string, items?: Array<((el: Element) => void) | Element | string>, gap?: string): Element;
-  flex(items?: Array<((el: Element) => void) | Element | string>, options?: {
+  div(content?: ElementContent<S>): Element<S>;
+  span(content?: ElementContent<S>): Element<S>;
+  section(content?: ElementContent<S>): Element<S>;
+  header(content?: ElementContent<S>): Element<S>;
+  footer(content?: ElementContent<S>): Element<S>;
+  main(content?: ElementContent<S>): Element<S>;
+  nav(content?: ElementContent<S>): Element<S>;
+  article(content?: ElementContent<S>): Element<S>;
+  aside(content?: ElementContent<S>): Element<S>;
+  form(content?: ElementContent<S>): Element<S>;
+  ul(content?: ElementContent<S>): Element<S>;
+  ol(content?: ElementContent<S>): Element<S>;
+  table(content?: ElementContent<S>): Element<S>;
+  thead(content?: ElementContent<S>): Element<S>;
+  tbody(content?: ElementContent<S>): Element<S>;
+  tfoot(content?: ElementContent<S>): Element<S>;
+  tr(content?: ElementContent<S>): Element<S>;
+  details(content?: ElementContent<S>): Element<S>;
+  summary(content?: ElementContent<S>): Element<S>;
+  dialog(content?: ElementContent<S>): Element<S>;
+  pre(content?: ElementContent<S>): Element<S>;
+  code(content?: ElementContent<S>): Element<S>;
+  blockquote(content?: ElementContent<S>): Element<S>;
+  h1(content?: ElementContent<S>): Element<S>;
+  h2(content?: ElementContent<S>): Element<S>;
+  h3(content?: ElementContent<S>): Element<S>;
+  h4(content?: ElementContent<S>): Element<S>;
+  h5(content?: ElementContent<S>): Element<S>;
+  h6(content?: ElementContent<S>): Element<S>;
+  li(content?: ElementContent<S>): Element<S>;
+  th(content?: ElementContent<S>): Element<S>;
+  td(content?: ElementContent<S>): Element<S>;
+  p(content?: ElementContent<S>): Element<S>;
+  strong(content?: ElementContent<S>): Element<S>;
+  small(content?: ElementContent<S>): Element<S>;
+  label(content?: ElementContent<S>): Element<S>;
+  caption(content?: ElementContent<S>): Element<S>;
+  legend(content?: ElementContent<S>): Element<S>;
+  em(content?: ElementContent<S>): Element<S>;
+  b(content?: ElementContent<S>): Element<S>;
+  i(content?: ElementContent<S>): Element<S>;
+  img(src: string, alt?: string): Element<S>;
+  a(href: string, text?: string): Element<S>;
+  button(text?: string): Element<S>;
+  input(type?: string, attrs?: Record<string, any>): Element<S>;
+  textarea(attrs?: Record<string, any>): Element<S>;
+  select(options?: SelectOption[], attrs?: Record<string, any>): Element<S>;
+  br(): this;
+  hr(): Element<S>;
+  formGroup(label: string, inputType?: string, inputAttrs?: Record<string, any>): Element<S>;
+  field(label: string, options?: FieldOptions<S>): FieldResult<S>;
+  checkbox(name: string, label: string, checked?: boolean): Element<S>;
+  radio(name: string, options?: RadioOption[]): Element<S>;
+  fieldset(legend?: string, setupFn?: (fs: Element<S>) => void): Element<S>;
+  hiddenInput(name: string, value: string): Element<S>;
+  grid(columns: number | string, items?: Array<((el: Element<S>) => void) | Element<S> | string>, gap?: string): Element<S>;
+  flex(items?: Array<((el: Element<S>) => void) | Element<S> | string>, options?: {
     direction?: string;
     gap?: string;
     align?: string;
     justify?: string;
     wrap?: string;
-  }): Element;
-  stack(items?: Array<((el: Element) => void) | Element | string>, gap?: string): Element;
-  row(items?: Array<((el: Element) => void) | Element | string>, gap?: string): Element;
-  center(childFn?: (el: Element) => void): Element;
-  container(childFn?: (el: Element) => void, maxWidth?: string): Element;
-  spacer(height?: string): Element;
-  divider(options?: { color?: string; margin?: string }): Element;
-  columns(count: number, columnFns?: Array<(col: Element) => void>, gap?: string): Element;
-  list<T>(items: T[], renderer?: (li: Element, item: T, index: number) => void, tag?: string): Element;
-  dataTable(headers: string[] | null, rows: any[][], options?: { class?: string; autoHeaders?: boolean }): Element;
-  each<T>(items: T[], fn: (self: Document, item: T, index: number) => void): Document;
-  when(condition: boolean | any, fn: (self: Document) => void): Document;
+  }): Element<S>;
+  stack(items?: Array<((el: Element<S>) => void) | Element<S> | string>, gap?: string): Element<S>;
+  row(items?: Array<((el: Element<S>) => void) | Element<S> | string>, gap?: string): Element<S>;
+  center(childFn?: (el: Element<S>) => void): Element<S>;
+  container(childFn?: (el: Element<S>) => void, maxWidth?: string): Element<S>;
+  spacer(height?: string): Element<S>;
+  divider(options?: { color?: string; margin?: string }): Element<S>;
+  columns(count: number, columnFns?: Array<(col: Element<S>) => void>, gap?: string): Element<S>;
+  list<T>(items: T[], renderer?: (li: Element<S>, item: T, index: number) => void, tag?: string): Element<S>;
+  dataTable(headers: string[] | null, rows: any[][], options?: { class?: string; autoHeaders?: boolean }): Element<S>;
+  each<T>(items: T[], fn: (self: Document<S>, item: T, index: number) => void): this;
+  when(condition: boolean | any, fn: (self: Document<S>) => void): this;
 }
 
 // ─── Template Engine ──────────────────────────────────────────────────────────
@@ -845,6 +937,7 @@ export declare function templateEngine(
 // ─── Middleware ───────────────────────────────────────────────────────────────
 
 export interface MiddlewareOptions {
+  /** Per-response CSP nonce. Nonce-enabled rendering bypasses the rendered HTML cache. */
   nonce?: (req: any) => string;
 }
 
@@ -874,22 +967,28 @@ export declare function healthCheck(): HealthCheckResult;
 
 // ─── SPA Compilation ─────────────────────────────────────────────────────────
 
-export interface LiveListOptions {
+export interface LiveListOptions<S extends StateShape = StateShape, Item = any> {
   /** Client-side filter: (item, State) => boolean. Also applied server-side for initial render. */
-  filter?: (item: any, state: Record<string, any>) => boolean;
+  filter?: (item: Item, state: S) => boolean;
   /** Extra state keys that trigger a re-render when they change (e.g. ['view']). */
-  filterKeys?: string[];
+  filterKeys?: StateKey<S>[];
+  /** Client-side ordering, also applied during server rendering. */
+  sort?: (a: Item, b: Item, state: S) => number;
+  /** Extra state keys that change the ordering. */
+  sortKeys?: StateKey<S>[];
+  /** Declarative content rendered when filtering leaves no items. */
+  empty?: NodeDef | string;
 }
 
-export interface HashRouterOptions {
+export interface HashRouterOptions<S extends StateShape = StateShape> {
   /** State key to update on hash change (default: 'view'). */
-  stateKey?: string;
+  stateKey?: StateKey<S>;
   /** Hash value used when location.hash is empty (default: 'all'). */
   default?: string;
   /** Optional route patterns mapped to state values (e.g. { 'users/:id': 'user', '*': 'not-found' }). */
   routes?: Record<string, string>;
   /** State key populated with named route parameters (default: 'routeParams'). */
-  paramsKey?: string;
+  paramsKey?: StateKey<S>;
   /** State value used when no route pattern matches and no '*' route exists (default: 'not-found'). */
   notFound?: string;
   /** CSS selector for nav links to highlight (e.g. 'header a'). */
@@ -900,7 +999,7 @@ export interface HashRouterOptions {
   inactiveStyle?: Record<string, string>;
 }
 
-export interface HistoryRouterOptions extends HashRouterOptions {
+export interface HistoryRouterOptions<S extends StateShape = StateShape> extends HashRouterOptions<S> {
   /** Path used when the application path is empty after removing base (default: '/'). */
   default?: string;
   /** Path prefix removed before route matching (default: '/'). */
@@ -908,6 +1007,26 @@ export interface HistoryRouterOptions extends HashRouterOptions {
   /** Selector for same-origin links handled without a page reload (default: 'a[data-route]'). */
   linkSelector?: string;
 }
+
+export interface ViewsOptionsBase {
+  /** Selector for navigation controls (default: '[data-view-nav]'). */
+  navigation?: string;
+  /** Alias for navigation. */
+  navSelector?: string;
+  /** Selector for view containers (default: '[data-view]'). */
+  viewSelector?: string;
+  /** Class toggled on the active navigation control (default: 'active'). */
+  activeClass?: string;
+}
+
+export type ViewsOptions<S extends StateShape = StateShape> = {
+  [K in StateKey<S>]: ViewsOptionsBase & {
+    /** Reactive state key used for the active view (default: 'activeView'). */
+    stateKey?: K;
+    /** Initial state value when the key has not already been declared (default: 'default'). */
+    default?: S[K];
+  }
+}[StateKey<S>];
 
 export declare function compileLiveList(
   doc: Document,
@@ -919,10 +1038,11 @@ export declare function compileLiveList(
 
 export declare function compileHashRouter(doc: Document, options?: HashRouterOptions): Document;
 export declare function compileHistoryRouter(doc: Document, options?: HistoryRouterOptions): Document;
+export declare function compileViews(doc: Document, options?: ViewsOptions): Document;
 
 // ─── Top-level helpers ────────────────────────────────────────────────────────
 
-export declare function page(title: string, options?: DocumentOptions): Document;
+export declare function page<S extends StateShape = StateShape>(title: string, options?: DocumentOptions): Document<S>;
 
 export declare function renderFromJSON(def: PageDef, setup?: ((doc: Document) => void) | DocumentOptions, options?: DocumentOptions): string;
 

@@ -33,6 +33,57 @@ import {
 
 // ─── 1. Basic page ────────────────────────────────────────────────────────────
 
+type DashboardState = {
+  activePage: 'overview' | 'projects' | 'account';
+  sidebarOpen: boolean;
+  count: number;
+  projects: Array<{ id: number; name: string }>;
+};
+
+const typedStateDoc = page<DashboardState>('Typed state');
+typedStateDoc.states({
+  activePage: 'overview',
+  sidebarOpen: false,
+  count: 0,
+  projects: [{ id: 1, name: 'BuildHTML' }],
+});
+typedStateDoc.main(main => {
+  main.button('Projects').setStateOnClick('activePage', 'projects');
+  main.section('Projects').showWhen('activePage', 'projects');
+  main.span().bind('count', (count, state) => `${count}:${state.activePage}`);
+  main.button('Open').onClick(function (_event, state) {
+    state.sidebarOpen = true;
+  });
+  main.onUpdate('count', function (count, state) {
+    this.dataset.count = String(count + state.count);
+  });
+  main.liveList('projects', project => ({ tag: 'p', text: project.name }), {
+    sort: (a, b, state) => state.sidebarOpen ? b.name.localeCompare(a.name) : a.name.localeCompare(b.name),
+    sortKeys: ['sidebarOpen'],
+    empty: { tag: 'p', text: 'No projects' },
+  });
+});
+typedStateDoc.views({ stateKey: 'activePage', default: 'overview' });
+typedStateDoc.main().build([
+  { tag: 'h2', text: 'Declarative child' },
+  { tag: 'p', bind: { key: 'count', fn: count => String(count) } },
+]);
+const typedField = typedStateDoc.field('Count', { type: 'number', bind: 'count' });
+typedField.input.addClass('number-input').bind('count', count => String(count));
+
+// @ts-expect-error unknown state keys are rejected on typed documents
+typedStateDoc.div().bind('missing', value => value);
+// @ts-expect-error fluent element configuration preserves the state type
+typedStateDoc.div().id('typed').addClass('card').bind('missing', value => value);
+// @ts-expect-error state-setting values must match the selected state key
+typedStateDoc.button('Invalid').setStateOnClick('sidebarOpen', 'yes');
+// @ts-expect-error declared state values must match DashboardState
+typedStateDoc.state('count', 'one');
+// @ts-expect-error view defaults must be valid state values
+typedStateDoc.views({ stateKey: 'activePage', default: 'missing' });
+// @ts-expect-error field bindings use declared state keys
+typedStateDoc.field('Unknown', { bind: 'missing' });
+
 const doc: Document = page('Home', { lang: 'en' });
 const typedHead: Head = new Head().setTitle('Typed head').setCharset('UTF-8');
 console.log(typedHead.hasStyles(), responseCache.has('missing'), responseCache.get('missing'));
@@ -42,6 +93,10 @@ doc.cssVars({ primaryColor: '#3b82f6', fontBase: '16px' });
 
 const hero: Element = doc.div().css({ padding: '40px', textAlign: 'center' } as CSSRules);
 hero.h1().text('Hello from TypeScript').css({ color: 'var(--primary-color)' } as CSSRules);
+hero.section(section => section.strong('Typed setup callback'));
+hero.button('Typed context').onClick(function (_event, state, _element, context) {
+  state.activePage = context.page;
+}, { page: 'overview' });
 hero.p('Built with full type safety.');
 
 const html: string = doc.render();

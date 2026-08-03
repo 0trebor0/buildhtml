@@ -5,7 +5,7 @@ const {
   Document, TemplateParser, components, configure, CONFIG
 } = require('..');
 const { buildNodes } = require('../lib/builder');
-const { minHTML } = require('../lib/utils');
+const { minHTML, findFreeVariables } = require('../lib/utils');
 
 let passed = 0;
 let failed = 0;
@@ -145,6 +145,145 @@ test('minHTML preserves whitespace-sensitive element contents', () => {
     assert(!html.includes('</div>  <pre>'));
   } finally {
     configure({ mode: originalMode });
+  }
+});
+
+test('document validation reports heading, form, URL, ARIA, and nesting mistakes', () => {
+  const doc = new Document();
+  doc.h1('Dashboard');
+  doc.h3('Skipped level');
+  doc.input('email').id('unlabelled');
+  doc.a('javascript:alert(1)', 'Unsafe');
+  doc.div('Named elsewhere').aria({ labelledby: 'missing-label' });
+  doc.button('Outer').button('Inner');
+
+  const codes = new Set(doc.validate().warnings.map((issue) => issue.code));
+  for (const code of ['W_HEADING_ORDER', 'W_CONTROL_LABEL', 'W_UNSAFE_URL', 'W_ARIA_TARGET', 'W_NESTED_INTERACTIVE']) {
+    assert(codes.has(code), `validation should report ${code}`);
+  }
+});
+
+test('document validation accepts accessible controls and sequential headings', () => {
+  const doc = new Document();
+  doc.h1('Dashboard');
+  doc.h2('Account');
+  doc.label((label) => label.input('email'));
+  doc.input('search').aria({ label: 'Search' });
+  doc.a('/account', 'Account');
+
+  assert.deepStrictEqual(doc.validate(), { valid: true, errors: [], warnings: [] });
+});
+
+test('document validation reports ineffective caching and History fallback requirements', () => {
+  const doc = new Document({ cache: true });
+  doc.historyRouter({ base: '/app' });
+  const warnings = doc.validate().warnings;
+  assert.deepStrictEqual(
+    warnings.map((issue) => issue.code).sort(),
+    ['W_CACHE_KEY', 'W_HISTORY_FALLBACK']
+  );
+  assert(warnings.find((issue) => issue.code === 'W_HISTORY_FALLBACK').message.includes('/app'));
+
+  const configured = new Document({ cache: true, cacheKey: 'public-home' });
+  configured.hashRouter();
+  assert.deepStrictEqual(configured.validate(), { valid: true, errors: [], warnings: [] });
+});
+
+test('free-variable analysis detects captures and accepts browser callback patterns', () => {
+  assert.deepStrictEqual(findFreeVariables('(value) => value === pageName'), ['pageName']);
+  assert.deepStrictEqual(findFreeVariables('(value) => `${prefix}: ${value}`'), ['prefix']);
+  assert.deepStrictEqual(findFreeVariables('(value) => /ready|done/gi.test(value)'), []);
+  assert.deepStrictEqual(
+    findFreeVariables('async function(event, state, element, context){const response=await fetch(context.url);state.items=await response.json();element.dataset.ready=String(response.ok);}'),
+    []
+  );
+  assert.deepStrictEqual(
+    findFreeVariables('(items) => items.map(item => ({ id: item.id, label: String(item.label) }))'),
+    []
+  );
+});
+
+test('document validation identifies captured server variables with callback context', () => {
+  const pageName = 'projects';
+  const doc = new Document();
+  doc.states({ activePage: 'overview' });
+  doc.section('Projects').bindShow('activePage', (value) => value === pageName);
+  doc.button('Safe').onClick(function (_event, state, _element, context) {
+    state.activePage = context.page;
+  }, { page: pageName });
+
+  const captures = doc.validate().warnings.filter((issue) => issue.code === 'W_CALLBACK_CAPTURE');
+  assert.strictEqual(captures.length, 1);
+  assert.deepStrictEqual(captures[0].variables, ['pageName']);
+  assert.strictEqual(captures[0].callbackType, 'binding:show');
+});
+
+test('document validation checks event, lifecycle, computed, and oncreate sources', () => {
+  const serverValue = 'server-only';
+  const doc = new Document();
+  doc.button('Captured event').onClick(() => console.log(serverValue));
+  doc.div('Captured lifecycle').onMount(() => console.log(serverValue));
+  doc.span().computed(() => serverValue);
+  doc.oncreate(() => console.log(serverValue));
+
+  const types = new Set(doc.validate().warnings
+    .filter((issue) => issue.code === 'W_CALLBACK_CAPTURE')
+    .map((issue) => issue.callbackType));
+  assert.deepStrictEqual(types, new Set(['event:click', 'lifecycle:mount', 'computed', 'oncreate']));
+});
+
+test('document validation checks liveList item, filter, and sort callbacks', () => {
+  const prefix = 'server';
+  const allowedTeam = 'Platform';
+  const sortDirection = 1;
+  const doc = new Document();
+  doc.states({ items: [{ label: 'One', team: 'Platform' }] });
+  doc.liveList('items', (item) => ({ tag: 'span', text: prefix + item.label }), {
+    filter: (item) => item.team === allowedTeam,
+    sort: (a, b) => sortDirection * a.label.localeCompare(b.label),
+  });
+
+  const captures = doc.validate().warnings.filter((issue) => issue.code === 'W_CALLBACK_CAPTURE');
+  assert.deepStrictEqual(captures.map((issue) => issue.callbackType).sort(), ['liveList:filter', 'liveList:item', 'liveList:sort']);
+  assert.deepStrictEqual(captures.flatMap((issue) => issue.variables).sort(), ['allowedTeam', 'prefix', 'sortDirection']);
+});
+
+test('document validation retains rejected callback registration failures', () => {
+  const original = { ...CONFIG };
+  try {
+    configure({ mode: 'prod', maxEventFnSize: 80, maxComputedFnSize: 80 });
+    const doc = new Document();
+    doc.states({ items: [], filteredItems: [] });
+    doc.button('Unsafe').id('unsafe-event').onClick(function () { eval('alert(1)'); });
+    doc.span().bind('value', function (value) {
+      return `This intentionally oversized binding callback keeps repeating its value: ${value}:${value}:${value}:${value}`;
+    });
+    doc.oncreate(function () { return new Function('return 1')(); });
+    doc.div().computed(function () { return eval('1'); });
+    doc.section('Lifecycle').onMount(function () { return new Function('return 1')(); });
+    doc.liveList('items', function (item) { return eval('item'); });
+    doc.liveList('filteredItems', function (item) { return { tag: 'span', text: item }; }, {
+      filter: function (item) { return eval('item'); },
+    });
+
+    const result = doc.validate();
+    assert.strictEqual(result.valid, false);
+    assert.strictEqual(result.errors.length, 7);
+    assert(result.errors.every((issue) => issue.code === 'E_CALLBACK_REGISTRATION'));
+    assert.deepStrictEqual(
+      result.errors.map((issue) => issue.callbackType).sort(),
+      ['binding:text', 'computed', 'event:click', 'lifecycle:mount', 'liveList:filter', 'liveList:item', 'oncreate']
+    );
+    const eventFailure = result.errors.find((issue) => issue.callbackType === 'event:click');
+    assert.strictEqual(eventFailure.id, 'unsafe-event');
+    assert.strictEqual(eventFailure.tag, 'button');
+    assert(eventFailure.reason.includes('dangerous'));
+    assert(eventFailure.message.includes('configured size limit'));
+
+    doc.clear();
+    assert.deepStrictEqual(doc.validate(), { valid: true, errors: [], warnings: [] });
+  } finally {
+    configure(original);
   }
 });
 

@@ -133,6 +133,22 @@ test('event handler round-trip', () => {
   assert(html.includes('State.n++'), 'handler body after round-trip');
 });
 
+test('event and binding callback contexts survive round-trip', () => {
+  const doc = new Document();
+  doc.states({ view: 'home' });
+  doc.button('Open').onClick(function (event, state, element, context) {
+    state.view = context.page;
+  }, { page: 'account' });
+  doc.section('Home').bindShow('view', function (value, state, context) {
+    return value === context.page;
+  }, { page: 'home' });
+
+  const restored = new Document().fromJSON(doc.toJSON());
+  const html = restored.render();
+  assert(html.includes('{"page":"account"}'), 'event context preserved');
+  assert(html.includes('{"page":"home"}'), 'binding context preserved');
+});
+
 /* ---- state bindings ---- */
 test('bind() round-trip', () => {
   const doc = new Document();

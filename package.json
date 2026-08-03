@@ -1,6 +1,6 @@
 {
   "name": "@trebor/buildhtml",
-  "version": "1.2.1",
+  "version": "1.2.3",
   "description": "Server-side HTML compiler for Node.js. Build pages with a JavaScript API while reactive state, events, and DOM bindings compile automatically.",
   "main": "index.js",
   "types": "typescript/index.d.ts",
@@ -8,15 +8,20 @@
     "index.js",
     "benchmark/",
     "docs/",
+    "example/account-form.js",
+    "example/dashboard.js",
+    "example/routing.js",
+    "example/production-patterns.js",
+    "example/auth-interface.js",
     "lib/",
     "typescript/",
     "README.md",
     "LICENSE"
   ],
   "scripts": {
-    "start": "node example/server.js",
+    "start": "node example/dashboard.js",
     "test": "node test/run-all.js",
-    "test:browser": "node test/test-browser.js",
+    "test:browser": "node test/test-browser.js && node test/test-dashboard-browser.js && node test/test-routing-browser.js && node test/test-auth-interface-browser.js",
     "test:types": "tsc --project typescript/tsconfig.json --noEmit",
     "benchmark": "node benchmark/render.js"
   },

@@ -66,6 +66,7 @@ The callbacks are written in the server file but compiled to browser JavaScript.
 - [Create pages and elements](#create-pages-and-elements)
 - [Serve HTML with Express](#serve-html-with-express)
 - [Generate static files](#generate-static-files)
+- [Accessible form fields](#accessible-form-fields)
 - [Reactive state and events](#reactive-state-and-events)
 - [Client-side fetch](#client-side-fetch)
 - [Components](#components)
@@ -73,8 +74,11 @@ The callbacks are written in the server file but compiled to browser JavaScript.
 - [Templates](#bhtml-templates)
 - [Reactive lists](#reactive-lists)
 - [SPA routing](#spa-routing)
+- [Complete dashboard example](#complete-dashboard-example)
+- [Server-validated account form](#server-validated-account-form)
 - [Streaming and caching](#streaming-and-caching)
 - [Security](#security)
+- [Common mistakes](#common-mistakes)
 - [API overview](#api-overview)
 - [Full documentation](#full-documentation)
 
@@ -124,6 +128,19 @@ doc.title('Custom setup').viewport().resetCss().lang('en');
 | `nonce` | string | none | CSP nonce for generated inline scripts and styles |
 | `cache` | boolean | `false` | Enables document render caching |
 | `cacheKey` | string | none | Required stable key when document caching is enabled |
+
+### Document and Element capabilities
+
+Both objects expose tag shortcuts, but they have different jobs:
+
+| Capability | `Document` | `Element` | Notes |
+|------------|:----------:|:---------:|-------|
+| Tag shortcuts | Yes | Yes | Creates a body element or a nested child |
+| `build(definition)` | Yes | Yes | Builds into the document body or the element's children |
+| `child(tag)` | No | Yes | Creates a nested tag when no shortcut exists |
+| Metadata and global CSS | Yes | No | Head and page-wide configuration |
+| `states(initialValues)` | Yes | No | Declares browser state for the page |
+| Element attributes and bindings | No | Yes | Configures the returned element |
 
 ### Familiar element API
 
@@ -194,6 +211,53 @@ app.listen(3000);
 
 Generate once when every visitor receives the same page. Render per request when the result depends on authentication, locale, request data, or permissions.
 
+For a larger server, keep HTTP responsibilities separate from page construction:
+
+```text
+project/
+|-- server.js          # HTTP routes, headers, authentication, responses
+|-- ui/
+|   |-- dashboard.js   # Page construction
+|   |-- components.js  # Reusable server components
+|   `-- styles.js      # Theme and shared styles
+|-- routes/
+|   `-- api.js         # JSON endpoints
+|-- public/            # Static assets
+`-- tests/             # Render, HTTP, and browser tests
+```
+
+BuildHTML constructs UI output; authentication, authorization, request validation, headers, persistence, and API routing remain server responsibilities.
+
+## Accessible form fields
+
+`field(label, options?)` creates a labelled input with a unique ID and returns every useful element:
+
+```javascript
+doc.states({ email: '' });
+
+const { group, label, input } = doc.field('Email', {
+  type: 'email',
+  name: 'email',
+  bind: 'email',
+  attrs: { autocomplete: 'email', required: true }
+});
+
+group.addClass('account-field');
+label.addClass('field-label');
+input.placeholder('you@example.com');
+```
+
+| Option | Type | Purpose |
+|--------|------|---------|
+| `type` | string | Input type; defaults to `text` |
+| `id` | string | Explicit input and label target ID; otherwise generated uniquely |
+| `name` | string | Submitted form name |
+| `bind` | state key | Adds two-way state binding |
+| `groupClass` | string | Wrapper class; defaults to `form-group` |
+| `attrs` | object | Additional input attributes |
+
+Multiple fields may bind to the same state key without sharing an HTML ID. Run `doc.validate()` before rendering to catch any explicitly duplicated IDs.
+
 ## Reactive state and events
 
 Define JSON-serializable state on the document:
@@ -248,6 +312,22 @@ doc.button('Add task').onClick(function () {
 | `bindProp(key, name, fn?)` | `(value, State)` callback | Assigns a DOM property |
 | `bindInput(key)` | state key | Two-way input value binding |
 | `on(event, fn)` | browser event callback | Adds an event listener |
+
+For common navigation comparisons, use declarative helpers so no server closure is required:
+
+```javascript
+doc.states({ activePage: 'overview' });
+
+doc.button('Projects')
+  .addClass('nav-item')
+  .classWhen('activePage', 'projects', 'active')
+  .setStateOnClick('activePage', 'projects');
+
+doc.section('Project content')
+  .showWhen('activePage', 'projects');
+```
+
+`showWhen(key, value)` controls visibility, `classWhen(key, value, className)` toggles one class without replacing existing classes, and `setStateOnClick(key, value)` safely embeds JSON-serializable values.
 
 Event shortcuts include `.onClick()`, `.onInput()`, `.onChange()`, `.onSubmit()`, `.onKeydown()`, and more.
 
@@ -375,6 +455,17 @@ doc.build({
 });
 ```
 
+Build into an existing element with the same definition format:
+
+```javascript
+const card = doc.section().addClass('card');
+
+card.build([
+  { tag: 'h2', text: 'Nested definition' },
+  { tag: 'p', text: 'Added inside the card.' }
+]);
+```
+
 Conditional and repeated nodes are supported:
 
 ```javascript
@@ -493,12 +584,67 @@ list.addClass('task-list');
 |-----------|------|---------|
 | `stateKey` | string | State array to render and watch |
 | `itemFn` | `(item, index) => NodeDef` | Produces each item on the server and browser |
-| `options.filter` | `(item, State) => boolean` | Optional browser-side filter |
-| `options.filterKeys` | string[] | Extra state keys that trigger rendering |
+| `options.filter` | `(item, State) => boolean` | Optional filter used during SSR and browser updates |
+| `options.filterKeys` | string[] | Extra state keys that change filtering |
+| `options.sort` | `(a, b, State) => number` | Optional comparator used during SSR and browser updates |
+| `options.sortKeys` | string[] | Extra state keys that change ordering |
+| `options.empty` | `NodeDef` or string | Declarative content shown when no items remain |
 
 The method returns the list container `Element`.
 
 ## SPA routing
+
+### Dashboard views without URL routing
+
+Use `doc.views()` when dashboard panels should switch without changing the URL:
+
+```javascript
+doc.button('Overview').data({ viewNav: 'overview' });
+doc.button('Projects').data({ viewNav: 'projects' });
+
+doc.section('Overview content').data({ view: 'overview' });
+doc.section('Project content').data({ view: 'projects' });
+
+doc.views({
+  stateKey: 'activePage',
+  default: 'overview',
+  activeClass: 'active'
+});
+```
+
+The helper initializes the state key only when it has not already been declared, hides inactive views, toggles the active navigation class, sets `aria-current="page"`, and responds to state changes from any source. Defaults are `[data-view-nav]` for navigation and `[data-view]` for panels; use `navigation` and `viewSelector` to supply custom selectors.
+
+## Complete dashboard example
+
+The runnable [dashboard example](example/dashboard.js) combines responsive layout, reusable server composition, `doc.views()`, reactive filtering and sorting, an accessible empty state, `liveList()`, client `fetch()`, accessible forms, `doc.validate()`, and a zero-dependency Node HTTP server.
+
+Its browser test exercises keyboard navigation and audits duplicate IDs, control names, image alternatives, heading order, and visible focus so the example cannot silently lose its accessibility basics.
+
+```bash
+node example/dashboard.js
+```
+
+Open `http://127.0.0.1:3000`. The page HTML is generated once when the server starts and then served as a static string; `/api/activity` demonstrates a JSON endpoint consumed from a compiled async click handler.
+
+The automated suite renders and validates this exact file, while the browser test switches views, filters activity, fetches fresh rows, and checks for client errors.
+
+## Server-validated account form
+
+The runnable [account form example](example/account-form.js) shows a separate production pattern: render per request, parse URL-encoded POST bodies with a size limit, return accessible validation errors, escape submitted values, and never place a submitted password back into HTML.
+
+```bash
+node example/account-form.js
+```
+
+Open `http://127.0.0.1:3001/account`. The automated suite exercises its initial GET, invalid and valid POSTs, escaping, validation status codes, content-type rejection, oversized bodies, missing routes, and unsupported methods. Authentication, authorization, CSRF protection, persistence, and password hashing belong in the surrounding server application.
+
+### Complete authentication interface
+
+```bash
+node example/auth-interface.js
+```
+
+Open `http://127.0.0.1:3004/auth`. The complete [authentication interface example](example/auth-interface.js) combines sign-in, registration, and account-settings forms with keyboard-accessible view switching, responsive layout, unique labelled fields, appropriate autocomplete values, and visible focus. Its placeholder POST routes deliberately return `501`; connect them to your authenticated server workflows, CSRF protection, rate limiting, validation, persistence, and password hashing.
 
 ### Hash routing
 
@@ -564,6 +710,21 @@ app.use('/app', (req, res, next) => {
 
 Register the fallback after static files and API routes.
 
+### Complete routing examples
+
+Run the packaged zero-dependency server:
+
+```bash
+node example/routing.js
+```
+
+Then open:
+
+- `http://127.0.0.1:3002/hash#users/42` for hash routing.
+- `http://127.0.0.1:3002/app/users/42` for History routing and direct-URL fallback.
+
+The complete [routing example](example/routing.js) serves API and static routes before its `/app/*` HTML fallback. Its automated HTTP and browser tests cover route parameters, wildcard routes, hash changes, opted-in History links, direct refreshes, and back navigation.
+
 ### Router options
 
 | Option | Hash default | History default | Purpose |
@@ -621,11 +782,21 @@ app.get('/dashboard', createCachedRenderer(
 |-----------|------|---------|
 | `builderFn` | `(req) => Document \| Promise<Document>` | Builds on a cache miss |
 | `cacheKeyOrFn` | string or `(req) => string` | Selects the cache entry; empty skips caching |
-| `options.nonce` | `(req) => string` | Supplies a per-build CSP nonce |
+| `options.nonce` | `(req) => string` | Supplies a fresh per-response CSP nonce and bypasses rendered HTML caching |
 
 Concurrent misses for the same key share one build. Include every value that changes the response in the cache key—especially identity, permissions, and locale.
 
+Nonce-enabled responses are deliberately rendered for every request. Reusing cached HTML would reuse its nonce and break the per-response CSP guarantee.
+
 Cache helpers include `clearCache(pattern?)`, `getCacheStats()`, `healthCheck()`, and `resetPools()`.
+
+### Complete caching and CSP example
+
+```bash
+node example/production-patterns.js
+```
+
+Open `http://127.0.0.1:3003/personalized?user=alice&locale=en` for identity-, permission-, and locale-aware caching, or `http://127.0.0.1:3003/csp` for a fresh nonce shared by the CSP header and generated HTML. The complete [production patterns example](example/production-patterns.js) is exercised by HTTP tests that prove cache isolation and prevent nonce reuse.
 
 ## Styling
 
@@ -717,6 +888,91 @@ doc.button('Bad example').onClick(function () {
 
 Pass browser-time data through `State`, literal values in the function, or `data-*` attributes.
 
+For per-element server values, pass a JSON-serializable callback context instead of capturing a closure:
+
+```javascript
+for (const pageName of ['overview', 'projects', 'account']) {
+  doc.button(pageName).onClick(
+    function (event, state, element, context) {
+      state.activePage = context.page;
+    },
+    { page: pageName }
+  );
+
+  doc.section(pageName).bindShow(
+    'activePage',
+    function (value, state, context) {
+      return value === context.page;
+    },
+    { page: pageName }
+  );
+}
+```
+
+Binding callbacks receive `(value, State, context)`. Event callbacks receive `(event, State, element, context)`. Context values are safely encoded into the generated page and must be JSON-serializable; never put secrets in them.
+
+`doc.validate()` analyzes serialized event, binding, computed, lifecycle, `liveList()`, and `oncreate` callbacks. A likely server closure produces `W_CALLBACK_CAPTURE` with the callback type and unavailable variable names:
+
+```javascript
+const pageName = 'projects';
+doc.section('Projects').bindShow('activePage', value => value === pageName);
+
+const result = doc.validate();
+// W_CALLBACK_CAPTURE: pageName is unavailable in the browser
+```
+
+The analysis is intentionally conservative and reports warnings rather than rejecting the page. Use callback context, `State`, `data-*` attributes, literals, or browser globals to resolve a warning.
+
+Event handlers receive `(event, State, element)`, and `this` is the same browser element:
+
+```javascript
+doc.button('Projects')
+  .data({ page: 'projects' })
+  .onClick(function (event, state, element) {
+    state.activePage = element.dataset.page;
+  });
+```
+
+The optional fourth argument is serialized callback context. While the listener runs synchronously, `event.currentTarget`, `element`, and `this` all refer to its element. The arguments and `this` value are preserved across `await`; because `currentTarget` is owned by the browser's event-dispatch lifecycle, use the explicit `element` argument after awaiting instead of relying on it. `State` is both passed explicitly and available as the browser global for compatibility. Returning `false` has no special meaning; call `event.preventDefault()` and/or `event.stopPropagation()` explicitly when required.
+
+In development mode, synchronous errors and rejected promises from events, bindings, computed values, lifecycle hooks, `liveList()`, and `oncreate()` are reported in the browser console. Set `window.BuildHTML.reportClientError` to forward errors to your own monitoring code; it receives `(error, context)` with the callback type, element ID, tag, and state key when relevant.
+
+## Validate before rendering
+
+`doc.validate()` performs a read-only check of the current tree:
+
+```javascript
+const result = doc.validate();
+if (!result.valid) console.error(result.errors);
+for (const warning of result.warnings) console.warn(warning);
+```
+
+It detects duplicate IDs and reports warnings for callback captures, empty or skipped headings, unnamed buttons and form controls, images without `alt`, broken label and `aria-labelledby` targets, unsafe URLs, nested interactive elements, bindings using undeclared state keys, caching enabled without a key, and History routing that requires a server fallback. Each diagnostic has a stable `code` and actionable `message`.
+
+`W_HISTORY_FALLBACK` is a deployment reminder rather than proof that the fallback is missing: a document cannot inspect the HTTP server around it. `W_CACHE_KEY` is emitted only when document caching is enabled but no key was supplied. BuildHTML cannot determine whether a supplied shared key is safe for personalized output, so identity and authorization inputs remain the application’s responsibility.
+
+Callbacks rejected while being registered are retained as `E_CALLBACK_REGISTRATION` errors instead of disappearing after a console message. This includes oversized sources, blocked `eval`/`new Function` patterns, invalid function source, and non-serializable callback context. The diagnostic identifies the callback family, element tag and ID when available, original reason, and the corrective action:
+
+```javascript
+doc.button('Unsafe').onClick(function () {
+  eval('alert(1)');
+});
+
+const result = doc.validate();
+// result.valid === false
+// result.errors[0].code === 'E_CALLBACK_REGISTRATION'
+```
+
+## Common mistakes
+
+- **Building at the wrong level:** `doc.build(definition)` adds nodes to the document body; `element.build(definition)` adds nodes inside that element.
+- **Capturing a server variable in a browser callback:** callbacks execute later in the browser. Pass JSON-safe callback context, use `State`, or use declarative helpers such as `showWhen()` and `setStateOnClick()`.
+- **Reusing an HTML ID:** state keys may be shared, but IDs must be unique. Run `doc.validate()` and fix every `E_DUPLICATE_ID` before rendering.
+- **Using raw content for ordinary text:** use `.text()` or shortcut text arguments. Reserve `appendUnsafe()`, `rawHead()`, and inline scripts for trusted content.
+- **Using History routing without a server fallback:** configure the server to return the application HTML for direct application URLs such as `/app/reports`; otherwise refresh and shared links can return 404.
+- **Caching personalized output under a shared key:** include identity, permissions, locale, and every response-changing value in the cache key. Authentication and authorization remain server responsibilities.
+- **Serializing secrets as callback context:** callback context is embedded in browser-visible HTML. Never include credentials, tokens, or server-only values.
+
 ## When to use it
 
 buildhtml is a strong fit for:
@@ -747,7 +1003,7 @@ Document and body:
 
 ```text
 lang · htmlAttr · bodyId · bodyClass · bodyAttr · bodyCss
-render · renderStream · clear
+render · renderStream · validate · clear
 ```
 
 CSS:
@@ -761,7 +1017,7 @@ Data and behavior:
 
 ```text
 state · states · oncreate · build · fromJSON · toJSON
-liveList · hashRouter · historyRouter
+liveList · views · hashRouter · historyRouter
 ```
 
 ### Elements
@@ -784,7 +1040,7 @@ display · position · size · overflow · cursor
 Tree operations:
 
 ```text
-child · prependChild · insertAt · before · after
+child · build · prependChild · insertAt · before · after
 remove · replaceWith · wrap · empty · clone
 find · findAll · findById · closest
 parent · siblings · nextSibling · prevSibling
@@ -794,26 +1050,58 @@ Browser behavior:
 
 ```text
 on · onClick · onInput · onChange · onSubmit
-bind · bindShow · bindClass · bindAttr · bindStyle
+bind · bindShow · showWhen · bindClass · classWhen · bindAttr · bindStyle
 bindProp · bindInput · bindState
+setStateOnClick
 onMount · onUpdate · onDestroy
 ```
 
 ### Creation helpers
 
+Container and text shortcuts accept either content or a setup callback. Text is escaped, and the returned element remains chainable:
+
+```javascript
+doc.h1('Dashboard');
+doc.div('82%').addClass('metric');
+doc.section((section) => {
+  section.h2('Projects');
+  section.p('Four projects are active.');
+});
+```
+
 Standard HTML shortcuts include:
 
 ```text
 div · span · section · header · footer · main · nav
-article · aside · form · table · ul · ol · h1–h6
-p · a · button · img · input · select · textarea
-label · details · dialog · pre · code · hr · br
+article · aside · form · table · thead · tbody · tfoot
+tr · th · td · ul · ol · li · h1–h6 · p · a
+strong · small · label · caption · legend · em · b · i
+button · img · input · select · textarea · details
+dialog · pre · code · blockquote · hr · br
 ```
+
+The complete signature reference, including the `summary()` shortcut:
+
+| Methods | Signature | Returns | Void | Setup callback | Example |
+|---------|-----------|---------|:----:|:--------------:|---------|
+| `div`, `span`, `section`, `header`, `footer`, `main`, `nav`, `article`, `aside`, `form`, `ul`, `ol`, `table`, `thead`, `tbody`, `tfoot`, `tr`, `details`, `summary`, `dialog`, `pre`, `code`, `blockquote`, `h1`, `h2`, `h3`, `h4`, `h5`, `h6`, `li`, `th`, `td`, `p`, `strong`, `small`, `label`, `caption`, `legend`, `em`, `b`, `i` | `(textOrSetup?)` | `Element` | No | Yes | `doc.h1('Title')` |
+| `a` | `(href, text?)` | `Element` | No | No | `doc.a('/help', 'Help')` |
+| `button` | `(text?)` | `Element` | No | No | `doc.button('Save')` |
+| `img` | `(src, alt?)` | `Element` | Yes | No | `doc.img('/logo.svg', 'Logo')` |
+| `input` | `(type = 'text', attrs = {})` | `Element` | Yes | No | `doc.input('email', { required: true })` |
+| `textarea` | `(attrs = {})` | `Element` | No | No | `doc.textarea({ name: 'notes' })` |
+| `select` | `(options = [], attrs = {})` | `Element` | No | No | `doc.select([{ value: 'en', text: 'English' }])` |
+| `hr` | `()` | `Element` | Yes | No | `doc.hr()` |
+| `br` | `()` | Parent object | Yes | No | `doc.p('Line one').br().text('Line two')` |
+
+All listed shortcuts are available on both `Document` and `Element`. Except for `br()`, each returns the created child element. `img()` defaults `alt` to an empty string for decorative images; provide meaningful alternative text for informative images.
+
+In development mode, an extra positional argument produces `W_SHORTCUT_ARGUMENT` instead of being silently ignored. Production output remains quiet, and TypeScript rejects the unsupported call before runtime.
 
 Higher-level helpers include:
 
 ```text
-formGroup · checkbox · radio · fieldset · hiddenInput
+field · formGroup · checkbox · radio · fieldset · hiddenInput
 grid · flex · stack · row · center · container
 spacer · divider · columns · list · dataTable
 ```
@@ -837,6 +1125,27 @@ const rules: CSSRules = { color: '#2563eb' };
 doc.h1('TypeScript ready').css(rules);
 ```
 
+Pass your application state to `page<State>()` for key and value inference across elements, bindings, events, lifecycle hooks, lists, routers, and views:
+
+```typescript
+type AppState = {
+  activePage: 'overview' | 'projects' | 'account';
+  sidebarOpen: boolean;
+  count: number;
+};
+
+const doc = page<AppState>('Dashboard');
+doc.states({ activePage: 'overview', sidebarOpen: false, count: 0 });
+
+doc.span().bind('count', (count, state) => `${count} on ${state.activePage}`);
+doc.button('Projects').setStateOnClick('activePage', 'projects');
+doc.button('Open menu').onClick(function (_event, state) {
+  state.sidebarOpen = true;
+});
+```
+
+Without a generic argument, state remains intentionally permissive for backward compatibility and JavaScript-style gradual typing.
+
 ## Configuration
 
 ```javascript
@@ -844,6 +1153,7 @@ const { configure } = require('@trebor/buildhtml');
 
 configure({
   mode: 'prod',
+  debug: false,
   poolSize: 1000,
   cacheLimit: 200,
   maxComputedFnSize: 10000,
@@ -855,11 +1165,20 @@ configure({
 | Option | Purpose |
 |--------|---------|
 | `mode` | Development or production behavior |
+| `debug` | Exposes `window.BuildHTMLDebug.inspect()` in development pages |
 | `poolSize` | Maximum reusable object pool size |
 | `cacheLimit` | LRU response-cache entry limit |
 | `maxComputedFnSize` | Maximum serialized computed callback size |
 | `maxEventFnSize` | Maximum serialized event callback size |
 | `enableMetrics` | Enables runtime counters and timings |
+
+For browser-side diagnostics during local development:
+
+```javascript
+configure({ mode: 'dev', debug: true });
+```
+
+After hydration, run `BuildHTMLDebug.inspect()` in the browser console. It returns a defensive snapshot containing registered state keys, element bindings, event listeners, callback counts, serialized callback sources, rejected registration diagnostics, and hydration time. A page containing only a rejected callback still receives the inspector, making missing behavior visible even if `validate()` was skipped. Production pages and pages without `debug: true` do not expose it. Callback source is already present in development HTML, but may contain application logic, so do not enable debug output in production.
 
 ## Full documentation
 
@@ -891,7 +1210,7 @@ npm run test:browser
 npm run test:types
 ```
 
-The test suite covers HTML output, escaping and sanitization, state and deep reactivity, bindings, events, lifecycle cleanup, components, templates, JSON round-trips, streaming, caching, reactive lists, fetch compilation, and both routers.
+The test suite covers HTML output, escaping and sanitization, state and deep reactivity, bindings, events, lifecycle cleanup, components, templates, JSON round-trips, streaming, caching, reactive lists, fetch compilation, and both routers. It also parses every JavaScript block in this README and executes the two complete quick-start programs against the package entry point, asserting meaningful rendered output.
 
 ## Benchmarks
 

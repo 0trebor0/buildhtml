@@ -144,6 +144,7 @@
         <a href="#spa">SPA & routing</a>
         <a href="#express">Express & caching</a>
         <a href="#security">Security & limits</a>
+        <a href="#mistakes">Common mistakes</a>
         <a href="#reference">API reference</a>
       </nav>
     </aside>
@@ -182,6 +183,27 @@ const html = doc.render();</code></pre>
             <tr><td><code>cacheKey</code></td><td>string</td><td>none</td><td>Stable key for the document render cache.</td></tr>
           </tbody>
         </table></div>
+        <h3>Accessible field helper</h3>
+        <p><code>field(label, options?)</code> creates a labelled input with a unique default ID and returns <code>{ group, label, input }</code>. Separate fields can share one state key without duplicating their HTML IDs.</p>
+        <pre><code>doc.states({ email: '' });
+const { input } = doc.field('Email', {
+  type: 'email',
+  name: 'email',
+  bind: 'email',
+  attrs: { autocomplete: 'email', required: true }
+});
+input.placeholder('you@example.com');</code></pre>
+        <div class="table-wrap"><table>
+          <thead><tr><th>Option</th><th>Purpose</th></tr></thead>
+          <tbody>
+            <tr><td><code>type</code></td><td>Input type; defaults to <code>text</code>.</td></tr>
+            <tr><td><code>id</code></td><td>Explicit input and label target ID; otherwise generated uniquely.</td></tr>
+            <tr><td><code>name</code></td><td>Submitted form name.</td></tr>
+            <tr><td><code>bind</code></td><td>State key for two-way input binding.</td></tr>
+            <tr><td><code>groupClass</code></td><td>Wrapper class; defaults to <code>form-group</code>.</td></tr>
+            <tr><td><code>attrs</code></td><td>Additional input attributes.</td></tr>
+          </tbody>
+        </table></div>
       </section>
 
       <section id="concepts" data-search="how works compiled runtime browser state server">
@@ -194,6 +216,12 @@ const html = doc.render();</code></pre>
         <div class="callout">
           Event handlers, computed bindings, lifecycle hooks, <code>liveList</code> callbacks, and <code>oncreate()</code> are serialized and run in the browser. They may use their arguments, <code>this</code>, browser globals, and <code>State</code>, but cannot capture server-side closure variables.
         </div>
+        <pre><code>Server execution                    Browser execution
+page(), elements, components   -&gt;  rendered HTML
+states(initialValues)          -&gt;  reactive State proxy
+bind(key, callback source)     -&gt;  callback runs on state change
+onClick(callback source)       -&gt;  callback runs after interaction
+server closure variables       X   unavailable unless passed as context</code></pre>
       </section>
 
       <section id="server" data-search="server load static files writefile express html">
@@ -215,10 +243,33 @@ const app = express();
 app.use(express.static(publicDir));
 app.listen(3000);</code></pre>
         <p>Generate per request when content depends on the request. Generate once when every visitor receives the same content.</p>
+        <h3>Recommended larger-project structure</h3>
+        <pre><code>project/
+|-- server.js          # HTTP routes, headers, authentication, responses
+|-- ui/
+|   |-- dashboard.js   # Page construction
+|   |-- components.js  # Reusable server components
+|   `-- styles.js      # Theme and shared styles
+|-- routes/
+|   `-- api.js         # JSON endpoints
+|-- public/            # Static assets
+`-- tests/             # Render, HTTP, and browser tests</code></pre>
+        <p>BuildHTML constructs UI output. Authentication, authorization, request validation, headers, persistence, and API routing remain server responsibilities.</p>
       </section>
 
       <section id="document" data-search="document head meta seo css render stream clear clone">
         <h2>Document guide</h2>
+        <div class="table-wrap"><table>
+          <thead><tr><th>Capability</th><th>Document</th><th>Element</th><th>Notes</th></tr></thead>
+          <tbody>
+            <tr><td>Tag shortcuts</td><td>Yes</td><td>Yes</td><td>Creates a body element or nested child.</td></tr>
+            <tr><td><code>build(definition)</code></td><td>Yes</td><td>Yes</td><td>Builds into the document body or the element's children.</td></tr>
+            <tr><td><code>child(tag)</code></td><td>No</td><td>Yes</td><td>Creates a nested tag without a shortcut.</td></tr>
+            <tr><td>Metadata and global CSS</td><td>Yes</td><td>No</td><td>Configures the document head or whole page.</td></tr>
+            <tr><td><code>states(values)</code></td><td>Yes</td><td>No</td><td>Declares browser state.</td></tr>
+            <tr><td>Attributes and bindings</td><td>No</td><td>Yes</td><td>Configures an individual element.</td></tr>
+          </tbody>
+        </table></div>
         <h3>Head, metadata, and resources</h3>
         <pre><code>doc.title('Dashboard')
   .viewport()
@@ -277,7 +328,7 @@ card.a('/users/42', 'View profile');</code></pre>
             <tr><td>Attributes</td><td><code>attr</code>, <code>setAttrs</code>, <code>data</code>, <code>aria</code></td><td>Key/value or an attribute object.</td></tr>
             <tr><td>Classes</td><td><code>addClass</code>, <code>removeClass</code>, <code>toggleClass</code>, <code>classIf</code>, <code>classMap</code></td><td>Class names and optional conditions.</td></tr>
             <tr><td>CSS</td><td><code>css</code>, <code>style</code>, <code>hover</code>, <code>focusCss</code>, <code>pseudo</code>, <code>media</code></td><td>Rules object; pseudo selector or media query where needed.</td></tr>
-            <tr><td>Tree</td><td><code>child</code>, <code>prependChild</code>, <code>insertAt</code>, <code>before</code>, <code>after</code>, <code>remove</code>, <code>wrap</code></td><td>Child/replacement element and optional index.</td></tr>
+            <tr><td>Tree</td><td><code>child</code>, <code>build</code>, <code>prependChild</code>, <code>insertAt</code>, <code>before</code>, <code>after</code>, <code>remove</code>, <code>wrap</code></td><td>Child definitions, child/replacement element, and optional index.</td></tr>
             <tr><td>Queries</td><td><code>find</code>, <code>findAll</code>, <code>findById</code>, <code>closest</code></td><td>Tag, selector-like query, or id depending on method.</td></tr>
             <tr><td>Forms</td><td><code>required</code>, <code>readonly</code>, <code>checked</code>, <code>min</code>, <code>max</code>, <code>pattern</code></td><td>Boolean state or form constraint value.</td></tr>
           </tbody>
@@ -319,11 +370,19 @@ doc.component('Card', { title: 'Hello', body: 'Reusable server UI.' });</code></
     { tag: 'p', text: 'Safe text content' }
   ]
 });</code></pre>
+        <p>Use the same definition format on an existing element to add nested children:</p>
+        <pre><code>const card = doc.section().addClass('card');
+
+card.build([
+  { tag: 'h2', text: 'Nested definition' },
+  { tag: 'p', text: 'Added inside the card.' }
+]);</code></pre>
         <p>Common node fields are <code>tag</code>, <code>text</code>, <code>html</code>, <code>id</code>, <code>class</code>, <code>attrs</code>, <code>data</code>, <code>aria</code>, <code>css</code>, <code>on</code>, <code>bind</code>, <code>children</code>, <code>component</code>, <code>props</code>, <code>if</code>, <code>each</code>, and lifecycle hooks.</p>
         <div class="table-wrap"><table>
           <thead><tr><th>Function</th><th>Parameters</th><th>Returns</th></tr></thead>
           <tbody>
             <tr><td><code>doc.build</code></td><td><code>node | node[]</code></td><td>The document.</td></tr>
+            <tr><td><code>element.build</code></td><td><code>node | node[]</code></td><td>The element.</td></tr>
             <tr><td><code>doc.fromJSON</code></td><td><code>pageDefinition</code></td><td>Populates the document.</td></tr>
             <tr><td><code>doc.toJSON</code></td><td>none</td><td>A serializable document definition.</td></tr>
             <tr><td><code>renderJSON</code></td><td><code>definition, setup?, options?</code></td><td>Complete HTML string.</td></tr>
@@ -380,14 +439,29 @@ doc.button('+1').onClick(function () {
             <tr><td><code>bindStyle</code></td><td><code>key, fn(value, State)</code></td><td>Applies returned CSS rules.</td></tr>
             <tr><td><code>bindProp</code></td><td><code>key, name, fn?</code></td><td>Assigns a DOM property.</td></tr>
             <tr><td><code>bindInput</code></td><td><code>key</code></td><td>Two-way input value synchronization.</td></tr>
-            <tr><td><code>on</code></td><td><code>eventName, fn(event)</code></td><td>Adds an event listener; <code>this</code> is the DOM element.</td></tr>
+            <tr><td><code>on</code></td><td><code>eventName, fn(event, State, element, context)</code></td><td>Adds an event listener; <code>this</code> is the DOM element.</td></tr>
             <tr><td><code>oncreate</code></td><td><code>fn(State)</code></td><td>Runs after the page is ready.</td></tr>
             <tr><td><code>onMount</code></td><td><code>fn(State)</code></td><td>Runs when the element exists; may return cleanup.</td></tr>
             <tr><td><code>onUpdate</code></td><td><code>key, fn(value, State)</code></td><td>Runs after changes, not for the initial value.</td></tr>
             <tr><td><code>onDestroy</code></td><td><code>fn(State)</code></td><td>Runs when the element is removed.</td></tr>
           </tbody>
         </table></div>
+        <p>While an event listener runs synchronously, <code>event.currentTarget</code>, <code>element</code>, and <code>this</code> refer to its element. Arguments and <code>this</code> persist across <code>await</code>; because <code>currentTarget</code> belongs to the browser event-dispatch lifecycle, use the explicit element argument after awaiting. State is passed explicitly and also remains available as <code>window.State</code>. Returning <code>false</code> has no special meaning; use <code>preventDefault()</code> or <code>stopPropagation()</code> explicitly.</p>
         <p>Nested objects and arrays remain reactive. Assignments, deletions, and mutating array methods notify watchers for the root state key. State must remain JSON-serializable.</p>
+        <h3>Typed application state</h3>
+        <p>In TypeScript, pass a state shape to <code>page&lt;State&gt;()</code>. Keys and values are then inferred across nested elements, bindings, events, lifecycle hooks, live lists, routers, and views.</p>
+        <pre><code>type AppState = {
+  activePage: 'overview' | 'projects' | 'account';
+  sidebarOpen: boolean;
+  count: number;
+};
+
+const doc = page&lt;AppState&gt;('Dashboard');
+doc.states({ activePage: 'overview', sidebarOpen: false, count: 0 });
+
+doc.span().bind('count', (count, state) =&gt; `${count}: ${state.activePage}`);
+doc.button('Projects').setStateOnClick('activePage', 'projects');</code></pre>
+        <p>Calling <code>page()</code> without a generic keeps permissive state typing for backward compatibility.</p>
       </section>
 
       <section id="fetch" data-search="fetch client async api loading error oncreate">
@@ -425,17 +499,37 @@ doc.button('Load').onClick(async function () {
   filter: function (task, state) {
     return state.view === 'all' || task.status === state.view;
   },
-  filterKeys: ['view']
+  filterKeys: ['view'],
+  sort: function (a, b, state) {
+    return state.descending ? b.title.localeCompare(a.title) : a.title.localeCompare(b.title);
+  },
+  sortKeys: ['descending'],
+  empty: { tag: 'p', text: 'No tasks found.', attrs: { role: 'status' } }
 });</code></pre>
         <div class="table-wrap"><table>
           <thead><tr><th>Parameter</th><th>Type</th><th>Purpose</th></tr></thead>
           <tbody>
             <tr><td><code>stateKey</code></td><td>string</td><td>State array to render and watch.</td></tr>
             <tr><td><code>itemFn</code></td><td><code>(item, index) =&gt; NodeDef</code></td><td>Creates each item on the server and browser.</td></tr>
-            <tr><td><code>filter</code></td><td><code>(item, State) =&gt; boolean</code></td><td>Optional browser-side filter.</td></tr>
-            <tr><td><code>filterKeys</code></td><td>string[]</td><td>Extra state keys that trigger rendering.</td></tr>
+            <tr><td><code>filter</code></td><td><code>(item, State) =&gt; boolean</code></td><td>Optional filter used during SSR and browser updates.</td></tr>
+            <tr><td><code>filterKeys</code></td><td>string[]</td><td>Extra state keys that change filtering.</td></tr>
+            <tr><td><code>sort</code></td><td><code>(a, b, State) =&gt; number</code></td><td>Optional comparator used during SSR and browser updates.</td></tr>
+            <tr><td><code>sortKeys</code></td><td>string[]</td><td>Extra state keys that change ordering.</td></tr>
+            <tr><td><code>empty</code></td><td>NodeDef or string</td><td>Declarative content shown when no items remain.</td></tr>
           </tbody>
         </table></div>
+        <h3>Dashboard views without URL routing</h3>
+        <pre><code>doc.button('Overview').data({ viewNav: 'overview' });
+doc.button('Projects').data({ viewNav: 'projects' });
+doc.section('Overview content').data({ view: 'overview' });
+doc.section('Project content').data({ view: 'projects' });
+
+doc.views({
+  stateKey: 'activePage',
+  default: 'overview',
+  activeClass: 'active'
+});</code></pre>
+        <p><code>views()</code> synchronizes visibility, active classes, <code>aria-current</code>, click navigation, and reactive state. Its default selectors are <code>[data-view-nav]</code> and <code>[data-view]</code>; use <code>navigation</code> and <code>viewSelector</code> for custom markup.</p>
         <h3>Hash and History routers</h3>
         <pre><code>doc.states({ view: 'home', routeParams: {} });
 doc.historyRouter({
@@ -463,6 +557,25 @@ doc.historyRouter({
           </tbody>
         </table></div>
         <div class="callout warning"><strong>History fallback required:</strong> the server must return the same application HTML for direct GET requests such as <code>/app/users/42</code>. Register the fallback after static files and API routes. Hash routing does not require this fallback.</div>
+        <h3>Complete tested routing applications</h3>
+        <p>Run <code>node example/routing.js</code>, then open <code>http://127.0.0.1:3002/hash#users/42</code> or <code>http://127.0.0.1:3002/app/users/42</code>.</p>
+        <p>The packaged <a href="../example/routing.js"><code>example/routing.js</code></a> demonstrates hash routing and a clean-URL server whose API and static routes run before the <code>/app/*</code> HTML fallback. Automated HTTP and browser tests cover parameters, wildcard routes, direct refresh, and back navigation.</p>
+        <h3>Complete tested dashboard</h3>
+        <p>The packaged <a href="../example/dashboard.js"><code>example/dashboard.js</code></a> combines responsive layout, dashboard views, reactive filtering and sorting, an accessible empty state, a live list, client fetch, accessible forms, validation, and a zero-dependency Node HTTP server.</p>
+        <p>Its browser test covers keyboard operation and automatically checks duplicate IDs, control names, image alternatives, heading order, and visible focus.</p>
+        <pre><code>node example/dashboard.js
+# Open http://127.0.0.1:3000</code></pre>
+        <p>The example builds its HTML once at server startup. Automated render and browser tests execute this exact file so its documented behavior cannot drift.</p>
+        <h3>Complete server-validated form</h3>
+        <p>The packaged <a href="../example/account-form.js"><code>example/account-form.js</code></a> renders an account form per request, uses unique labelled fields, safely redisplays submitted values, reports accessible validation errors, limits request bodies, and handles success and HTTP failure paths without dependencies.</p>
+        <pre><code>node example/account-form.js
+# Open http://127.0.0.1:3001/account</code></pre>
+        <p>Automated tests execute the real server for GET, invalid and valid POST, unsupported media type, oversized request, missing route, and unsupported method cases. Authentication, authorization, CSRF protection, persistence, and password hashing remain server responsibilities.</p>
+        <h3>Complete authentication interface</h3>
+        <p>The packaged <a href="../example/auth-interface.js"><code>example/auth-interface.js</code></a> combines sign-in, registration, and account-settings forms with keyboard-accessible switching, responsive layout, unique labelled fields, autocomplete hints, and visible focus.</p>
+        <pre><code>node example/auth-interface.js
+# Open http://127.0.0.1:3004/auth</code></pre>
+        <p>The placeholder POST routes return <code>501</code>. Connect them to application-owned authentication, authorization, CSRF protection, rate limiting, validation, persistence, and password hashing. Render and browser tests verify the interface without pretending to provide those server responsibilities.</p>
       </section>
 
       <section id="express" data-search="express middleware cache render stream nonce health">
@@ -472,10 +585,7 @@ doc.historyRouter({
     return buildDashboard(req.user);
   },
   function (req) {
-    return 'dashboard:' + req.user.id;
-  },
-  {
-    nonce: function (req) { return req.cspNonce; }
+    return 'dashboard:' + req.user.id + ':' + req.user.locale + ':' + req.user.permissions.join(',');
   }
 ));</code></pre>
         <div class="table-wrap"><table>
@@ -483,10 +593,16 @@ doc.historyRouter({
           <tbody>
             <tr><td><code>builderFn</code></td><td><code>(req) =&gt; Document | Promise&lt;Document&gt;</code></td><td>Builds on a cache miss.</td></tr>
             <tr><td><code>cacheKeyOrFn</code></td><td>string or function</td><td>Selects the cache entry; null/empty skips caching.</td></tr>
-            <tr><td><code>options.nonce</code></td><td><code>(req) =&gt; string</code></td><td>Sets a per-build CSP nonce.</td></tr>
+            <tr><td><code>options.nonce</code></td><td><code>(req) =&gt; string</code></td><td>Sets a fresh per-response CSP nonce and bypasses rendered HTML caching.</td></tr>
           </tbody>
         </table></div>
         <p>Concurrent misses for one key share a build. Include every response-changing value in the key—especially user identity, locale, and permissions. Use <code>clearCache(pattern?)</code>, <code>getCacheStats()</code>, <code>healthCheck()</code>, and <code>resetPools()</code> for operations.</p>
+        <div class="callout warning"><strong>Nonce responses are not cached:</strong> reusing rendered HTML would also reuse its nonce. When <code>options.nonce</code> is configured, BuildHTML renders every response so the CSP header and HTML can use a fresh matching value.</div>
+        <h3>Complete caching and CSP example</h3>
+        <pre><code>node example/production-patterns.js
+# Personalized cache: http://127.0.0.1:3003/personalized?user=alice&amp;locale=en
+# Per-response nonce: http://127.0.0.1:3003/csp</code></pre>
+        <p>The packaged <a href="../example/production-patterns.js"><code>example/production-patterns.js</code></a> demonstrates identity-, permission-, and locale-aware cache keys alongside a separate nonce-protected response. HTTP tests prove cache isolation, header/HTML nonce consistency, and nonce freshness.</p>
       </section>
 
       <section id="security" data-search="security xss csp nonce escaping limitations closures state json eval">
@@ -500,6 +616,22 @@ doc.historyRouter({
           <li>State cannot contain functions, circular references, DOM nodes, <code>Map</code>, <code>Set</code>, or live <code>Date</code> objects.</li>
           <li>Browser behavior is compiled into the generated page and runs directly against its rendered elements.</li>
         </ul>
+      </section>
+
+      <section id="mistakes" data-search="common mistakes debug duplicate id closure history fallback cache secrets raw build child">
+        <h2>Common mistakes</h2>
+        <div class="table-wrap"><table>
+          <thead><tr><th>Mistake</th><th>Correct approach</th></tr></thead>
+          <tbody>
+            <tr><td>Building at the wrong level</td><td><code>doc.build(definition)</code> adds to the document body; <code>element.build(definition)</code> adds inside that element.</td></tr>
+            <tr><td>Capturing a server variable in a browser callback</td><td>Pass JSON-safe callback context, use <code>State</code>, or use <code>showWhen()</code>, <code>classWhen()</code>, and <code>setStateOnClick()</code>.</td></tr>
+            <tr><td>Reusing an HTML ID for controls bound to one state key</td><td>State keys can be shared; IDs cannot. Run <code>doc.validate()</code> and fix <code>E_DUPLICATE_ID</code>.</td></tr>
+            <tr><td>Using raw HTML for ordinary text</td><td>Use escaped shortcut text or <code>.text()</code>. Only pass trusted content to raw APIs.</td></tr>
+            <tr><td>Refreshing a History-routed URL returns 404</td><td>Configure the server to return the application HTML for direct application URLs after API and static routes.</td></tr>
+            <tr><td>Sharing one cache key across personalized pages</td><td>Include identity, permissions, locale, and every response-changing input in the key.</td></tr>
+            <tr><td>Passing a secret as callback context</td><td>Never serialize secrets; context is embedded in browser-visible HTML.</td></tr>
+          </tbody>
+        </table></div>
       </section>
 
       <section id="reference" data-search="api reference methods all exports parameters">
@@ -527,6 +659,7 @@ doc.historyRouter({
               <tr><td><code>build</code>, <code>fromJSON</code></td><td>Node/page definition.</td></tr>
               <tr><td><code>toJSON</code></td><td>No parameters → serializable definition.</td></tr>
               <tr><td><code>liveList</code></td><td><code>stateKey, itemFn, options?</code> → container element.</td></tr>
+              <tr><td><code>views</code></td><td>State key, default value, navigation selector, view selector, and active class.</td></tr>
               <tr><td><code>hashRouter</code>, <code>historyRouter</code></td><td>Router options.</td></tr>
             </tbody>
           </table></div>
@@ -550,27 +683,50 @@ doc.historyRouter({
               <tr><td><code>transition</code></td><td>Transition string or options object.</td></tr>
               <tr><td><code>transform</code>, <code>opacity</code>, <code>zIndex</code></td><td>CSS value.</td></tr>
               <tr><td><code>child</code></td><td><code>tag?</code> → new child element.</td></tr>
+              <tr><td><code>build</code></td><td><code>node | node[]</code> → adds declarative children and returns the element.</td></tr>
               <tr><td><code>each</code></td><td><code>items, fn(self, item, index)</code>.</td></tr>
               <tr><td><code>when</code></td><td><code>condition, fn(self)</code>.</td></tr>
               <tr><td><code>find</code>, <code>findAll</code>, <code>closest</code></td><td>Query → matching element(s).</td></tr>
               <tr><td><code>clone</code></td><td>No parameters → cloned element.</td></tr>
               <tr><td><code>remove</code>, <code>empty</code></td><td>No parameters.</td></tr>
               <tr><td><code>on</code></td><td><code>eventName, handler</code>.</td></tr>
-              <tr><td><code>onClick</code>, <code>onInput</code>, <code>onChange</code>, <code>onSubmit</code></td><td>Browser event handler.</td></tr>
-              <tr><td><code>bind</code>, <code>bindShow</code>, <code>bindClass</code></td><td><code>stateKey, computedFn?</code>.</td></tr>
+              <tr><td><code>onClick</code>, <code>onInput</code>, <code>onChange</code>, <code>onSubmit</code></td><td>Browser handler receiving <code>(event, State, element, context)</code>; optional context is the second method argument and <code>this</code> is the element. Development mode reports thrown errors and rejected promises.</td></tr>
+              <tr><td><code>bind</code>, <code>bindShow</code>, <code>bindClass</code></td><td><code>stateKey, computedFn?, context?</code>. Callbacks receive <code>(value, State, context)</code>; context must be JSON-serializable.</td></tr>
+              <tr><td><code>showWhen</code></td><td><code>stateKey, expectedValue</code>. Shows the element when state strictly matches the JSON-serializable value.</td></tr>
+              <tr><td><code>classWhen</code></td><td><code>stateKey, expectedValue, className</code>. Toggles one class while preserving existing classes.</td></tr>
+              <tr><td><code>setStateOnClick</code></td><td><code>stateKey, value</code>. Sets JSON-serializable state on click without a callback closure.</td></tr>
               <tr><td><code>bindAttr</code>, <code>bindProp</code></td><td><code>stateKey, name, computedFn?</code>.</td></tr>
               <tr><td><code>bindStyle</code></td><td><code>stateKey, computedFn</code>.</td></tr>
               <tr><td><code>bindInput</code></td><td><code>stateKey</code>.</td></tr>
               <tr><td><code>onMount</code>, <code>onDestroy</code></td><td>Lifecycle callback.</td></tr>
               <tr><td><code>onUpdate</code></td><td><code>stateKey, callback</code>.</td></tr>
+              <tr><td><code>validate</code></td><td>No parameters. Returns <code>{ valid, errors, warnings }</code> with stable codes for callback captures, rejected callback registration, duplicate IDs, accessibility, URLs, nesting, state, ineffective document caching, and History fallback requirements. <code>E_CALLBACK_REGISTRATION</code> retains oversized, unsafe, invalid, or context-serialization failures with callback and element context.</td></tr>
             </tbody>
           </table></div>
         </div>
 
         <div class="api-group" data-search="shortcuts html tags forms layouts helpers">
           <h3>Creation shortcuts</h3>
-          <p><code>div</code>, <code>span</code>, <code>section</code>, <code>header</code>, <code>footer</code>, <code>main</code>, <code>nav</code>, <code>article</code>, <code>aside</code>, <code>form</code>, <code>table</code>, <code>tr</code>, <code>ul</code>, <code>ol</code>, <code>h1</code>–<code>h6</code>, <code>p</code>, <code>a</code>, <code>button</code>, <code>img</code>, <code>input</code>, <code>select</code>, <code>textarea</code>, <code>label</code>, <code>details</code>, <code>dialog</code>, <code>pre</code>, <code>code</code>, <code>hr</code>, and <code>br</code> create and return elements.</p>
-          <p>Higher-level helpers include <code>formGroup</code>, <code>checkbox</code>, <code>radio</code>, <code>fieldset</code>, <code>hiddenInput</code>, <code>grid</code>, <code>flex</code>, <code>stack</code>, <code>row</code>, <code>center</code>, <code>container</code>, <code>spacer</code>, <code>divider</code>, <code>columns</code>, <code>list</code>, and <code>dataTable</code>.</p>
+          <p>Container and text shortcuts accept either optional text or a setup callback: <code>doc.h1('Dashboard')</code> and <code>doc.section(section =&gt; section.p('Content'))</code>. Text is escaped and each shortcut returns the created element.</p>
+          <p><code>div</code>, <code>span</code>, <code>section</code>, <code>header</code>, <code>footer</code>, <code>main</code>, <code>nav</code>, <code>article</code>, <code>aside</code>, <code>form</code>, <code>table</code>, <code>thead</code>, <code>tbody</code>, <code>tfoot</code>, <code>tr</code>, <code>th</code>, <code>td</code>, <code>ul</code>, <code>ol</code>, <code>li</code>, <code>h1</code>–<code>h6</code>, <code>p</code>, <code>a</code>, <code>strong</code>, <code>small</code>, <code>label</code>, <code>caption</code>, <code>legend</code>, <code>em</code>, <code>b</code>, <code>i</code>, <code>button</code>, <code>img</code>, <code>input</code>, <code>select</code>, <code>textarea</code>, <code>details</code>, <code>dialog</code>, <code>pre</code>, <code>code</code>, <code>blockquote</code>, <code>hr</code>, and <code>br</code> create elements.</p>
+          <h4>Complete tag-shortcut signatures</h4>
+          <div class="table-wrap"><table>
+            <thead><tr><th>Methods</th><th>Signature</th><th>Returns</th><th>Void</th><th>Setup callback</th><th>Example</th></tr></thead>
+            <tbody>
+              <tr><td><code>div</code>, <code>span</code>, <code>section</code>, <code>header</code>, <code>footer</code>, <code>main</code>, <code>nav</code>, <code>article</code>, <code>aside</code>, <code>form</code>, <code>ul</code>, <code>ol</code>, <code>table</code>, <code>thead</code>, <code>tbody</code>, <code>tfoot</code>, <code>tr</code>, <code>details</code>, <code>summary</code>, <code>dialog</code>, <code>pre</code>, <code>code</code>, <code>blockquote</code>, <code>h1</code>, <code>h2</code>, <code>h3</code>, <code>h4</code>, <code>h5</code>, <code>h6</code>, <code>li</code>, <code>th</code>, <code>td</code>, <code>p</code>, <code>strong</code>, <code>small</code>, <code>label</code>, <code>caption</code>, <code>legend</code>, <code>em</code>, <code>b</code>, <code>i</code></td><td><code>(textOrSetup?)</code></td><td>Element</td><td>No</td><td>Yes</td><td><code>doc.h1('Title')</code></td></tr>
+              <tr><td><code>a</code></td><td><code>(href, text?)</code></td><td>Element</td><td>No</td><td>No</td><td><code>doc.a('/help', 'Help')</code></td></tr>
+              <tr><td><code>button</code></td><td><code>(text?)</code></td><td>Element</td><td>No</td><td>No</td><td><code>doc.button('Save')</code></td></tr>
+              <tr><td><code>img</code></td><td><code>(src, alt?)</code></td><td>Element</td><td>Yes</td><td>No</td><td><code>doc.img('/logo.svg', 'Logo')</code></td></tr>
+              <tr><td><code>input</code></td><td><code>(type = 'text', attrs = {})</code></td><td>Element</td><td>Yes</td><td>No</td><td><code>doc.input('email', { required: true })</code></td></tr>
+              <tr><td><code>textarea</code></td><td><code>(attrs = {})</code></td><td>Element</td><td>No</td><td>No</td><td><code>doc.textarea({ name: 'notes' })</code></td></tr>
+              <tr><td><code>select</code></td><td><code>(options = [], attrs = {})</code></td><td>Element</td><td>No</td><td>No</td><td><code>doc.select([{ value: 'en', text: 'English' }])</code></td></tr>
+              <tr><td><code>hr</code></td><td><code>()</code></td><td>Element</td><td>Yes</td><td>No</td><td><code>doc.hr()</code></td></tr>
+              <tr><td><code>br</code></td><td><code>()</code></td><td>Parent object</td><td>Yes</td><td>No</td><td><code>doc.p('One').br().text('Two')</code></td></tr>
+            </tbody>
+          </table></div>
+          <p>Every listed shortcut exists on both <code>Document</code> and <code>Element</code>. Except for <code>br()</code>, each returns the created element. Text is escaped. <code>img()</code> defaults <code>alt</code> to an empty string for decorative images.</p>
+          <p>In development, extra positional arguments produce the stable <code>W_SHORTCUT_ARGUMENT</code> warning rather than disappearing silently. Production remains quiet, while TypeScript rejects the unsupported call during development.</p>
+          <p>Higher-level helpers include <code>field</code>, <code>formGroup</code>, <code>checkbox</code>, <code>radio</code>, <code>fieldset</code>, <code>hiddenInput</code>, <code>grid</code>, <code>flex</code>, <code>stack</code>, <code>row</code>, <code>center</code>, <code>container</code>, <code>spacer</code>, <code>divider</code>, <code>columns</code>, <code>list</code>, and <code>dataTable</code>.</p>
         </div>
 
         <div class="api-group" data-search="exports configure metrics cache components template">
@@ -580,6 +736,7 @@ doc.historyRouter({
             <thead><tr><th>Configuration option</th><th>Purpose</th></tr></thead>
             <tbody>
               <tr><td><code>mode</code></td><td><code>'dev'</code> or <code>'prod'</code> behavior.</td></tr>
+              <tr><td><code>debug</code></td><td>In development mode, exposes <code>window.BuildHTMLDebug.inspect()</code> with state keys, bindings, events, callback counts and sources, rejected callback registrations, and hydration time. It is emitted even when a rejected callback was the page's only browser behavior. Keep it disabled in production.</td></tr>
               <tr><td><code>poolSize</code></td><td>Maximum reusable object pool size.</td></tr>
               <tr><td><code>cacheLimit</code></td><td>Response LRU entry limit.</td></tr>
               <tr><td><code>maxComputedFnSize</code></td><td>Maximum serialized computed callback size.</td></tr>
@@ -591,7 +748,7 @@ doc.historyRouter({
       </section>
 
       <footer>
-        <p>For source code, tests, and issue tracking, visit the <a href="https://github.com/0trebor0/buildhtml">buildhtml repository</a>.</p>
+        <p>README JavaScript blocks are syntax-checked in the automated suite, and its complete quick-start programs are executed with rendered-output assertions. For source code, tests, and issue tracking, visit the <a href="https://github.com/0trebor0/buildhtml">buildhtml repository</a>.</p>
       </footer>
     </main>
   </div>
