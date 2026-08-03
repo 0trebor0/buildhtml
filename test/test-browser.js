@@ -87,6 +87,17 @@ async function run() {
     assert.equal(await page.locator('#count-output').textContent(), '1');
     assert.equal(await page.locator('#lifecycle-target').getAttribute('data-last-count'), '1');
 
+    await page.locator('#use-context').click();
+    assert.equal(await page.locator('#context-result').textContent(), 'result=use-context:projects');
+    const eventNotCancelled = await page.locator('#event-contract').evaluate(element => (
+      element.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))
+    ));
+    assert.equal(eventNotCancelled, true);
+    assert.equal(await page.locator('#event-contract-result').textContent(), 'true:true:true');
+    await page.locator('#async-event-contract').click();
+    await page.waitForFunction(() => document.getElementById('async-event-contract-result')?.textContent !== '');
+    assert.equal(await page.locator('#async-event-contract-result').textContent(), 'true:true');
+
     await page.locator('#name-input').fill('Grace Hopper');
     assert.equal(await page.locator('#name-output').textContent(), 'Grace Hopper');
 
@@ -95,6 +106,25 @@ async function run() {
 
     await page.locator('#toggle-theme').click();
     assert.equal(await page.locator('#class-output').getAttribute('class'), 'theme-dark');
+
+    assert.equal(await page.locator('#overview-section').isVisible(), true);
+    assert.equal(await page.locator('#done-section').isHidden(), true);
+    assert.equal(await page.locator('#overview-view').getAttribute('class'), 'nav-item active');
+    await page.locator('#done-view').click();
+    assert.equal(await page.locator('#overview-section').isHidden(), true);
+    assert.equal(await page.locator('#done-section').isVisible(), true);
+    assert.equal(await page.locator('#overview-view').getAttribute('class'), 'nav-item');
+    assert.equal(await page.locator('#done-view').getAttribute('class'), 'nav-item active');
+
+    assert.equal(await page.locator('#summary-panel').isVisible(), true);
+    assert.equal(await page.locator('#activity-panel').isHidden(), true);
+    assert.equal(await page.locator('#summary-panel-button').getAttribute('class'), 'selected');
+    assert.equal(await page.locator('#summary-panel-button').getAttribute('aria-current'), 'page');
+    await page.locator('#activity-panel-button').click();
+    assert.equal(await page.locator('#summary-panel').isHidden(), true);
+    assert.equal(await page.locator('#activity-panel').isVisible(), true);
+    assert.equal(await page.locator('#summary-panel-button').getAttribute('aria-current'), null);
+    assert.equal(await page.locator('#activity-panel-button').getAttribute('class'), 'selected');
 
     await page.locator('#unsafe-link').click();
     assert.equal(await page.locator('#link-output').getAttribute('href'), '#');

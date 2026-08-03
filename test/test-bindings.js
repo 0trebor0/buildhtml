@@ -1,6 +1,6 @@
 'use strict';
 
-const { Document } = require('../index');
+const { Document, CONFIG, configure } = require('../index');
 const vm = require('vm');
 
 let passed = 0;
@@ -201,6 +201,47 @@ test('nested object mutation updates bindings for the root state key', () => {
   assert(element.textContent === 'Grace — London', 'nested property set updates binding');
   context.State.profile.address.city = 'New York';
   assert(element.textContent === 'Grace — New York', 'deep property set updates binding');
+});
+
+test('development client runtime reports binding failures with context', () => {
+  const doc = new Document();
+  doc.states({ count: 1 });
+  doc.div().bind('count', () => missingBrowserVariable);
+  const html = doc.render();
+  assert(html.includes('reportClientError({type:"binding:text"'), 'binding failure reporter compiled');
+  assert(html.includes('stateKey:"count"'), 'binding state key included in error context');
+});
+
+test('client reporter covers computed, lifecycle, oncreate, and liveList failures', () => {
+  const doc = new Document();
+  doc.states({ items: [{ label: 'one' }] });
+  doc.span().computed(() => 'ok');
+  doc.div().onMount(function () {});
+  doc.oncreate(function () {});
+  doc.liveList('items', item => ({ tag: 'span', text: item.label }));
+  const html = doc.render();
+  for (const type of ['computed', 'lifecycle:mount', 'oncreate', 'liveList:item']) {
+    assert(html.includes(`type:"${type}"`) || html.includes(`_report("${type}"`), `${type} reporter compiled`);
+  }
+  assert(html.includes('window.BuildHTML._reportClientError=reportClientError'), 'shared browser error reporter exposed');
+});
+
+test('showWhen and classWhen serialize comparison values without closures', () => {
+  const doc = new Document();
+  doc.states({ view: 'overview' });
+  doc.section('Overview').showWhen('view', 'overview');
+  doc.button('Overview').addClass('nav').classWhen('view', 'overview', 'active');
+  const html = doc.render();
+  assert(html.includes('Object.is(value,"overview")'), 'showWhen embeds its comparison value');
+  assert(html.includes('classList.toggle("active",Object.is(val,"overview"))'), 'classWhen toggles only the requested class');
+});
+
+test('setStateOnClick safely serializes state keys and values', () => {
+  const doc = new Document();
+  doc.states({ view: 'overview' });
+  doc.button('Projects').setStateOnClick('view', 'projects');
+  const html = doc.render();
+  assert(html.includes('State["view"]="projects"'), 'state key and value are embedded in the click handler');
 });
 
 test('nested arrays notify root watchers for mutating methods', () => {
@@ -613,20 +654,47 @@ test('liveList itemFn html key — SSR and client parity', () => {
   assert(html.includes('<em>hi</em>'), 'html key rendered in SSR output');
 });
 
+test('liveList sorting and empty states match the initial server state', () => {
+  const { compileLiveList } = require('../lib/live');
+  const sorted = new Document();
+  sorted.states({ items: [{ name: 'Zulu' }, { name: 'Alpha' }], direction: 'asc' });
+  compileLiveList(sorted, sorted, 'items', item => ({ tag: 'p', text: item.name }), {
+    sort: (a, b, state) => state.direction === 'asc' ? a.name.localeCompare(b.name) : b.name.localeCompare(a.name),
+    sortKeys: ['direction'],
+    empty: { tag: 'p', text: 'Nothing here', attrs: { role: 'status' } },
+  });
+  const sortedHtml = sorted.render();
+  assert(sortedHtml.indexOf('<p>Alpha</p>') < sortedHtml.indexOf('<p>Zulu</p>'), 'SSR uses the configured ordering');
+  assert(!sortedHtml.includes('<p role="status">Nothing here</p>'), 'empty state is omitted from SSR when items render');
+
+  const empty = new Document();
+  empty.states({ items: [], direction: 'asc' });
+  compileLiveList(empty, empty, 'items', item => ({ tag: 'p', text: item.name }), {
+    sort: (a, b) => a.name.localeCompare(b.name),
+    empty: { tag: 'p', text: 'Nothing here', attrs: { role: 'status' } },
+  });
+  assert(empty.render().includes('<p role="status">Nothing here</p>'), 'SSR renders the declarative empty state');
+});
+
 /* ---- clear() resets inline script state ---- */
-test('clear() resets _inlineScripts, _mkElDefined, _oncreateCallbacks', () => {
+test('clear() resets inline scripts, live compilation, callbacks, and router diagnostics', () => {
   const { compileLiveList } = require('../lib/live');
   const doc = new Document();
   doc.states({ items: ['a'] });
   compileLiveList(doc, doc, 'items', i => ({ tag: 'li', text: i }));
   doc.oncreate(function() { console.log('ready'); });
+  doc.historyRouter({ base: '/app' });
   assert(doc._inlineScripts.length > 0, 'inlineScripts populated before clear');
   assert(doc._mkElDefined === true, '_mkElDefined true before clear');
   assert(doc._oncreateCallbacks.length > 0, 'oncreateCallbacks populated before clear');
+  assert(doc._callbackSources.length > 0, 'callback diagnostics populated before clear');
+  assert(doc._historyRouter.base === '/app', 'history router diagnostics populated before clear');
   doc.clear();
   assert(doc._inlineScripts.length === 0, 'inlineScripts cleared');
   assert(doc._mkElDefined === false, '_mkElDefined reset to false');
   assert(doc._oncreateCallbacks.length === 0, 'oncreateCallbacks cleared');
+  assert(doc._callbackSources.length === 0, 'callback diagnostics cleared');
+  assert(doc._historyRouter === null, 'history router diagnostics cleared');
 });
 
 test('document reuse: liveList emits _mkEl definition exactly once per render', () => {
@@ -725,6 +793,76 @@ test('bindInput safely embeds a hostile state key', () => {
   const html = doc.render();
   assert(!html.includes('</script><script>alert(1)</script>'), 'state key cannot close compiled script');
   assert(html.includes('\\u003c/script>'), 'hostile state key JSON-escaped');
+});
+
+test('debug mode compiles an inspectable browser registry only in development', () => {
+  const original = { ...CONFIG };
+  try {
+    configure({ mode: 'dev', debug: true });
+    const doc = new Document();
+    doc.states({ count: 0 });
+    doc.span().id('count-output').bind('count', value => String(value));
+    doc.button('Increment').id('increment').onClick(function () { State.count += 1; });
+    const html = doc.render();
+    assert(html.includes('window.BuildHTMLDebug={inspect:'), 'development debug inspector compiled');
+    assert(html.includes('"stateKeys":["count"]'), 'debug state registry compiled');
+    assert(html.includes('"stateKey":"count","elementId":"count-output"'), 'debug binding registry compiled');
+    assert(html.includes('"type":"click","elementId":"increment"'), 'debug event registry compiled');
+    assert(html.includes('"callbackSources"'), 'serialized callback sources compiled');
+    assert(html.includes('"registrationErrors"'), 'registration diagnostics compiled');
+    assert(html.includes('hydrationMs'), 'debug hydration timing compiled');
+
+    const elements = {
+      'count-output': { tagName: 'SPAN', style: {}, textContent: '' },
+      increment: { tagName: 'BUTTON', style: {}, addEventListener() {} },
+    };
+    const runtimeDoc = (() => {
+      const runtimeDoc = new Document();
+      runtimeDoc.states({ count: 0 });
+      runtimeDoc.span().id('count-output').bind('count', value => String(value));
+      runtimeDoc.button('Increment').id('increment').onClick(function () { State.count += 1; });
+      const originalError = console.error;
+      try {
+        console.error = () => {};
+        runtimeDoc.button('Unsafe').id('unsafe').onClick(function () { eval('alert(1)'); });
+      } finally {
+        console.error = originalError;
+      }
+      return runtimeDoc;
+    })();
+    const browser = runClient(runtimeDoc, elements);
+    const snapshot = browser.BuildHTMLDebug.inspect();
+    assert(snapshot.callbackSources.some(item => item.type === 'binding:text' && item.source.includes('String(value)')), 'inspector exposes binding source');
+    assert(snapshot.callbackSources.some(item => item.type === 'event:click' && item.source.includes('State.count')), 'inspector exposes event source');
+    assert(snapshot.registrationErrors.some(item => item.callbackType === 'event:click' && item.id === 'unsafe'), 'inspector exposes rejected callback registration');
+    snapshot.stateKeys.push('mutated');
+    snapshot.callbackSources[0].source = 'mutated';
+    snapshot.registrationErrors[0].reason = 'mutated';
+    assert(browser.BuildHTMLDebug.inspect().stateKeys.length === 1, 'inspect returns a defensive snapshot');
+    assert(browser.BuildHTMLDebug.inspect().callbackSources[0].source !== 'mutated', 'callback sources are defensive snapshots');
+    assert(browser.BuildHTMLDebug.inspect().registrationErrors[0].reason !== 'mutated', 'registration errors are defensive snapshots');
+    assert(typeof snapshot.hydrationMs === 'number' && snapshot.hydrationMs >= 0, 'inspector runs after hydration');
+
+    const errorOnly = new Document();
+    const originalError = console.error;
+    try {
+      console.error = () => {};
+      errorOnly.button('Unsafe only').id('unsafe-only').onClick(function () { eval('alert(1)'); });
+    } finally {
+      console.error = originalError;
+    }
+    const errorOnlyHtml = errorOnly.render();
+    assert(errorOnlyHtml.includes('BuildHTMLDebug'), 'registration failure alone emits the debug inspector');
+    assert(errorOnlyHtml.includes('unsafe-only'), 'error-only inspector includes element context');
+
+    configure({ mode: 'prod', debug: true });
+    const production = new Document();
+    production.states({ count: 0 });
+    production.span().bind('count', value => value);
+    assert(!production.render().includes('BuildHTMLDebug'), 'production output omits debug inspector');
+  } finally {
+    configure(original);
+  }
 });
 
 /* ---- summary ---- */

@@ -161,6 +161,33 @@ test('every event shortcut maps to its browser event', () => {
   assert(doc.render().includes('addEventListener'));
 });
 
+test('event runtime passes state and element arguments and reports sync and async failures', () => {
+  const doc = new api.Document();
+  doc.states({ count: 0 });
+  doc.button('events').onClick(function (event, state, element) {
+    state.count += element === this && event ? 1 : 0;
+  });
+  const html = doc.render();
+  assert(html.includes('fn.call(el,event,window.State,el,undefined)'));
+  assert(html.includes('result.catch(function(error)'));
+  assert(html.includes('type:"event:click"'));
+});
+
+test('event and binding contexts are serialized without server closures', () => {
+  const doc = new api.Document();
+  doc.states({ active: 'projects' });
+  doc.button('Open').onClick(function (event, state, element, context) {
+    state.active = context.page;
+  }, { page: 'settings' });
+  doc.section('Projects').bindShow('active', function (value, state, context) {
+    return value === context.page;
+  }, { page: 'projects' });
+
+  const html = doc.render();
+  assert(html.includes('fn.call(el,event,window.State,el,{"page":"settings"})'));
+  assert(html.includes('(val,window.State,{"page":"projects"})'));
+});
+
 test('component registry list, unregister, and clear are consistent', () => {
   api.components.clear();
   api.components.register('AuditOne', (el) => el.text('one'));
@@ -223,6 +250,18 @@ test('healthCheck and resetPools expose stable operational state', () => {
   assert.strictEqual(stats.pools.arrays, 0);
 });
 
+test('views initializes state once and compiles safe view management', () => {
+  const doc = new api.Document();
+  doc.state('panel', 'existing');
+  doc.views({ stateKey: 'panel', default: 'ignored', navigation: '.tabs', viewSelector: '.panel', activeClass: 'current' });
+  assert.strictEqual(doc._globalState.panel, 'existing');
+  assert.strictEqual(typeof api.compileViews, 'function');
+  const html = doc.render();
+  assert(html.includes('navSelector=".tabs"'));
+  assert(html.includes('viewSelector=".panel"'));
+  assert(html.includes('activeClass="current"'));
+});
+
 test('textarea shortcut applies attributes', () => {
   const doc = new api.Document();
   doc.textarea({ name: 'notes', rows: 4 }).text('hello');
@@ -231,6 +270,112 @@ test('textarea shortcut applies attributes', () => {
   assert(html.includes('name="notes"'));
   assert(html.includes('rows="4"'));
   assert(html.includes('hello'));
+});
+
+test('container and text tag shortcuts accept text consistently', () => {
+  const doc = new api.Document();
+  const main = doc.main('Dashboard');
+  main.div('82%');
+  main.span('Active');
+  main.h1('Overview');
+  main.strong('Important');
+  main.small('Updated now');
+  main.label('Email');
+  const table = main.table();
+  table.thead((head) => head.tr((row) => row.th('Month')));
+  table.tbody((body) => body.tr((row) => row.td('August')));
+
+  const html = doc.render();
+  for (const text of ['Dashboard', '82%', 'Active', 'Overview', 'Important', 'Updated now', 'Email', 'Month', 'August']) {
+    assert(html.includes(text), `rendered output should include ${text}`);
+  }
+});
+
+test('container shortcuts accept setup callbacks on Document and Element', () => {
+  const doc = new api.Document();
+  const section = doc.section((root) => {
+    root.h2('Projects');
+    root.p('Four projects are active.');
+  });
+  section.div((card) => card.span('Ready'));
+
+  const html = doc.render();
+  assert(html.includes('<h2>Projects</h2>'));
+  assert(html.includes('<p>Four projects are active.</p>'));
+  assert(html.includes('<span>Ready</span>'));
+});
+
+test('tag shortcuts warn about ignored extra arguments only in development', () => {
+  const original = { ...api.CONFIG };
+  const originalWarn = console.warn;
+  const warnings = [];
+  try {
+    console.warn = message => warnings.push(message);
+    api.configure({ mode: 'dev' });
+    const doc = new api.Document();
+    doc.h1('Title', 'ignored');
+    doc.img('/image.png', 'Alt', 'ignored');
+    doc.a('/help', 'Help', 'ignored');
+    doc.button('Save', 'ignored');
+    doc.input('text', {}, 'ignored');
+    doc.textarea({}, 'ignored');
+    doc.select([], {}, 'ignored');
+    doc.p().br('ignored');
+    doc.hr('ignored');
+    assert.deepStrictEqual(warnings.map(message => /\] (\w+)\(\)/.exec(message)?.[1]), [
+      'h1', 'img', 'a', 'button', 'input', 'textarea', 'select', 'br', 'hr',
+    ]);
+    assert(warnings.every(message => message.includes('[BuildHTML W_SHORTCUT_ARGUMENT]')));
+    warnings.length = 0;
+    api.configure({ mode: 'prod' });
+    doc.h2('Title', 'ignored');
+    doc.button('Save', 'ignored');
+    assert.deepStrictEqual(warnings, []);
+  } finally {
+    console.warn = originalWarn;
+    api.configure(original);
+  }
+});
+
+test('validate reports duplicate ids as errors without mutating the document', () => {
+  const doc = new api.Document();
+  doc.bodyId('shared');
+  doc.div('one').id('shared');
+  doc.span('two').id('shared');
+  const before = doc.elementCount();
+
+  const result = doc.validate();
+  assert.strictEqual(result.valid, false);
+  assert.strictEqual(result.errors.length, 2);
+  assert(result.errors.every((issue) => issue.code === 'E_DUPLICATE_ID'));
+  assert.strictEqual(doc.elementCount(), before);
+});
+
+test('validate reports accessibility and undeclared-state warnings', () => {
+  const doc = new api.Document();
+  doc.h1();
+  doc.button();
+  doc.create('img');
+  doc.label('Email').for('missing-email');
+  doc.span().bind('missingState', (value) => value);
+
+  const result = doc.validate();
+  assert.strictEqual(result.valid, true);
+  assert.deepStrictEqual(
+    new Set(result.warnings.map((issue) => issue.code)),
+    new Set(['W_EMPTY_HEADING', 'W_EMPTY_BUTTON', 'W_IMAGE_ALT', 'W_LABEL_TARGET', 'W_UNDECLARED_STATE'])
+  );
+});
+
+test('validate accepts labelled controls, decorative images, declared state, and named buttons', () => {
+  const doc = new api.Document();
+  doc.states({ email: '' });
+  doc.label('Email').for('email');
+  doc.input('email').id('email').bindInput('email');
+  doc.img('/divider.svg', '');
+  doc.button().aria({ label: 'Close' });
+
+  assert.deepStrictEqual(doc.validate(), { valid: true, errors: [], warnings: [] });
 });
 
 console.log(`\nResults: ${passed} passed, ${failed} failed`);

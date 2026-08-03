@@ -392,6 +392,45 @@ test('el.html() preview', () => {
   doc.render();
 });
 
+test('el.build() adds declarative definitions below an existing element', () => {
+  const doc = new Document();
+  const panel = doc.section().id('declarative-panel');
+  const returned = panel.build([
+    { tag: 'h2', text: 'Nested definition' },
+    'Escaped <content>',
+    { tag: 'p', text: 'Visible', class: 'message' },
+    { tag: 'p', text: 'Skipped', if: false },
+    { tag: 'li', each: ['One', 'Two'] },
+  ]);
+  assert(returned === panel, 'element build remains chainable');
+  returned.addClass('built-panel');
+  const html = doc.render();
+  assert(html.includes('<section'), 'existing parent rendered');
+  assert(html.includes('<h2>Nested definition</h2>'), 'nested heading built');
+  assert(html.includes('Escaped &lt;content&gt;'), 'string definition escaped');
+  assert(html.includes('class="message"'), 'definition classes applied');
+  assert(!html.includes('Skipped'), 'conditional child skipped');
+  assert(html.includes('<li>One</li><li>Two</li>'), 'iterated children built');
+  assert(html.includes('built-panel'), 'parent remains configurable');
+});
+
+test('declarative liveList forwards sorting and empty-state options', () => {
+  const doc = new Document();
+  doc.states({ rows: [{ name: 'Zulu' }, { name: 'Alpha' }], descending: false });
+  doc.build({
+    liveList: {
+      stateKey: 'rows',
+      itemFn: row => ({ tag: 'p', text: row.name }),
+      sort: (a, b, state) => state.descending ? b.name.localeCompare(a.name) : a.name.localeCompare(b.name),
+      sortKeys: ['descending'],
+      empty: { tag: 'p', text: 'No rows', attrs: { role: 'status' } },
+    },
+  });
+  const html = doc.render();
+  assert(html.indexOf('<p>Alpha</p>') < html.indexOf('<p>Zulu</p>'), 'declarative list forwards sorting');
+  assert(html.includes('No rows'), 'declarative list compiles its browser empty state');
+});
+
 /* ==== SLOTS ==== */
 
 test('el.slot() and el.fillSlot()', () => {
@@ -423,6 +462,40 @@ test('doc.formGroup()', () => {
   assert(html.includes('<label'), 'has label');
   assert(html.includes('Email'), 'label text');
   assert(html.includes('type="email"'), 'input type');
+});
+
+test('doc.field() returns accessible references and unique ids for shared state', () => {
+  const doc = new Document();
+  doc.states({ email: '' });
+  const login = doc.field('Login email', {
+    type: 'email', name: 'loginEmail', bind: 'email', attrs: { required: true }
+  });
+  const account = doc.field('Account email', {
+    type: 'email', name: 'accountEmail', bind: 'email'
+  });
+
+  assert(login.group.hasClass('form-group'), 'field returns group reference');
+  assert(login.label.attrs.for === login.input.attrs.id, 'field label targets its input');
+  assert(account.label.attrs.for === account.input.attrs.id, 'second label targets its input');
+  assert(login.input.attrs.id !== account.input.attrs.id, 'fields sharing state receive unique ids');
+  assert(login.input._stateBindings[0].stateKey === 'email', 'field bind registers two-way state');
+  assert(doc.validate().valid, 'generated fields pass document validation');
+
+  const html = doc.render();
+  assert(html.includes('name="loginEmail"'), 'field applies name');
+  assert(html.includes('required="true"'), 'field applies input attributes');
+});
+
+test('doc.field() supports explicit identity and custom group classes', () => {
+  const doc = new Document();
+  const field = doc.field('Search', {
+    id: 'site-search', groupClass: 'search-field', attrs: { id: 'ignored-id', placeholder: 'Find' }
+  });
+  assert(field.input.attrs.id === 'site-search', 'explicit field id takes precedence over attrs.id');
+  assert(field.label.attrs.for === 'site-search', 'explicit id is shared with label');
+  assert(field.group.hasClass('search-field'), 'custom group class applied');
+  const html = doc.render();
+  assert(html.includes('placeholder="Find"'), 'custom field attributes rendered');
 });
 
 test('doc.checkbox()', () => {

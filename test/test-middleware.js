@@ -169,10 +169,14 @@ const p6 = test('builderFn returning non-Document results in 500', async () => {
 });
 
 /* ---- nonce option — injected into document ---- */
-const p7 = test('nonce option injects nonce into compiled scripts', async () => {
+const p7 = test('nonce option injects a fresh nonce and bypasses rendered HTML caching', async () => {
   resetCache();
+  let builds = 0;
+  let nonces = 0;
+  let cacheKeyCalls = 0;
   const middleware = createCachedRenderer(
     async (req) => {
+      builds++;
       const doc = new Document();
       doc.title('Nonce Test');
       doc.globalStyle('body', { color: 'red' });
@@ -180,15 +184,22 @@ const p7 = test('nonce option injects nonce into compiled scripts', async () => 
       doc.div().bind('x');
       return doc;
     },
-    'page-nonce-test',
-    { nonce: (req) => 'testnonce42' }
+    () => { cacheKeyCalls++; return 'page-nonce-test'; },
+    { nonce: () => `testnonce${++nonces}` }
   );
 
   const req = mockReq();
   const res = mockRes();
   await middleware(req, res, (err) => { throw err; });
-  assert(res._sent.includes('nonce="testnonce42"'), 'nonce injected into compiled script');
-  assert(res._sent.includes('<style nonce="testnonce42">'), 'nonce injected into head styles');
+  assert(res._sent.includes('nonce="testnonce1"'), 'nonce injected into compiled script');
+  assert(res._sent.includes('<style nonce="testnonce1">'), 'nonce injected into head styles');
+  const second = mockRes();
+  await middleware(req, second, (err) => { throw err; });
+  assert(second._sent.includes('nonce="testnonce2"'), 'second response receives a fresh nonce');
+  assert(!second._sent.includes('testnonce1'), 'cached nonce is not reused');
+  assert(builds === 2, 'nonce-enabled responses bypass rendered HTML caching');
+  assert(cacheKeyCalls === 0, 'nonce-enabled responses do not evaluate an unused cache key');
+  assert(!responseCache.has('page-nonce-test'), 'nonce-enabled HTML is not placed in the response cache');
 });
 
 /* ---- clearCache removes entries ---- */
