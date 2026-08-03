@@ -263,13 +263,36 @@ app.listen(3000);</code></pre>
           <thead><tr><th>Capability</th><th>Document</th><th>Element</th><th>Notes</th></tr></thead>
           <tbody>
             <tr><td>Tag shortcuts</td><td>Yes</td><td>Yes</td><td>Creates a body element or nested child.</td></tr>
+            <tr><td><code>create(tag)</code></td><td>Yes</td><td>Yes</td><td>Creates a body element or nested child and returns it.</td></tr>
             <tr><td><code>build(definition)</code></td><td>Yes</td><td>Yes</td><td>Builds into the document body or the element's children.</td></tr>
-            <tr><td><code>child(tag)</code></td><td>No</td><td>Yes</td><td>Creates a nested tag without a shortcut.</td></tr>
+            <tr><td><code>child(tag)</code></td><td>Yes</td><td>Yes</td><td>Body-creation alias on Document; nested-child alias on Element.</td></tr>
             <tr><td>Metadata and global CSS</td><td>Yes</td><td>No</td><td>Configures the document head or whole page.</td></tr>
             <tr><td><code>states(values)</code></td><td>Yes</td><td>No</td><td>Declares browser state.</td></tr>
             <tr><td>Attributes and bindings</td><td>No</td><td>Yes</td><td>Configures an individual element.</td></tr>
           </tbody>
         </table></div>
+        <h3>Create any HTML element</h3>
+        <p><code>create(tag)</code> returns the same chainable <code>Element</code> type returned by tag shortcuts. A document adds it to the body; an existing element adds it as a nested child.</p>
+        <pre><code>const doc = new Document();
+const card = doc.create('section')
+  .id('account-card')
+  .addClass('card')
+  .css({ padding: '20px' });
+
+card.create('h2').text('Account');
+card.create('custom-status').attr('role', 'status').text('Ready');</code></pre>
+        <div class="table-wrap"><table>
+          <thead><tr><th>Call</th><th>Destination</th><th>Returns</th></tr></thead>
+          <tbody>
+            <tr><td><code>doc.create(tag)</code></td><td>Document body</td><td>Element</td></tr>
+            <tr><td><code>doc.createElement(tag)</code></td><td>Document body</td><td>Element</td></tr>
+            <tr><td><code>doc.child(tag)</code></td><td>Document body</td><td>Element</td></tr>
+            <tr><td><code>element.create(tag)</code></td><td>Nested child</td><td>Element</td></tr>
+            <tr><td><code>element.child(tag)</code></td><td>Nested child</td><td>Element</td></tr>
+          </tbody>
+        </table></div>
+        <p><code>create()</code> does not have a special inner API. Its returned element supports content methods such as <code>text</code> and <code>html</code>; attributes, data, ARIA, and classes; styling and responsive rules; nested creation and <code>build</code>; events; reactive bindings; lifecycle hooks; tree operations; tag shortcuts; and form/layout helpers.</p>
+        <p>Prefer a named shortcut when the tag is known. Use <code>create(tag)</code> for dynamic tags, custom elements, or tags without a shortcut. Use escaped <code>text()</code> for ordinary content and reserve raw HTML methods for trusted values.</p>
         <h3>Head, metadata, and resources</h3>
         <pre><code>doc.title('Dashboard')
   .viewport()
@@ -646,7 +669,7 @@ doc.historyRouter({
               <tr><td><code>render</code></td><td>No parameters → complete HTML string.</td></tr>
               <tr><td><code>renderStream</code></td><td>No parameters → readable HTML stream.</td></tr>
               <tr><td><code>clear</code></td><td>Resets body, state, and per-render scripts; preserves head.</td></tr>
-              <tr><td><code>element</code></td><td><code>tag</code> → new element.</td></tr>
+              <tr><td><code>create</code>, <code>createElement</code>, <code>child</code></td><td><code>tag</code> → new body element.</td></tr>
               <tr><td><code>title</code>, <code>charset</code>, <code>lang</code></td><td>String value.</td></tr>
               <tr><td><code>htmlAttr</code>, <code>bodyAttr</code></td><td><code>key, value</code>.</td></tr>
               <tr><td><code>bodyId</code>, <code>bodyClass</code>, <code>bodyCss</code></td><td>Id, class names, or rules.</td></tr>
