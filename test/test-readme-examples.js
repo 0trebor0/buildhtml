@@ -2,8 +2,10 @@
 
 const assert = require('assert/strict');
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 const vm = require('vm');
+const { spawnSync } = require('child_process');
 const buildhtml = require('../index');
 const { TEXT_TAGS } = require('../lib/shortcuts');
 
@@ -30,12 +32,36 @@ const javascriptBlocks = Array.from(
 
 assert(javascriptBlocks.length >= 2, 'README must contain the two executable quick-start examples');
 
-for (let index = 0; index < javascriptBlocks.length; index++) {
-  assert.doesNotThrow(
-    () => new Function(javascriptBlocks[index]),
-    `README JavaScript block ${index + 1} must parse`
+// ESM blocks cannot go through new Function(), which only accepts script source.
+// Compile them as modules so import/export examples are still checked rather than
+// skipped or downgraded to a non-JavaScript fence.
+const isModuleSource = (source) => /(?:^|\n)\s*(?:import|export)\s/.test(source);
+function assertModuleParses(source, label) {
+  const file = path.join(
+    os.tmpdir(),
+    `buildhtml-readme-${process.pid}-${Math.random().toString(36).slice(2)}.mjs`
   );
+  fs.writeFileSync(file, source);
+  try {
+    const result = spawnSync(process.execPath, ['--check', file], { encoding: 'utf8' });
+    assert.equal(result.status, 0, `${label} must parse as ESM: ${result.stderr}`);
+  } finally {
+    fs.unlinkSync(file);
+  }
 }
+
+let esmBlockCount = 0;
+for (let index = 0; index < javascriptBlocks.length; index++) {
+  const source = javascriptBlocks[index];
+  const label = `README JavaScript block ${index + 1}`;
+  if (isModuleSource(source)) {
+    esmBlockCount++;
+    assertModuleParses(source, label);
+  } else {
+    assert.doesNotThrow(() => new Function(source), `${label} must parse`);
+  }
+}
+assert(esmBlockCount >= 1, 'README must document at least one ESM example');
 for (let index = 0; index < guideJavaScriptBlocks.length; index++) {
   assert.doesNotThrow(
     () => new Function(guideJavaScriptBlocks[index]),

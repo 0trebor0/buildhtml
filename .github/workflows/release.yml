@@ -1,0 +1,86 @@
+name: Release
+
+# Publishing is driven by a tag so the released artefact always corresponds to a
+# reviewed commit on main. Nothing publishes on a normal push.
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Verify ${{ matrix.node }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: true
+      matrix:
+        node: [20, 22, 24]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      - run: npm test
+
+  verify-types-and-browser:
+    name: Types and browser
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: npm install --no-save --package-lock=false typescript@5 playwright@1
+      - run: npm run test:types
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:browser
+
+  publish:
+    name: Publish to npm
+    needs: [verify, verify-types-and-browser]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write   # create the GitHub Release
+      id-token: write   # mint the provenance attestation
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+
+      # A tag that disagrees with package.json would publish the wrong version
+      # under the right name, so fail before anything is uploaded.
+      - name: Check the tag matches package.json
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          PKG="$(node -p "require('./package.json').version")"
+          echo "tag=$TAG package.json=$PKG"
+          if [ "$TAG" != "$PKG" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match package.json version $PKG"
+            exit 1
+          fi
+
+      # Done in Node rather than awk/grep: the bracketed heading needs escaping in
+      # both the shell and the pattern, and getting it subtly wrong yields empty
+      # release notes rather than a failure.
+      - name: Extract the changelog section for this version
+        run: node scripts/release-notes.js
+
+      - name: Confirm the package contents
+        run: npm pack --dry-run
+
+      # --provenance records which workflow, commit, and repository produced this
+      # tarball. Consumers verify it with `npm audit signatures`.
+      - name: Publish
+        run: npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Create the GitHub Release
+        run: gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --notes-file RELEASE_NOTES.md --verify-tag
+        env:
+          GH_TOKEN: ${{ github.token }}

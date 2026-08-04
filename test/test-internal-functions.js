@@ -148,6 +148,92 @@ test('minHTML preserves whitespace-sensitive element contents', () => {
   }
 });
 
+test('the element pool and response cache stay within their configured bounds', () => {
+  const { pools, resetPools } = require('../lib/pools');
+  const api = require('..');
+  const original = { ...CONFIG };
+  try {
+    configure({ poolSize: 25, cacheLimit: 10 });
+    resetPools();
+
+    // The invariant, not the input validation: whatever the traffic, neither
+    // store may exceed its limit. An uncapped guard is how a NaN limit leaked.
+    let maxPool = 0;
+    for (let i = 0; i < 500; i++) {
+      const doc = new Document();
+      doc.title('bounded ' + i);
+      const wrapper = doc.div();
+      for (let j = 0; j < 6; j++) wrapper.child('span').text('cell ' + j);
+      doc.render();
+      maxPool = Math.max(maxPool, pools.elements.length);
+      assert(pools.elements.length <= CONFIG.poolSize,
+        `pool ${pools.elements.length} exceeds poolSize ${CONFIG.poolSize} at iteration ${i}`);
+    }
+    assert(maxPool > 0, 'elements were actually pooled during the run');
+
+    let maxCache = 0;
+    for (let i = 0; i < 200; i++) {
+      const doc = new Document({ cache: true, cacheKey: 'bound-key-' + i });
+      doc.p('cached ' + i);
+      doc.render();
+      maxCache = Math.max(maxCache, api.responseCache.size);
+      assert(api.responseCache.size <= CONFIG.cacheLimit,
+        `cache ${api.responseCache.size} exceeds cacheLimit ${CONFIG.cacheLimit} at iteration ${i}`);
+    }
+    assert(maxCache === CONFIG.cacheLimit, 'cache actually filled to its limit before evicting');
+  } finally {
+    configure(original);
+    resetPools();
+    api.clearCache();
+  }
+});
+
+test('documents built alternately never share a pooled element', () => {
+  const { resetPools } = require('../lib/pools');
+  try {
+    resetPools();
+    // Two generations: the second reuses objects recycled by the first, which is
+    // when aliasing would show up as one document rendering another's content.
+    for (let generation = 0; generation < 2; generation++) {
+      const a = new Document();
+      const b = new Document();
+      const c = new Document();
+      const rootA = a.div().addClass('doc-a');
+      const rootB = b.div().addClass('doc-b');
+      const rootC = c.div().addClass('doc-c');
+
+      for (let i = 0; i < 15; i++) {
+        rootA.child('span').text(`a${i}`);
+        rootB.child('em').text(`b${i}`);
+        rootC.child('strong').text(`c${i}`);
+      }
+
+      const htmlA = a.render();
+      const htmlB = b.render();
+      const htmlC = c.render();
+
+      for (const [label, html, foreign] of [
+        ['A', htmlA, ['b0', 'c0', 'doc-b', 'doc-c']],
+        ['B', htmlB, ['a0', 'c0', 'doc-a', 'doc-c']],
+        ['C', htmlC, ['a0', 'b0', 'doc-a', 'doc-b']],
+      ]) {
+        for (const alien of foreign) {
+          assert(!html.includes(alien), `generation ${generation}: document ${label} leaked foreign content "${alien}"`);
+        }
+      }
+
+      assert(htmlA.includes('<span>a14</span>'), `generation ${generation}: document A intact`);
+      assert(htmlB.includes('<em>b14</em>'), `generation ${generation}: document B intact`);
+      assert(htmlC.includes('<strong>c14</strong>'), `generation ${generation}: document C intact`);
+      assert.strictEqual((htmlA.match(/<span>/g) || []).length, 15, 'A kept all its children');
+      assert.strictEqual((htmlB.match(/<em>/g) || []).length, 15, 'B kept all its children');
+      assert.strictEqual((htmlC.match(/<strong>/g) || []).length, 15, 'C kept all its children');
+    }
+  } finally {
+    resetPools();
+  }
+});
+
 test('LRUCache treats a zero limit as no caching', () => {
   const { LRUCache } = require('../lib/cache');
   const none = new LRUCache(0);

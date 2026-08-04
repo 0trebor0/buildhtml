@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/0trebor0/buildhtml/security/advisories/new
+    about: Report privately. Do not open a public issue.
+  - name: Guide and API reference
+    url: https://github.com/0trebor0/buildhtml/blob/main/docs/index.html
+    about: Check the documentation before filing.
