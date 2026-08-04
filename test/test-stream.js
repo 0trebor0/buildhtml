@@ -198,7 +198,46 @@ const p12 = testAsync('renderStream warns when a cacheKey it cannot honour is se
   }
 });
 
-Promise.all([p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, p11, p12]).then(() => {
+/* ---- renderStream renders on demand, not up front ---- */
+function bigDocument(count) {
+  const doc = new Document();
+  doc.title('Big');
+  for (let i = 0; i < count; i++) doc.p('paragraph number ' + i + ' with filler text to add bytes');
+  return doc;
+}
+
+const p13 = testAsync('renderStream renders lazily and honours backpressure', async () => {
+  const doc = bigDocument(5000);
+  const stream = doc.renderStream();
+  assert(stream.readableLength === 0, 'nothing is rendered before the consumer reads');
+
+  stream.read(0); // one _read cycle
+  const afterOne = stream.readableLength;
+  assert(afterOne > 0, 'a read cycle produces data');
+  assert(afterOne < stream.readableHighWaterMark * 2,
+    `a read cycle stops near the high-water mark (buffered ${afterOne}, hwm ${stream.readableHighWaterMark})`);
+
+  const html = await collectStream(stream);
+  assert(html.length > afterOne * 5, 'the rest is produced on later reads');
+  assert(html.endsWith('</html>'), 'document completes');
+  assert(doc.body.length === 0, 'document cleared once the stream finished');
+});
+
+/* ---- abandoning the stream still releases the document ---- */
+const p14 = testAsync('renderStream cleans up when the consumer destroys it early', async () => {
+  const doc = bigDocument(2000);
+  const stream = doc.renderStream();
+  stream.read(0);
+  assert(doc.body.length > 0, 'document still held while streaming');
+
+  await new Promise((resolve) => {
+    stream.on('close', resolve);
+    stream.destroy();
+  });
+  assert(doc.body.length === 0, 'abandoned stream still clears the document');
+});
+
+Promise.all([p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, p11, p12, p13, p14]).then(() => {
   console.log(`\n${'='.repeat(40)}`);
   console.log(`Results: ${passed} passed, ${failed} failed`);
   console.log('='.repeat(40));

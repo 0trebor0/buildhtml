@@ -1260,6 +1260,39 @@ npm run test:types
 
 The test suite covers HTML output, escaping and sanitization, state and deep reactivity, bindings, events, lifecycle cleanup, components, templates, JSON round-trips, streaming, caching, reactive lists, fetch compilation, and both routers. It also parses every JavaScript block in this README and executes the two complete quick-start programs against the package entry point, asserting meaningful rendered output.
 
+## Module formats and entry points
+
+The package ships both module systems. ESM gets an explicit wrapper, so every named export is importable:
+
+```javascript
+import { page, Document, metrics } from '@trebor/buildhtml';
+
+const doc = page('Hello');
+doc.h1('Hello from ESM');
+console.log(doc.render());
+```
+
+`responseCache` is deliberately not a named ESM export. It is a live accessor that returns a new cache whenever `configure({ cacheLimit })` changes the limit, and a static ESM binding would freeze the value captured at import time. Reach it through the default export:
+
+```javascript
+import buildhtml from '@trebor/buildhtml';
+
+console.log(buildhtml.responseCache.size);
+```
+
+Import a single area when you do not need the whole surface:
+
+```javascript
+const { renderTemplate } = require('@trebor/buildhtml/template');
+const { createCachedRenderer } = require('@trebor/buildhtml/middleware');
+const { components } = require('@trebor/buildhtml/components');
+const { compileLiveList } = require('@trebor/buildhtml/live');
+const { configure } = require('@trebor/buildhtml/config');
+const { metrics } = require('@trebor/buildhtml/metrics');
+```
+
+These subpaths and the package root are the supported entry points. Reaching into `lib/` directly is not supported and may change without a major release.
+
 ## Benchmarks
 
 ```bash
@@ -1268,11 +1301,70 @@ npm run benchmark
 
 The benchmark validates renderer output before measuring throughput, latency, HTML size, gzip size, and compiled client-runtime size. Treat raw strings as a lower-bound baseline rather than a feature-equivalent renderer.
 
+### Published results
+
+Measured on Node v22.23.1, Intel Core i7-11800H @ 2.30GHz, Windows 11, 68 GB RAM. 50 rows, 7 samples, ~250 ms per sample. Absolute numbers depend on CPU, Node version, power state, and background load — the ratio is the portable part.
+
+| Renderer | median ops/s | median ms | p95 ms | HTML bytes | gzip |
+|---|---:|---:|---:|---:|---:|
+| Raw string baseline | 45,718 | 0.0219 | 0.0226 | 3,927 | 557 |
+| buildhtml 1.3.0 | 4,324 | 0.2313 | 0.2531 | 3,929 | 565 |
+
+Reactive compilation (no static-renderer equivalent to compare against):
+
+| Renderer | median ops/s | median ms | p95 ms | HTML bytes | gzip |
+|---|---:|---:|---:|---:|---:|
+| buildhtml 1.3.0 reactive | 6,777 | 0.1476 | 0.1596 | 16,872 | 4,147 |
+
+buildhtml is roughly 10x slower than string concatenation for static output, producing byte-equivalent HTML (3,929 vs 3,927). At ~0.23 ms per page, rendering is not the bottleneck in a typical request; the raw baseline is a floor, not a competitor.
+
+### Client runtime size by feature
+
+```bash
+npm run benchmark:size
+```
+
+buildhtml ships no runtime library — every byte of browser JavaScript is generated per page from the features you actually use, so a page pays only for what it touches. There is no shared bundle to cache across pages. Measured in `prod` mode; "vs core" is the delta over a page that declares state but no bindings.
+
+| Feature | bytes | gzip | vs core | gzip Δ |
+|---|---:|---:|---:|---:|
+| Static page (no reactivity) | 0 | 0 | — | — |
+| Core runtime (state only) | 2,847 | 1,061 | — | — |
+| + text binding | 3,662 | 1,269 | +815 | +208 |
+| + event handler | 3,520 | 1,241 | +673 | +180 |
+| + two-way input | 4,276 | 1,379 | +1,429 | +318 |
+| + show/hide binding | 3,625 | 1,270 | +778 | +209 |
+| + class binding | 3,676 | 1,285 | +829 | +224 |
+| + attribute binding | 4,033 | 1,411 | +1,186 | +350 |
+| + style binding | 3,742 | 1,302 | +895 | +241 |
+| + element state | 3,071 | 1,127 | +224 | +66 |
+| + computed | 3,149 | 1,186 | +302 | +125 |
+| + lifecycle hooks | 4,140 | 1,395 | +1,293 | +334 |
+| + portal | 3,006 | 1,118 | +159 | +57 |
+| + oncreate | 3,204 | 1,158 | +357 | +97 |
+| + liveList | 5,893 | 2,279 | +3,046 | +1,218 |
+| + hash router | 2,988 | 1,123 | +141 | +62 |
+| + history router | 4,443 | 1,757 | +1,596 | +696 |
+| + views | 3,759 | 1,377 | +912 | +316 |
+
+A fully static page ships **zero** JavaScript. The first reactive feature costs ~1 KB gzipped for the state proxy and cleanup observer; each additional facility is a few hundred bytes. `liveList` is the most expensive because it emits the `_mkEl` DOM builder.
+
+`debug: true` in development adds the inspector and serialized callback sources — a text-binding page grows from 3,825 to 5,081 bytes (1,339 → 1,619 gzip). Production pages never include it.
+
 ## Requirements
 
-- Node.js 16 or newer
-- CommonJS
+- Node.js 20 or newer
+- CommonJS and ESM
 - No runtime dependencies
+
+## Project
+
+- [Changelog](CHANGELOG.md) — release notes, tagged `v<version>` from 1.3.0 onward
+- [Contributing](CONTRIBUTING.md) — running the checks, engineering rules, release process
+- [Security policy](SECURITY.md) — how to report a vulnerability privately, and what is in scope
+- [Report a bug](https://github.com/0trebor0/buildhtml/issues/new/choose)
+
+Releases from 1.3.0 are published with npm provenance. Verify with `npm audit signatures`.
 
 ## License
 

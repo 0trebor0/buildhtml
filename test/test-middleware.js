@@ -236,7 +236,73 @@ const p9 = test('getCacheStats() returns expected shape', async () => {
   assert(typeof stats.cache.limit === 'number', 'cache.limit is a number');
 });
 
-Promise.all([p1, p2, p3, p4, p5, p6, p7, p8, p9]).then(() => test(
+/* ---- a failed render must not poison the key ---- */
+const p10 = test('a rejected render is not cached and the next request rebuilds', async () => {
+  resetCache();
+  const key = 'page-recovers-after-failure';
+  let attempt = 0;
+
+  const middleware = createCachedRenderer(async () => {
+    attempt++;
+    if (attempt === 1) throw new Error('transient builder failure');
+    const doc = new Document();
+    doc.title('Recovered');
+    doc.h1('Recovered');
+    return doc;
+  }, key);
+
+  // First request fails and is handed to next(err).
+  let forwarded = null;
+  const first = mockRes();
+  await middleware(mockReq(), first, (err) => { forwarded = err; });
+  assert(forwarded instanceof Error, 'failure forwarded to next()');
+  assert(forwarded.message === 'transient builder failure', 'original error preserved');
+  assert(first._sent === null, 'nothing sent on failure');
+  assert(!responseCache.has(key), 'failed render is not cached');
+  assert(!inFlightCache.has(key), 'failed render is not left in flight');
+
+  // Second request must rebuild rather than inherit the failure.
+  const second = mockRes();
+  await middleware(mockReq(), second, (err) => { if (err) throw err; });
+  assert(attempt === 2, 'builder ran again after the failure');
+  assert(typeof second._sent === 'string' && second._sent.includes('<h1>Recovered</h1>'), 'second request served fresh HTML');
+  assert(responseCache.has(key), 'successful render is cached');
+
+  // Third request is served from cache without rebuilding.
+  const third = mockRes();
+  await middleware(mockReq(), third, (err) => { if (err) throw err; });
+  assert(attempt === 2, 'cached response avoids a rebuild');
+  assert(third._sent === second._sent, 'cached bytes identical');
+});
+
+/* ---- concurrent requests that all fail ---- */
+const p11 = test('concurrent requests sharing a failing render all receive the error', async () => {
+  resetCache();
+  const key = 'page-concurrent-failure';
+  let builds = 0;
+  let release;
+  const pending = new Promise((resolve) => { release = resolve; });
+
+  const middleware = createCachedRenderer(async () => {
+    builds++;
+    await pending;
+    throw new Error('shared failure');
+  }, key);
+
+  const errors = [];
+  const a = middleware(mockReq(), mockRes(), (err) => errors.push(err));
+  const b = middleware(mockReq(), mockRes(), (err) => errors.push(err));
+  release();
+  await Promise.all([a, b]);
+
+  assert(builds === 1, 'the failing render is de-duplicated like a successful one');
+  assert(errors.length === 2, 'both callers are told it failed');
+  assert(errors.every((e) => e instanceof Error && e.message === 'shared failure'), 'both receive the real error');
+  assert(!responseCache.has(key), 'nothing cached');
+  assert(!inFlightCache.has(key), 'in-flight entry cleaned up');
+});
+
+Promise.all([p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, p11]).then(() => test(
   'clearCache(pattern) invalidates a matching in-flight render',
   async () => {
     resetCache();

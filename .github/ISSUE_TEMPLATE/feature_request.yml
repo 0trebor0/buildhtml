@@ -1,0 +1,30 @@
+name: Feature request
+description: Propose a new capability or an API change
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What are you trying to do that is awkward or impossible today?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed API
+      description: How it would look in use.
+      render: javascript
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: What you tried instead
+      description: Existing APIs you used, and why they fell short.
+  - type: checkboxes
+    id: constraints
+    attributes:
+      label: Constraints
+      description: buildhtml is zero-dependency and server-first.
+      options:
+        - label: This can be implemented without adding a runtime dependency
+        - label: This does not require a build step for users
