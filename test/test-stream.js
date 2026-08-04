@@ -142,7 +142,63 @@ const p9 = testAsync('renderStream compiles element lifecycle hooks', async () =
   assert(html.includes('State.destroyed'), 'destroy hook included in stream');
 });
 
-Promise.all([p1, p2, p3, p4, p5, p6, p7, p8, p9]).then(() => {
+/* ---- renderStream records what it sent ---- */
+const p10 = testAsync('renderStream sets output() so save() does not re-render an empty document', async () => {
+  const doc = new Document();
+  doc.title('Streamed');
+  doc.h1().text('Recorded');
+  const streamed = await collectStream(doc.renderStream());
+
+  assert(doc.output() === streamed, 'output() equals the streamed bytes');
+  assert(doc.output().includes('<h1>Recorded</h1>'), 'recorded output retains the body');
+});
+
+/* ---- renderStream error path leaves no partial record ---- */
+const p11 = testAsync('renderStream does not record output when rendering throws', async () => {
+  const doc = new Document();
+  doc.title('Broken');
+  // A non-Element body node renders via String(); throwing there exercises the
+  // catch path without mutating a pooled Element that later tests reuse.
+  doc.body.push({ toString() { throw new Error('boom'); } });
+  try {
+    await collectStream(doc.renderStream());
+    assert(false, 'stream should have errored');
+  } catch (error) {
+    assert(error.message === 'boom', 'stream surfaced the render error');
+  }
+  assert(doc.output() === '', 'no partial output recorded after a failure');
+});
+
+/* ---- renderStream announces that it ignores the response cache ---- */
+const p12 = testAsync('renderStream warns when a cacheKey it cannot honour is set', async () => {
+  const { configure, CONFIG, getCacheStats } = require('../index');
+  const originalMode = CONFIG.mode;
+  const originalWarn = console.warn;
+  const warnings = [];
+  try {
+    console.warn = message => warnings.push(message);
+    configure({ mode: 'dev' });
+
+    const cached = new Document({ cache: true, cacheKey: 'stream-key' });
+    cached.h1().text('Streamed');
+    const sizeBefore = getCacheStats().cache.size;
+    await collectStream(cached.renderStream());
+    assert(warnings.length === 1, `one warning for an ignored cacheKey (got ${warnings.length})`);
+    assert(warnings[0].includes('stream-key'), 'warning names the ignored key');
+    assert(getCacheStats().cache.size === sizeBefore, 'stream did not populate the cache');
+
+    warnings.length = 0;
+    const plain = new Document();
+    plain.h1().text('Plain');
+    await collectStream(plain.renderStream());
+    assert(warnings.length === 0, 'uncached documents stream without warnings');
+  } finally {
+    console.warn = originalWarn;
+    configure({ mode: originalMode });
+  }
+});
+
+Promise.all([p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, p11, p12]).then(() => {
   console.log(`\n${'='.repeat(40)}`);
   console.log(`Results: ${passed} passed, ${failed} failed`);
   console.log('='.repeat(40));

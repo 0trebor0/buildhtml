@@ -1212,7 +1212,7 @@ configure({
 
 | Option | Purpose |
 |--------|---------|
-| `mode` | Development or production behavior |
+| `mode` | Development or production behavior — `'dev'` or `'prod'`; any other value is warned about and ignored |
 | `debug` | Exposes `window.BuildHTMLDebug.inspect()` in development pages |
 | `poolSize` | Maximum reusable object pool size |
 | `cacheLimit` | LRU response-cache entry limit |

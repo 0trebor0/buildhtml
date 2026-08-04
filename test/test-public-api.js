@@ -256,6 +256,108 @@ test('configure validates values and Metrics reports and resets samples', () => 
   }
 });
 
+test('configure rejects numbers that would uncap the pool and cache', () => {
+  const original = { ...api.CONFIG };
+  const warn = console.warn;
+  const warnings = [];
+  try {
+    console.warn = message => warnings.push(message);
+    // NaN and Infinity are typeof "number"; every size guard is a >= comparison,
+    // so accepting them would let the pool and response cache grow without bound.
+    api.configure({ poolSize: NaN, cacheLimit: Infinity, maxEventFnSize: -1 });
+    assert.strictEqual(api.CONFIG.poolSize, original.poolSize);
+    assert.strictEqual(api.CONFIG.cacheLimit, original.cacheLimit);
+    assert.strictEqual(api.CONFIG.maxEventFnSize, original.maxEventFnSize);
+    assert.strictEqual(warnings.length, 3);
+    assert(warnings.every(message => message.includes('finite number >= 0')));
+
+    api.configure({ cacheLimit: 7, poolSize: 0 });
+    assert.strictEqual(api.CONFIG.cacheLimit, 7);
+    assert.strictEqual(api.CONFIG.poolSize, 0);
+  } finally {
+    console.warn = warn;
+    api.configure(original);
+  }
+});
+
+test('metrics singleton follows configure({ enableMetrics })', () => {
+  const original = { ...api.CONFIG };
+  try {
+    api.configure({ enableMetrics: false });
+    api.metrics.reset();
+    assert.strictEqual(api.metrics.enabled, false);
+    api.metrics.increment('probe');
+    assert.deepStrictEqual(api.metrics.getStats().counters, {});
+
+    api.configure({ enableMetrics: true });
+    assert.strictEqual(api.metrics.enabled, true);
+    api.metrics.increment('probe');
+    assert.strictEqual(api.metrics.getStats().counters.probe, 1);
+  } finally {
+    api.metrics.reset();
+    api.configure(original);
+  }
+});
+
+test('configure rejects a mode that is neither dev nor prod', () => {
+  const original = { ...api.CONFIG };
+  const warn = console.warn;
+  const warnings = [];
+  try {
+    console.warn = message => warnings.push(message);
+    api.configure({ mode: 'prod' });
+    api.configure({ mode: 'production' });
+    assert.strictEqual(api.CONFIG.mode, 'prod');
+    api.configure({ mode: 'nonsense' });
+    assert.strictEqual(api.CONFIG.mode, 'prod');
+    assert.strictEqual(warnings.length, 2);
+    assert(warnings.every(message => message.includes('must be "dev" or "prod"')));
+
+    api.configure({ mode: 'dev' });
+    assert.strictEqual(api.CONFIG.mode, 'dev');
+  } finally {
+    console.warn = warn;
+    api.configure(original);
+  }
+});
+
+test('validate warns when render already cleared the body', () => {
+  const doc = new api.Document();
+  doc.div('one').id('shared');
+  doc.div('two').id('shared');
+  assert.strictEqual(doc.validate().valid, false);
+
+  doc.render();
+  const afterRender = doc.validate();
+  assert.deepStrictEqual(afterRender.warnings.map(issue => issue.code), ['W_VALIDATE_AFTER_RENDER']);
+});
+
+test('renderFragment warns that hydration is not included', () => {
+  const original = { ...api.CONFIG };
+  const warn = console.warn;
+  const warnings = [];
+  try {
+    console.warn = message => warnings.push(message);
+    api.configure({ mode: 'dev' });
+
+    const doc = new api.Document();
+    doc.states({ count: 0 });
+    const nav = doc.div();
+    nav.button('Go').onClick(function () { State.count++; });
+    const fragment = nav.renderFragment();
+    assert(fragment.html.includes('<button'));
+    assert.strictEqual(warnings.length, 1);
+    assert(warnings[0].includes('renderFragment()'));
+
+    warnings.length = 0;
+    new api.Document().div().text('static').renderFragment();
+    assert.deepStrictEqual(warnings, []);
+  } finally {
+    console.warn = warn;
+    api.configure(original);
+  }
+});
+
 test('healthCheck and resetPools expose stable operational state', () => {
   const health = api.healthCheck();
   assert.strictEqual(health.status, 'ok');

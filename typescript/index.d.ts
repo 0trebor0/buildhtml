@@ -43,7 +43,8 @@ export interface MetricsStats {
 }
 
 export declare class Metrics {
-  enabled: boolean;
+  /** Derived from CONFIG.enableMetrics; change it with configure(). */
+  readonly enabled: boolean;
   counters: Map<string, number>;
   timings: Map<string, number[]>;
   increment(key: string, value?: number): void;

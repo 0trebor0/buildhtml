@@ -206,6 +206,19 @@ test('double round-trip (toJSON → fromJSON → toJSON → fromJSON) is stable'
   assert(html1 === html2, 'double round-trip produces identical output');
 });
 
+test('title survives repeated round trips without re-escaping', () => {
+  const doc = new Document();
+  doc.title('Tom & Jerry <Show>');
+  const expected = '<title>Tom &amp; Jerry &lt;Show&gt;</title>';
+  assert(doc.render().includes(expected), 'title escaped once when rendered directly');
+
+  const once = roundTrip(doc);
+  assert(once.render().includes(expected), 'title unchanged after one round trip');
+
+  const twice = roundTrip(roundTrip(new Document().title('Tom & Jerry <Show>')));
+  assert(twice.render().includes(expected), 'title unchanged after two round trips');
+});
+
 /* ---- summary ---- */
 console.log(`\n${'='.repeat(40)}`);
 console.log(`Results: ${passed} passed, ${failed} failed`);

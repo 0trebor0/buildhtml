@@ -333,6 +333,45 @@ div#app.container
   assert(html.includes('container'), 'root class');
 });
 
+/* ---- Malformed input diagnostics ---- */
+test('Malformed template lines warn in development', () => {
+  const { configure, CONFIG } = require('../index');
+  const originalMode = CONFIG.mode;
+  const originalWarn = console.warn;
+  const warnings = [];
+  try {
+    console.warn = message => warnings.push(message);
+    configure({ mode: 'dev' });
+
+    renderTemplate('a(href="/x" "Text"');
+    renderTemplate('?each item in\n  li "x"');
+    renderTemplate('?else\n  p "x"');
+    renderTemplate(':global body font-size: 12px');
+    renderTemplate(':class btn padding: 4px');
+
+    assert(warnings.length === 5, `each malformed line warned once (got ${warnings.length})`);
+    assert(warnings.every(m => m.includes('[BuildHTML W_TEMPLATE_SYNTAX]')), 'warnings share one code');
+    assert(warnings[0].includes('Unclosed "("'), 'unclosed attribute paren reported');
+    assert(warnings[1].includes('Invalid loop syntax'), 'invalid loop reported');
+    assert(warnings[2].includes('Unknown directive'), 'stray ?else reported');
+    assert(warnings[3].includes('Missing "{"'), ':global without braces reported');
+    assert(warnings[4].includes('Missing "{"'), ':class without braces reported');
+
+    warnings.length = 0;
+    configure({ mode: 'prod' });
+    renderTemplate('?each item in\n  li "x"');
+    assert(warnings.length === 0, 'production stays silent');
+
+    warnings.length = 0;
+    configure({ mode: 'dev' });
+    renderTemplate('div\n  h1 "Title"\n  ?if ok\n    p "yes"');
+    assert(warnings.length === 0, 'valid templates do not warn');
+  } finally {
+    console.warn = originalWarn;
+    configure({ mode: originalMode });
+  }
+});
+
 /* ---- Summary ---- */
 console.log(`\n${'='.repeat(40)}`);
 console.log(`Results: ${passed} passed, ${failed} failed`);

@@ -148,6 +148,44 @@ test('minHTML preserves whitespace-sensitive element contents', () => {
   }
 });
 
+test('LRUCache treats a zero limit as no caching', () => {
+  const { LRUCache } = require('../lib/cache');
+  const none = new LRUCache(0);
+  none.set('a', 1);
+  none.set('b', 2);
+  assert.strictEqual(none.size, 0);
+  assert.strictEqual(none.get('a'), null);
+
+  const two = new LRUCache(2);
+  two.set('a', 1); two.set('b', 2); two.set('c', 3);
+  assert.strictEqual(two.size, 2);
+  assert.strictEqual(two.has('a'), false, 'oldest entry evicted');
+  assert.strictEqual(two.has('c'), true);
+});
+
+test('minHTML keeps whitespace that separates adjacent elements', () => {
+  assert.strictEqual(minHTML('<span>a</span> <span>b</span>'), '<span>a</span> <span>b</span>');
+  assert.strictEqual(minHTML('<p>x</p>\n\n  <p>y</p>'), '<p>x</p> <p>y</p>');
+  assert.strictEqual(minHTML('<b>a</b><i>b</i>'), '<b>a</b><i>b</i>');
+});
+
+test('prod rendering does not join adjacent inline elements', () => {
+  const originalMode = CONFIG.mode;
+  try {
+    configure({ mode: 'prod' });
+    const doc = new Document();
+    const paragraph = doc.p();
+    paragraph.child('span').text('Hello');
+    paragraph.append(' ');
+    paragraph.child('span').text('World');
+    const html = doc.render();
+    assert(html.includes('<span>Hello</span> <span>World</span>'));
+    assert(!html.includes('<span>Hello</span><span>World</span>'));
+  } finally {
+    configure({ mode: originalMode });
+  }
+});
+
 test('document validation reports heading, form, URL, ARIA, and nesting mistakes', () => {
   const doc = new Document();
   doc.h1('Dashboard');

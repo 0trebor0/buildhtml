@@ -335,6 +335,88 @@ test('clone() preserves _stateBindings', () => {
   assert(clone._stateBindings[0].stateKey === 'label', 'binding stateKey preserved');
 });
 
+test('tag lookups reject the same input create() rejects', () => {
+  const doc = new Document();
+  const wrap = doc.div();
+  const span = wrap.child('span');
+  const widget = wrap.child('myWidget');
+
+  assert(wrap.find('span') === span, 'find() matches a lowercase tag');
+  assert(wrap.findAll('span').length === 1, 'findAll() matches a lowercase tag');
+  assert(span.closest('div') === wrap, 'closest() matches a lowercase tag');
+  assert(wrap.find('myWidget') === widget, 'camelCase is normalised to kebab-case');
+
+  for (const method of ['find', 'findAll', 'closest']) {
+    let threw = false;
+    try { wrap[method]('SPAN'); } catch (e) { threw = e instanceof TypeError; }
+    assert(threw, `${method}('SPAN') throws like create('SPAN')`);
+  }
+});
+
+test('camelCase event attributes are blocked like lowercase ones', () => {
+  const doc = new Document();
+  doc.div().attr('onClick', 'alert(1)').attr('onclick', 'alert(2)').attr('data-ok', 'y');
+  const html = doc.render();
+  assert(!html.includes('on-click'), 'attr("onClick") not emitted as on-click');
+  assert(!/\sonclick=/i.test(html), 'attr("onclick") still blocked');
+  assert(html.includes('data-ok="y"'), 'ordinary attributes unaffected');
+});
+
+test('CSS values keep quotes but still reject injection', () => {
+  const doc = new Document();
+  doc.div().css({ content: '"x"', fontFamily: '"Fira Code", monospace' });
+  doc.globalStyle('.q', { content: '"g"' });
+  doc.div().css({ width: 'expression(alert(1))', background: 'url("javascript:alert(1)")', margin: '1px;color:red' });
+  const html = doc.render();
+
+  assert(html.includes('content:"x"'), 'quoted content value preserved');
+  assert(html.includes('font-family:"Fira Code", monospace'), 'quoted font family preserved');
+  assert(html.includes('.q{content:"g";}'), 'quoted global style preserved');
+  assert(!html.includes('expression('), 'expression() still stripped');
+  assert(!/javascript:/i.test(html), 'javascript: url still stripped');
+  assert(!html.includes('1px;color:red'), 'semicolon injection still stripped');
+});
+
+test('an element reachable from two parents is pooled once', () => {
+  const { pools, resetPools } = require('../lib/pools');
+  resetPools();
+  try {
+    const doc = new Document();
+    const shared = doc.div().text('shared');
+    doc.section().append(shared);
+    doc.render();
+    assert(pools.elements.length === new Set(pools.elements).size, 'pool holds no duplicate element objects');
+
+    // Drawing fresh elements must not hand the same object to two call sites.
+    const next = new Document();
+    const a = next.h1().text('AAA');
+    const b = next.h2().text('BBB');
+    const c = next.h3().text('CCC');
+    assert(a !== b && a !== c && b !== c, 'each new element is a distinct object');
+    const html = next.render();
+    assert(html.includes('<h1>AAA</h1><h2>BBB</h2><h3>CCC</h3>'), 'later render is not corrupted by pool aliasing');
+  } finally {
+    resetPools();
+  }
+});
+
+test('clone() retargets events and bindings to the clone id', () => {
+  const doc = new Document();
+  doc.states({ count: 0 });
+  const btn = doc.button('+1').onClick(function() { State.count++; }).bind('count', v => String(v));
+  const clone = btn.clone();
+  doc.body.push(clone);
+  assert(clone.attrs.id !== btn.attrs.id, 'clone gets a fresh id');
+  assert(clone.events[0].id === clone.attrs.id, 'cloned event targets the clone');
+  assert(clone._stateBindings[0].id === clone.attrs.id, 'cloned binding targets the clone');
+
+  const html = doc.render();
+  const eventTargets = [...html.matchAll(/var el=getById\("([^"]+)"\);\s*if\(el\)try\{var fn=/g)].map(m => m[1]);
+  const bindTargets = [...html.matchAll(/watchState\("count",function\(val\)\{var el=getById\("([^"]+)"\)/g)].map(m => m[1]);
+  assert(eventTargets.length === 2 && new Set(eventTargets).size === 2, 'each clone registers its own handler');
+  assert(bindTargets.length === 2 && new Set(bindTargets).size === 2, 'each clone registers its own binding');
+});
+
 test('clone() preserves _computed', () => {
   const doc = new Document();
   const el = doc.div().id('x').computed(function(state) { return state.v; });
@@ -352,12 +434,19 @@ test('setAttrs() blocks prototype pollution', () => {
   assert(el.attrs['class'] === 'safe', 'safe keys still applied');
 });
 
-test('clear() resets _cssVarsRuleIdx', () => {
+test('cssVar() updates one :root rule across repeated renders', () => {
   const doc = new Document();
-  doc.cssVar('--color', 'red');
-  const idxBefore = doc._cssVarsRuleIdx;
-  doc.clear();
-  assert(doc._cssVarsRuleIdx === undefined, '_cssVarsRuleIdx cleared after clear()');
+  doc.cssVar('color', 'red');
+  doc.div().text('one');
+  doc.render();
+
+  doc.cssVar('color', 'green');
+  doc.div().text('two');
+  const html = doc.render();
+
+  const roots = html.match(/:root\{[^}]*\}/g) || [];
+  assert(roots.length === 1, `one :root rule after re-render (got ${roots.length})`);
+  assert(roots[0] === ':root{--color:green;}', 'cssVar updated in place instead of appending');
 });
 
 test('toJSON/fromJSON round-trip preserves text content', () => {
