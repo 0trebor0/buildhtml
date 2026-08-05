@@ -4,8 +4,8 @@
 
 | Version | Supported |
 | ------- | --------- |
-| 1.3.x   | Yes       |
-| < 1.3   | No        |
+| 1.2.5   | Yes       |
+| < 1.2.5 | No        |
 
 Fixes land on the latest minor release. Please upgrade before reporting an issue
 against an older version.
@@ -72,7 +72,7 @@ A report that shows any of these failing is a vulnerability.
 
 ## Verifying a release
 
-Releases from 1.3.0 are published to npm with provenance from the `release`
+Releases from 1.2.5 are published to npm with provenance from the `release`
 workflow. Check the attestation with:
 
 ```bash
