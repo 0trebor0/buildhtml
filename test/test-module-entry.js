@@ -60,9 +60,12 @@ test('package.json declares the entry points it ships', () => {
   assert.strictEqual(pkg.exports['.'].require, './index.js');
   assert.strictEqual(pkg.exports['.'].import, './index.mjs');
   assert.strictEqual(pkg.exports['./package.json'], './package.json');
-  for (const entry of ['index.js', 'index.mjs', 'lib/', 'typescript/']) {
+  // Type declarations ship, but the TypeScript dev fixtures (example.ts,
+  // tsconfig.json) deliberately do not.
+  for (const entry of ['index.js', 'index.mjs', 'lib/', 'typescript/*.d.ts']) {
     assert(pkg.files.includes(entry), `files[] ships ${entry}`);
   }
+  assert(!pkg.files.includes('typescript/'), 'the whole typescript/ directory is not shipped');
 });
 
 test('every subpath in the exports map resolves to a real module', () => {

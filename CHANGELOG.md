@@ -5,15 +5,39 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-Releases from 1.3.0 onward are tagged `v<version>` and published to npm with
+Releases from 1.2.5 onward are tagged `v<version>` and published to npm with
 [provenance](https://docs.npmjs.com/generating-provenance-statements) from the
-`release` workflow. Versions before 1.3.0 were published without tags or release
+`release` workflow. Versions before 1.2.5 were published without tags or release
 notes; entries for them are reconstructed from git history and are summaries
 rather than complete records.
 
 ## [Unreleased]
 
-## [1.3.0] - 2026-08-04
+## [1.2.5] - 2026-08-05
+
+> **Read the breaking changes below before upgrading.** This is numbered as a
+> patch, so `^1.2.4` and `~1.2.4` will pick it up automatically, but the
+> supported Node range narrowed and two call patterns that used to work now
+> fail. Pin to `1.2.4` if you are on Node 16 or 18, or if you import from
+> `lib/` directly.
+
+### Breaking changes
+
+- **Node.js 20 is now the minimum** (was 16). Node 16 and 18 are both
+  end-of-life. CI runs 20, 22, and 24.
+- **Deep imports into `lib/` no longer resolve.** The new `exports` map limits
+  the package to its root and six documented subpaths, so
+  `require('@trebor/buildhtml/lib/pools')` now throws
+  `ERR_PACKAGE_PATH_NOT_EXPORTED`. Use the root export or
+  `@trebor/buildhtml/{template,middleware,components,live,config,metrics}`.
+  These paths were never documented, but anyone reaching into `lib/` must move.
+- **`find()`, `findAll()`, and `closest()` throw on an invalid tag** instead of
+  returning `null`/`[]`. `find('SPAN')` could never match anything — tags are
+  stored kebab-cased and `create('SPAN')` already threw — so the silent empty
+  result hid the mistake. Both now fail the same way.
+- **`Metrics.enabled` is read-only.** It derives from `CONFIG.enableMetrics`
+  rather than snapshotting it, so assigning to it throws in strict mode. Use
+  `configure({ enableMetrics })`.
 
 ### Added
 
@@ -44,13 +68,9 @@ rather than complete records.
   immediately" behaviour never happened. Rendering is now driven by `_read()`, so
   work happens on demand and a slow consumer applies backpressure instead of
   forcing the whole page into memory.
-- Minimum Node.js version raised to 20. CI now runs 20, 22, and 24; 16.20.2 was
-  removed because that line is end-of-life.
 - CSS values keep quotes. `content: "x"` and `font-family: "Fira Code"` were
   silently corrupted into invalid CSS. Quotes cannot escape a `<style>` block
   (`<` is still stripped) or a style attribute (escaped at render).
-- `find()`, `findAll()`, and `closest()` reject an invalid tag with the same
-  `TypeError` as `create()`, instead of silently returning `null`/`[]`.
 - `configure()` rejects a `mode` other than `"dev"` or `"prod"`, and rejects
   numeric options that are not finite and `>= 0`.
 - A `LRUCache` limit of `0` now caches nothing instead of one entry.
@@ -123,5 +143,5 @@ Client runtime security fixes and the fetch example.
 
 Initial public releases.
 
-[Unreleased]: https://github.com/0trebor0/buildhtml/compare/v1.3.0...HEAD
-[1.3.0]: https://github.com/0trebor0/buildhtml/releases/tag/v1.3.0
+[Unreleased]: https://github.com/0trebor0/buildhtml/compare/v1.2.5...HEAD
+[1.2.5]: https://github.com/0trebor0/buildhtml/releases/tag/v1.2.5

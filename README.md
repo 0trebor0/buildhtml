@@ -1307,16 +1307,16 @@ Measured on Node v22.23.1, Intel Core i7-11800H @ 2.30GHz, Windows 11, 68 GB RAM
 
 | Renderer | median ops/s | median ms | p95 ms | HTML bytes | gzip |
 |---|---:|---:|---:|---:|---:|
-| Raw string baseline | 45,718 | 0.0219 | 0.0226 | 3,927 | 557 |
-| buildhtml 1.3.0 | 4,324 | 0.2313 | 0.2531 | 3,929 | 565 |
+| Raw string baseline | 29,587 | 0.0338 | 0.0362 | 3,927 | 557 |
+| buildhtml 1.2.5 | 2,815 | 0.3553 | 0.3724 | 3,929 | 565 |
 
 Reactive compilation (no static-renderer equivalent to compare against):
 
 | Renderer | median ops/s | median ms | p95 ms | HTML bytes | gzip |
 |---|---:|---:|---:|---:|---:|
-| buildhtml 1.3.0 reactive | 6,777 | 0.1476 | 0.1596 | 16,872 | 4,147 |
+| buildhtml 1.2.5 reactive | 3,879 | 0.2578 | 0.2947 | 16,872 | 4,146 |
 
-buildhtml is roughly 10x slower than string concatenation for static output, producing byte-equivalent HTML (3,929 vs 3,927). At ~0.23 ms per page, rendering is not the bottleneck in a typical request; the raw baseline is a floor, not a competitor.
+buildhtml is roughly 10x slower than string concatenation for static output, producing byte-equivalent HTML (3,929 vs 3,927). That ratio held steady across runs even as absolute throughput varied with machine load, so treat the ratio as the portable figure. At ~0.36 ms per page, rendering is not the bottleneck in a typical request; the raw baseline is a floor, not a feature-equivalent competitor.
 
 ### Client runtime size by feature
 
@@ -1329,8 +1329,8 @@ buildhtml ships no runtime library — every byte of browser JavaScript is gener
 | Feature | bytes | gzip | vs core | gzip Δ |
 |---|---:|---:|---:|---:|
 | Static page (no reactivity) | 0 | 0 | — | — |
-| Core runtime (state only) | 2,847 | 1,061 | — | — |
-| + text binding | 3,662 | 1,269 | +815 | +208 |
+| Core runtime (state only) | 2,847 | 1,062 | — | — |
+| + text binding | 3,662 | 1,269 | +815 | +207 |
 | + event handler | 3,520 | 1,241 | +673 | +180 |
 | + two-way input | 4,276 | 1,379 | +1,429 | +318 |
 | + show/hide binding | 3,625 | 1,270 | +778 | +209 |
@@ -1359,12 +1359,12 @@ A fully static page ships **zero** JavaScript. The first reactive feature costs 
 
 ## Project
 
-- [Changelog](CHANGELOG.md) — release notes, tagged `v<version>` from 1.3.0 onward
+- [Changelog](CHANGELOG.md) — release notes, tagged `v<version>` from 1.2.5 onward
 - [Contributing](CONTRIBUTING.md) — running the checks, engineering rules, release process
 - [Security policy](SECURITY.md) — how to report a vulnerability privately, and what is in scope
 - [Report a bug](https://github.com/0trebor0/buildhtml/issues/new/choose)
 
-Releases from 1.3.0 are published with npm provenance. Verify with `npm audit signatures`.
+Releases from 1.2.5 are published with npm provenance. Verify with `npm audit signatures`.
 
 ## License
 

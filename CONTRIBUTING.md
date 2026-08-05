@@ -103,7 +103,7 @@ after those blocks, or update the test.
 
 1. Move `## [Unreleased]` notes into a new version heading in `CHANGELOG.md`.
 2. Bump `version` in `package.json`.
-3. Commit, then tag: `git tag v1.3.0 && git push origin main --tags`.
+3. Commit, then tag: `git tag v1.2.5 && git push origin main --tags`.
 4. The `release` workflow runs the full suite, publishes to npm with provenance,
    and creates the GitHub Release from the changelog section.
 
