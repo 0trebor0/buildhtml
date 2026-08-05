@@ -594,6 +594,8 @@ const html = renderTemplate(source, {
 
 The direct file helpers are synchronous.
 
+The parser recovers from a malformed line rather than throwing, so a mistake still produces output. In development it reports what it dropped as `W_TEMPLATE_SYNTAX` — an unclosed `(`, an invalid `?each`, an unrecognised `?` directive, or a `:global`/`:class` rule without braces. Production stays quiet.
+
 ## Reactive lists
 
 `liveList()` server-renders an array and updates it in the browser when watched state changes:
@@ -792,7 +794,7 @@ The complete [routing example](example/routing.js) serves API and static routes 
 
 ### Stream a document
 
-`renderStream()` flushes the head before the body and produces the same final markup as `render()`:
+`renderStream()` renders on demand: each read produces only as much as the consumer has room for, so the head reaches the socket before the body is built and a slow client applies backpressure instead of forcing the whole page into memory.
 
 ```javascript
 app.get('/', (req, res) => {
@@ -801,6 +803,16 @@ app.get('/', (req, res) => {
   doc.renderStream().pipe(res);
 });
 ```
+
+Streaming differs from `render()` in three ways, all consequences of sending the head first:
+
+| | `render()` | `renderStream()` |
+|---|---|---|
+| Scoped `<style>` | in `<head>` | after the body |
+| Production minification | applied | not applied |
+| Response cache | used | not used — a `cacheKey` is ignored, and warns in development |
+
+The markup is otherwise identical. Use `render()` when you want a cached or minified response, and `renderStream()` when time-to-first-byte matters more.
 
 ### Cache Express responses
 
@@ -997,7 +1009,7 @@ for (const warning of result.warnings) console.warn(warning);
 
 It detects duplicate IDs and reports warnings for callback captures, empty or skipped headings, unnamed buttons and form controls, images without `alt`, broken label and `aria-labelledby` targets, unsafe URLs, nested interactive elements, bindings using undeclared state keys, caching enabled without a key, and History routing that requires a server fallback. Each diagnostic has a stable `code` and actionable `message`.
 
-`W_HISTORY_FALLBACK` is a deployment reminder rather than proof that the fallback is missing: a document cannot inspect the HTTP server around it. `W_CACHE_KEY` is emitted only when document caching is enabled but no key was supplied. BuildHTML cannot determine whether a supplied shared key is safe for personalized output, so identity and authorization inputs remain the application’s responsibility.
+`W_VALIDATE_AFTER_RENDER` means `validate()` ran after `render()` had already cleared the body, so it inspected an empty document — call it before rendering. `W_HISTORY_FALLBACK` is a deployment reminder rather than proof that the fallback is missing: a document cannot inspect the HTTP server around it. `W_CACHE_KEY` is emitted only when document caching is enabled but no key was supplied. BuildHTML cannot determine whether a supplied shared key is safe for personalized output, so identity and authorization inputs remain the application’s responsibility.
 
 Callbacks rejected while being registered are retained as `E_CALLBACK_REGISTRATION` errors instead of disappearing after a console message. This includes oversized sources, blocked `eval`/`new Function` patterns, invalid function source, and non-serializable callback context. The diagnostic identifies the callback family, element tag and ID when available, original reason, and the corrective action:
 
@@ -1093,6 +1105,8 @@ remove · replaceWith · wrap · empty · clone
 find · findAll · findById · closest
 parent · siblings · nextSibling · prevSibling
 ```
+
+`find()`, `findAll()`, and `closest()` take a tag name and reject an invalid one with the same `TypeError` as `create()`. `find('SPAN')` could never match — tags are stored kebab-cased — so it raises the mistake instead of returning an empty result.
 
 Browser behavior:
 
@@ -1258,7 +1272,7 @@ npm run test:browser
 npm run test:types
 ```
 
-The test suite covers HTML output, escaping and sanitization, state and deep reactivity, bindings, events, lifecycle cleanup, components, templates, JSON round-trips, streaming, caching, reactive lists, fetch compilation, and both routers. It also parses every JavaScript block in this README and executes the two complete quick-start programs against the package entry point, asserting meaningful rendered output.
+The test suite covers HTML output, escaping and sanitization, state and deep reactivity, bindings, events, lifecycle cleanup, components, templates, JSON round-trips, streaming and backpressure, caching and cache failure recovery, reactive lists, fetch compilation, both routers, and the CommonJS and ESM entry points with every subpath export. Property-based tests generate inputs for the sanitization boundary — HTML escaping, attribute rendering, URL and CSS sanitization, JavaScript and JSON embedding, attribute keys, tag names, the minifier — and for `toJSON()`/`fromJSON()` round trips, from a seeded generator so a failure replays exactly with `BUILDHTML_FUZZ_SEED`. It also parses every JavaScript block in this README and executes the two complete quick-start programs against the package entry point, asserting meaningful rendered output.
 
 ## Module formats and entry points
 
