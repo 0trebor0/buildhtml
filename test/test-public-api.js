@@ -256,6 +256,43 @@ test('configure validates values and Metrics reports and resets samples', () => 
   }
 });
 
+test('optional object and array parameters tolerate null', () => {
+  // A `= {}` default only applies to undefined. Passing null — which is what a
+  // config loaded from JSON or a database yields — reached the property reads
+  // and threw. These helpers are chainable everywhere else in the API.
+  const doc = new api.Document();
+  doc.states({ view: 'a', page: '/', panel: 'p' });
+
+  assert.doesNotThrow(() => doc.hashRouter(null), 'hashRouter(null)');
+  assert.doesNotThrow(() => doc.historyRouter(null), 'historyRouter(null)');
+  assert.doesNotThrow(() => doc.views(null), 'views(null)');
+  assert.doesNotThrow(() => doc.divider(null), 'divider(null)');
+  assert.doesNotThrow(() => doc.flex([], null), 'flex(items, null)');
+  assert.doesNotThrow(() => doc.dataTable(['A'], [['1']], null), 'dataTable(headers, rows, null)');
+  assert.doesNotThrow(() => doc.div().transition(null), 'transition(null)');
+  assert.doesNotThrow(() => doc.div().animate('spin', null), 'animate(name, null)');
+  assert.doesNotThrow(() => doc.cssVar(null, 'x'), 'cssVar(null)');
+  assert.doesNotThrow(() => doc.cssVar(undefined), 'cssVar() with no arguments');
+
+  // Data parameters accept a missing or wrong-typed collection without throwing,
+  // matching each()/when()/setAttrs() which already guard.
+  assert.doesNotThrow(() => doc.list(null), 'list(null)');
+  assert.doesNotThrow(() => doc.list(undefined), 'list(undefined)');
+  assert.doesNotThrow(() => doc.dataTable(null, null), 'dataTable(null, null)');
+  assert.doesNotThrow(() => doc.select(null), 'select(null)');
+  assert.doesNotThrow(() => doc.radio('n', null), 'radio(name, null)');
+  assert.doesNotThrow(() => doc.columns(2, null), 'columns(count, null)');
+
+  // Primitives in the declarative builder render as text instead of throwing on
+  // the `'if' in def` check.
+  const built = new api.Document();
+  assert.doesNotThrow(() => built.div().build(42), 'build(number)');
+  assert.doesNotThrow(() => built.div().build(false), 'build(boolean)');
+  assert(built.render().includes('42'), 'a numeric definition renders as text');
+
+  assert(doc.render().startsWith('<!DOCTYPE html>'), 'the document still renders after all of it');
+});
+
 test('configure rejects numbers that would uncap the pool and cache', () => {
   const original = { ...api.CONFIG };
   const warn = console.warn;
