@@ -172,6 +172,21 @@ doc.p('A complete page from one focused Node.js API.');
 
 const html = doc.render();</code></pre>
         <p><code>page(title, options?)</code> creates a configured <code>Document</code> with a title, responsive viewport, CSS reset, and language. Use <code>new Document(options?)</code> when you want to configure those manually.</p>
+        <h3>Module formats</h3>
+        <p>The package ships CommonJS and ESM. Every named export is importable from the ESM entry point:</p>
+        <pre><code>import { page, Document, metrics } from '@trebor/buildhtml';
+
+const doc = page('Hello');
+doc.h1('Hello from ESM');</code></pre>
+        <p><code>responseCache</code> is not a named ESM export. It is a live accessor that returns a new cache whenever <code>configure({ cacheLimit })</code> changes the limit, and a static ESM binding would freeze the value captured at import time. Reach it through the default export instead: <code>buildhtml.responseCache</code>.</p>
+        <p>Import a single area when you do not need the whole surface:</p>
+        <pre><code>const { renderTemplate } = require('@trebor/buildhtml/template');
+const { createCachedRenderer } = require('@trebor/buildhtml/middleware');
+const { components } = require('@trebor/buildhtml/components');
+const { compileLiveList } = require('@trebor/buildhtml/live');
+const { configure } = require('@trebor/buildhtml/config');
+const { metrics } = require('@trebor/buildhtml/metrics');</code></pre>
+        <p>Those subpaths and the package root are the supported entry points. Reaching into <code>lib/</code> directly is not supported and fails to resolve. Node.js 20 or newer is required.</p>
         <div class="table-wrap"><table>
           <thead><tr><th>Option</th><th>Type</th><th>Default</th><th>Purpose</th></tr></thead>
           <tbody>
@@ -329,7 +344,7 @@ card.create('custom-status').attr('role', 'status').text('Ready');</code></pre>
 doc.cssVars({ primary: '#56d6b3', radius: '8px' });
 doc.globalStyle('body', { fontFamily: 'system-ui' });
 doc.sharedClass('card', { padding: '16px', borderRadius: '8px' });</code></pre>
-        <p><code>render()</code> returns the complete HTML string. <code>renderStream()</code> returns a stream that flushes the head before the body. <code>clear()</code> resets body content and per-render state but intentionally keeps head configuration.</p>
+        <p><code>render()</code> returns the complete HTML string. <code>renderStream()</code> returns a stream that renders on demand, so the head reaches the socket before the body is built and a slow consumer applies backpressure. Streaming applies no production minification and does not use the response cache, and scoped <code>&lt;style&gt;</code> follows the body because the head has already been sent. <code>clear()</code> resets body content and per-render state but intentionally keeps head configuration.</p>
       </section>
 
       <section id="elements" data-search="element text html attr css class children events forms layout">
@@ -723,7 +738,7 @@ doc.historyRouter({
               <tr><td><code>bindInput</code></td><td><code>stateKey</code>.</td></tr>
               <tr><td><code>onMount</code>, <code>onDestroy</code></td><td>Lifecycle callback.</td></tr>
               <tr><td><code>onUpdate</code></td><td><code>stateKey, callback</code>.</td></tr>
-              <tr><td><code>validate</code></td><td>No parameters. Returns <code>{ valid, errors, warnings }</code> with stable codes for callback captures, rejected callback registration, duplicate IDs, accessibility, URLs, nesting, state, ineffective document caching, and History fallback requirements. <code>E_CALLBACK_REGISTRATION</code> retains oversized, unsafe, invalid, or context-serialization failures with callback and element context.</td></tr>
+              <tr><td><code>validate</code></td><td>No parameters. Returns <code>{ valid, errors, warnings }</code> with stable codes for callback captures, rejected callback registration, duplicate IDs, accessibility, URLs, nesting, state, ineffective document caching, History fallback requirements, and validation attempted after <code>render()</code> already cleared the body. <code>E_CALLBACK_REGISTRATION</code> retains oversized, unsafe, invalid, or context-serialization failures with callback and element context.</td></tr>
             </tbody>
           </table></div>
         </div>
