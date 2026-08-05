@@ -18,13 +18,14 @@ rather than complete records.
 > **Read the breaking changes below before upgrading.** This is numbered as a
 > patch, so `^1.2.4` and `~1.2.4` will pick it up automatically, but the
 > supported Node range narrowed and two call patterns that used to work now
-> fail. Pin to `1.2.4` if you are on Node 16 or 18, or if you import from
-> `lib/` directly.
+> fail. Pin to `1.2.4` if you are on Node 16, or if you import from `lib/`
+> directly.
 
 ### Breaking changes
 
-- **Node.js 20 is now the minimum** (was 16). Node 16 and 18 are both
-  end-of-life. CI runs 20, 22, and 24.
+- **Node.js 17 is now the minimum** (was 16). Node 16 reached end-of-life in
+  September 2023. The shipped code uses no API newer than Node 17, and CI runs
+  18, 20, 22, and 24.
 - **Deep imports into `lib/` no longer resolve.** The new `exports` map limits
   the package to its root and six documented subpaths, so
   `require('@trebor/buildhtml/lib/pools')` now throws

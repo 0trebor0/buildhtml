@@ -1367,7 +1367,7 @@ A fully static page ships **zero** JavaScript. The first reactive feature costs 
 
 ## Requirements
 
-- Node.js 20 or newer
+- Node.js 17 or newer (CI covers 18, 20, 22, and 24)
 - CommonJS and ESM
 - No runtime dependencies
 
