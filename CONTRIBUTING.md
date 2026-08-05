@@ -7,7 +7,7 @@ For security problems, do **not** open an issue — see [SECURITY.md](SECURITY.m
 
 ## Requirements
 
-- Node.js 17 or newer is the declared floor; CI runs 18, 20, 22, and 24
+- Node.js 18 or newer (CI runs 18, 20, 22, and 24, so the floor is tested)
 - No runtime dependencies, and the project intends to keep it that way
 
 ```bash
