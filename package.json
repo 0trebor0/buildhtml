@@ -86,7 +86,7 @@
     "access": "public"
   },
   "engines": {
-    "node": ">=20.0.0"
+    "node": ">=17.0.0"
   },
   "bugs": {
     "url": "https://github.com/0trebor0/buildhtml/issues"
