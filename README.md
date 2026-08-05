@@ -4,7 +4,7 @@
 
 `@trebor/buildhtml` is a zero-dependency server-side HTML compiler. Describe pages with JavaScript, render complete HTML on the server, and opt into browser behavior with declarative state, bindings, events, reactive lists, and routing.
 
-[Complete guide and API reference](https://github.com/0trebor0/buildhtml/blob/main/docs/index.html) · [Examples](https://github.com/0trebor0/buildhtml/tree/main/example) · [Report an issue](https://github.com/0trebor0/buildhtml/issues)
+[Complete guide and API reference](https://0trebor0.github.io/buildhtml/docs/) · [Examples](https://github.com/0trebor0/buildhtml/tree/main/example) · [Report an issue](https://github.com/0trebor0/buildhtml/issues)
 
 ```bash
 npm install @trebor/buildhtml
