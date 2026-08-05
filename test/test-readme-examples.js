@@ -62,12 +62,18 @@ for (let index = 0; index < javascriptBlocks.length; index++) {
   }
 }
 assert(esmBlockCount >= 1, 'README must document at least one ESM example');
+let guideEsmBlockCount = 0;
 for (let index = 0; index < guideJavaScriptBlocks.length; index++) {
-  assert.doesNotThrow(
-    () => new Function(guideJavaScriptBlocks[index]),
-    `HTML guide JavaScript block ${index + 1} must parse`
-  );
+  const source = guideJavaScriptBlocks[index];
+  const label = `HTML guide JavaScript block ${index + 1}`;
+  if (isModuleSource(source)) {
+    guideEsmBlockCount++;
+    assertModuleParses(source, label);
+  } else {
+    assert.doesNotThrow(() => new Function(source), `${label} must parse`);
+  }
 }
+assert(guideEsmBlockCount >= 1, 'the guide must document at least one ESM example');
 
 const localLinks = Array.from(readme.matchAll(/\[[^\]]+\]\(([^)]+)\)/g), match => match[1])
   .filter(target => !/^(?:https?:|mailto:|#)/.test(target))
