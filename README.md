@@ -1317,20 +1317,30 @@ The benchmark validates renderer output before measuring throughput, latency, HT
 
 ### Published results
 
-Measured on Node v22.23.1, Intel Core i7-11800H @ 2.30GHz, Windows 11, 68 GB RAM. 50 rows, 7 samples, ~250 ms per sample. Absolute numbers depend on CPU, Node version, power state, and background load — the ratio is the portable part.
+Measured on Node v22.23.1, Intel Core i7-11800H @ 2.30GHz, Windows 11, 68 GB RAM. 50 rows, 7 samples, ~250 ms per sample. Absolute numbers depend on CPU, Node version, power state, and background load — the ratios are the portable part, and they were stable across repeated runs while absolute throughput moved by a third.
 
 | Renderer | median ops/s | median ms | p95 ms | HTML bytes | gzip |
 |---|---:|---:|---:|---:|---:|
-| Raw string baseline | 29,587 | 0.0338 | 0.0362 | 3,927 | 557 |
-| buildhtml 1.2.5 | 2,815 | 0.3553 | 0.3724 | 3,929 | 565 |
+| Raw string baseline | 52,890 | 0.0189 | 0.0193 | 3,927 | 557 |
+| Preact 10.29.8 (string) | 38,495 | 0.0260 | 0.0277 | 3,927 | 557 |
+| buildhtml 1.2.5 | 4,812 | 0.2078 | 0.2101 | 3,929 | 565 |
+| React 19.2.8 (static) | 1,996 | 0.5010 | 0.7013 | 3,927 | 557 |
 
-Reactive compilation (no static-renderer equivalent to compare against):
+All four produce the same page within two bytes. Install `react react-dom preact preact-render-to-string` to reproduce the comparison rows; the benchmark skips them when absent.
+
+Reactive compilation, which has no static-renderer equivalent to compare against:
 
 | Renderer | median ops/s | median ms | p95 ms | HTML bytes | gzip |
 |---|---:|---:|---:|---:|---:|
-| buildhtml 1.2.5 reactive | 3,879 | 0.2578 | 0.2947 | 16,872 | 4,146 |
+| buildhtml 1.2.5 reactive | 7,153 | 0.1398 | 0.1519 | 16,872 | 4,147 |
 
-buildhtml is roughly 10x slower than string concatenation for static output, producing byte-equivalent HTML (3,929 vs 3,927). That ratio held steady across runs even as absolute throughput varied with machine load, so treat the ratio as the portable figure. At ~0.36 ms per page, rendering is not the bottleneck in a typical request; the raw baseline is a floor, not a feature-equivalent competitor.
+Read it this way:
+
+- **About 2.4x faster than React** server rendering, for byte-identical output.
+- **About 8x slower than Preact's string renderer**, which is a specialist at exactly this and does not build a mutable element tree, validate attribute keys, sanitize URLs, or collect scoped CSS.
+- **About 11x slower than raw string concatenation.** That baseline escapes text but is otherwise a hardcoded template with no API — a lower bound on what JavaScript can do, not something you would ship.
+
+At ~0.21 ms per page a single core renders roughly 4,800 pages per second, so for most applications rendering sits well below database and network time. If you are serving a very high volume of static pages and nothing else, Preact's string renderer or hand-written concatenation will beat it.
 
 ### Client runtime size by feature
 
