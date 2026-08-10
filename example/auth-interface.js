@@ -35,8 +35,8 @@ function buildAuthInterfaceDocument() {
       section.h2('Sign in');
       section.form(form => {
         form.addClass('auth-form').attr('method', 'post').attr('action', '/session');
-        form.field('Email address', { type: 'email', name: 'email', attrs: { autocomplete: 'username', required: true } });
-        form.field('Password', { type: 'password', name: 'password', attrs: { autocomplete: 'current-password', required: true } });
+        form.field('Email address', { groupClass: 'form-group', type: 'email', name: 'email', attrs: { autocomplete: 'username', required: true } });
+        form.field('Password', { groupClass: 'form-group', type: 'password', name: 'password', attrs: { autocomplete: 'current-password', required: true } });
         form.checkbox('remember', 'Keep me signed in', false);
         form.button('Sign in').attr('type', 'submit');
       });
@@ -47,10 +47,10 @@ function buildAuthInterfaceDocument() {
       section.h2('Create account');
       section.form(form => {
         form.addClass('auth-form').attr('method', 'post').attr('action', '/users');
-        form.field('Full name', { name: 'name', attrs: { autocomplete: 'name', required: true } });
-        form.field('Email address', { type: 'email', name: 'email', attrs: { autocomplete: 'email', required: true } });
-        form.field('Create password', { type: 'password', name: 'password', attrs: { autocomplete: 'new-password', minlength: 8, required: true } });
-        form.field('Confirm password', { type: 'password', name: 'passwordConfirmation', attrs: { autocomplete: 'new-password', minlength: 8, required: true } });
+        form.field('Full name', { groupClass: 'form-group', name: 'name', attrs: { autocomplete: 'name', required: true } });
+        form.field('Email address', { groupClass: 'form-group', type: 'email', name: 'email', attrs: { autocomplete: 'email', required: true } });
+        form.field('Create password', { groupClass: 'form-group', type: 'password', name: 'password', attrs: { autocomplete: 'new-password', minlength: 8, required: true } });
+        form.field('Confirm password', { groupClass: 'form-group', type: 'password', name: 'passwordConfirmation', attrs: { autocomplete: 'new-password', minlength: 8, required: true } });
         form.button('Create account').attr('type', 'submit');
       });
     });
@@ -60,9 +60,9 @@ function buildAuthInterfaceDocument() {
       section.h2('Account settings');
       section.form(form => {
         form.addClass('auth-form').attr('method', 'post').attr('action', '/account');
-        form.field('Display name', { name: 'displayName', attrs: { autocomplete: 'name', required: true } });
-        form.field('Email address', { type: 'email', name: 'email', attrs: { autocomplete: 'email', required: true } });
-        form.field('New password', { type: 'password', name: 'newPassword', attrs: { autocomplete: 'new-password', minlength: 8 } });
+        form.field('Display name', { groupClass: 'form-group', name: 'displayName', attrs: { autocomplete: 'name', required: true } });
+        form.field('Email address', { groupClass: 'form-group', type: 'email', name: 'email', attrs: { autocomplete: 'email', required: true } });
+        form.field('New password', { groupClass: 'form-group', type: 'password', name: 'newPassword', attrs: { autocomplete: 'new-password', minlength: 8 } });
         form.button('Save settings').attr('type', 'submit');
       });
     });

@@ -13,6 +13,53 @@ rather than complete records.
 
 ## [Unreleased]
 
+## [2.0.0] - 2026-08-10
+
+> **The form and layout helpers no longer add anything you did not pass.**
+> If you style `.form-group` or rely on the built-in `gap`, container width, or
+> divider colour, your pages will lose that styling on upgrade. See the
+> migration notes below. Pin to `1.2.5` if you are not ready to move.
+
+### Breaking changes
+
+- **Form helpers no longer inject class names.** `formGroup()`, `field()`,
+  `checkbox()`, and `radio()` added `form-group`, `form-check`,
+  `form-radio-group`, and `form-radio` to their wrappers. A rendering library
+  should not put selectors in the output the caller never asked for — they
+  collide with existing stylesheets and are invisible at the call site. Pass
+  `groupClass` to `field()`, or call `addClass()` on the returned element.
+- **Layout helpers no longer inject design values.** `grid()`, `flex()`,
+  `stack()`, `row()`, and `columns()` no longer default `gap` to `16px`;
+  `flex()` no longer emits `flex-direction: row`; `container()` no longer
+  defaults to `max-width: 1200px` with `padding: 0 20px`; `spacer()` no longer
+  defaults to `height: 16px`; `divider()` no longer emits a `#e0e0e0` border
+  with `16px 0` margin. Each still emits the display mode it is named for
+  (`display: grid`, `display: flex`, `container`'s `margin: 0 auto`,
+  `center`'s centring) plus whatever you pass. Supply spacing, sizing, and
+  colour yourself.
+- **`type="text"` is no longer emitted when no type is given.** Applies to
+  `input()`, `formGroup()`, and `field()`. A bare `<input>` is already text by
+  browser default, so the rendered result is unchanged; only the markup differs.
+- **`img()` no longer emits `alt=""` when no alt is given.** An empty `alt` means
+  "decorative", which is a claim about the image the caller never made. Pass
+  `alt` explicitly — including `''` when the image really is decorative.
+
+Generated IDs are unaffected: `formGroup()`, `field()`, `checkbox()`, and
+`radio()` still generate the ID that pairs each `<label for>` with its input,
+because the markup cannot express that association without one. The atomic class
+names produced by `css()` are also unaffected — they carry styles you requested.
+
+### Migration
+
+- Add `groupClass: 'form-group'` to `field()` calls whose wrappers you style, or
+  switch those rules to your own class via `addClass()` on the returned `group`.
+- Pass the spacing you were relying on: `grid(2, items, '16px')`,
+  `container(fn, '1200px')`, `spacer('16px')`,
+  `divider({ color: '#e0e0e0', margin: '16px 0' })`.
+- `formGroup()` and `checkbox()` return the wrapper element, and `field()`
+  returns `{ group, label, input }`, so any of these can be styled at the call
+  site without a class.
+
 ## [1.2.5] - 2026-08-05
 
 > **Read the breaking changes below before upgrading.** This is numbered as a
@@ -144,5 +191,6 @@ Client runtime security fixes and the fetch example.
 
 Initial public releases.
 
-[Unreleased]: https://github.com/0trebor0/buildhtml/compare/v1.2.5...HEAD
+[Unreleased]: https://github.com/0trebor0/buildhtml/compare/v2.0.0...HEAD
+[2.0.0]: https://github.com/0trebor0/buildhtml/compare/v1.2.5...v2.0.0
 [1.2.5]: https://github.com/0trebor0/buildhtml/releases/tag/v1.2.5

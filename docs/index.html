@@ -211,14 +211,15 @@ input.placeholder('you@example.com');</code></pre>
         <div class="table-wrap"><table>
           <thead><tr><th>Option</th><th>Purpose</th></tr></thead>
           <tbody>
-            <tr><td><code>type</code></td><td>Input type; defaults to <code>text</code>.</td></tr>
+            <tr><td><code>type</code></td><td>Input type; omitted from the markup when not given.</td></tr>
             <tr><td><code>id</code></td><td>Explicit input and label target ID; otherwise generated uniquely.</td></tr>
             <tr><td><code>name</code></td><td>Submitted form name.</td></tr>
             <tr><td><code>bind</code></td><td>State key for two-way input binding.</td></tr>
-            <tr><td><code>groupClass</code></td><td>Wrapper class; defaults to <code>form-group</code>.</td></tr>
+            <tr><td><code>groupClass</code></td><td>Wrapper class; no class is added when not given.</td></tr>
             <tr><td><code>attrs</code></td><td>Additional input attributes.</td></tr>
           </tbody>
         </table></div>
+        <p>The form and layout helpers build structure only. They add no class, style, or attribute you did not pass, so nothing collides with your stylesheet. The one exception is the generated ID pairing each <code>&lt;label for&gt;</code> with its input.</p>
       </section>
 
       <section id="concepts" data-search="how works compiled runtime browser state server">

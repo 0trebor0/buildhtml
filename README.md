@@ -297,14 +297,16 @@ input.placeholder('you@example.com');
 
 | Option | Type | Purpose |
 |--------|------|---------|
-| `type` | string | Input type; defaults to `text` |
+| `type` | string | Input type; omitted from the markup when not given |
 | `id` | string | Explicit input and label target ID; otherwise generated uniquely |
 | `name` | string | Submitted form name |
 | `bind` | state key | Adds two-way state binding |
-| `groupClass` | string | Wrapper class; defaults to `form-group` |
+| `groupClass` | string | Wrapper class; no class is added when not given |
 | `attrs` | object | Additional input attributes |
 
 Multiple fields may bind to the same state key without sharing an HTML ID. Run `doc.validate()` before rendering to catch any explicitly duplicated IDs.
+
+The form and layout helpers build structure only. They add no class, style, or attribute you did not pass — no `form-group` wrapper class, no default `gap`, container width, or divider colour — so nothing collides with your stylesheet. The one exception is the generated ID pairing each `<label for>` with its input, which the markup cannot express without it. Style the elements these helpers return with `addClass()` or `css()`.
 
 ## Reactive state and events
 

@@ -458,7 +458,7 @@ test('doc.formGroup()', () => {
   const doc = new Document();
   doc.formGroup('Email', 'email', { placeholder: 'you@example.com' });
   const html = doc.render();
-  assert(html.includes('form-group'), 'form-group class');
+  assert(!html.includes('class='), 'no class injected into the group');
   assert(html.includes('<label'), 'has label');
   assert(html.includes('Email'), 'label text');
   assert(html.includes('type="email"'), 'input type');
@@ -474,7 +474,7 @@ test('doc.field() returns accessible references and unique ids for shared state'
     type: 'email', name: 'accountEmail', bind: 'email'
   });
 
-  assert(login.group.hasClass('form-group'), 'field returns group reference');
+  assert(login.group && !login.group.hasClass('form-group'), 'field returns an unstyled group reference');
   assert(login.label.attrs.for === login.input.attrs.id, 'field label targets its input');
   assert(account.label.attrs.for === account.input.attrs.id, 'second label targets its input');
   assert(login.input.attrs.id !== account.input.attrs.id, 'fields sharing state receive unique ids');
@@ -622,6 +622,32 @@ test('doc.columns()', () => {
   assert(html.includes('grid'), 'uses grid');
 });
 
+test('helpers emit no styling the caller did not pass', () => {
+  const doc = new Document();
+  doc.grid(2, ['A']);
+  doc.flex(['B']);
+  doc.stack(['C']);
+  doc.spacer();
+  doc.divider();
+  doc.container((c) => c.child('p').text('D'));
+  doc.checkbox('terms', 'I agree');
+  doc.radio('plan', [{ value: 'free', label: 'Free' }]);
+  doc.input();
+  doc.img('/logo.png');
+  const html = doc.render();
+
+  // css() emits generated atomic classes for styles the caller asked for; only
+  // library-authored semantic names count as injected.
+  assert(!/class="[^"]*form-/.test(html), 'no form class names injected');
+  assert(!html.includes('gap:'), 'no default gap');
+  assert(!html.includes('max-width:'), 'no default container width');
+  assert(!html.includes('padding:'), 'no default container padding');
+  assert(!html.includes('height:'), 'no default spacer height');
+  assert(html.includes('<hr style=""') || html.includes('<hr>'), 'bare divider has no border or margin');
+  assert(!html.includes('type="text"'), 'no default input type');
+  assert(!html.includes('alt='), 'no default img alt');
+});
+
 /* ==== COMPONENT EXTEND ==== */
 
 test('components.extend()', () => {
@@ -706,7 +732,7 @@ test('Full page with all new APIs', () => {
   assert(html.includes('background-color:#1a1a1a'), 'body css');
   assert(html.includes('Hello World'), 'content');
   assert(html.includes('style="color:cyan;"'), 'inline style');
-  assert(html.includes('form-group'), 'form group');
+  assert(html.includes('name="fullname"'), 'form group');
   assert(html.includes('<hr'), 'divider');
   assert(html.includes('grid'), 'grid');
 });
