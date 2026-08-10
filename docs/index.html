@@ -756,16 +756,67 @@ doc.historyRouter({
               <tr><td><code>a</code></td><td><code>(href, text?)</code></td><td>Element</td><td>No</td><td>No</td><td><code>doc.a('/help', 'Help')</code></td></tr>
               <tr><td><code>button</code></td><td><code>(text?)</code></td><td>Element</td><td>No</td><td>No</td><td><code>doc.button('Save')</code></td></tr>
               <tr><td><code>img</code></td><td><code>(src, alt?)</code></td><td>Element</td><td>Yes</td><td>No</td><td><code>doc.img('/logo.svg', 'Logo')</code></td></tr>
-              <tr><td><code>input</code></td><td><code>(type = 'text', attrs = {})</code></td><td>Element</td><td>Yes</td><td>No</td><td><code>doc.input('email', { required: true })</code></td></tr>
+              <tr><td><code>input</code></td><td><code>(type?, attrs = {})</code></td><td>Element</td><td>Yes</td><td>No</td><td><code>doc.input('email', { required: true })</code></td></tr>
               <tr><td><code>textarea</code></td><td><code>(attrs = {})</code></td><td>Element</td><td>No</td><td>No</td><td><code>doc.textarea({ name: 'notes' })</code></td></tr>
               <tr><td><code>select</code></td><td><code>(options = [], attrs = {})</code></td><td>Element</td><td>No</td><td>No</td><td><code>doc.select([{ value: 'en', text: 'English' }])</code></td></tr>
               <tr><td><code>hr</code></td><td><code>()</code></td><td>Element</td><td>Yes</td><td>No</td><td><code>doc.hr()</code></td></tr>
               <tr><td><code>br</code></td><td><code>()</code></td><td>Parent object</td><td>Yes</td><td>No</td><td><code>doc.p('One').br().text('Two')</code></td></tr>
             </tbody>
           </table></div>
-          <p>Every listed shortcut exists on both <code>Document</code> and <code>Element</code>. Except for <code>br()</code>, each returns the created element. Text is escaped. <code>img()</code> defaults <code>alt</code> to an empty string for decorative images.</p>
+          <p>Every listed shortcut exists on both <code>Document</code> and <code>Element</code>. Except for <code>br()</code>, each returns the created element. Text is escaped. Omitted optional arguments are omitted from the markup: <code>doc.input()</code> renders <code>&lt;input&gt;</code>, not <code>&lt;input type="text"&gt;</code>, and <code>doc.img('/logo.svg')</code> renders no <code>alt</code>. Pass <code>alt</code> explicitly on every image — <code>''</code> for decorative ones, meaningful text for informative ones.</p>
           <p>In development, extra positional arguments produce the stable <code>W_SHORTCUT_ARGUMENT</code> warning rather than disappearing silently. Production remains quiet, while TypeScript rejects the unsupported call during development.</p>
-          <p>Higher-level helpers include <code>field</code>, <code>formGroup</code>, <code>checkbox</code>, <code>radio</code>, <code>fieldset</code>, <code>hiddenInput</code>, <code>grid</code>, <code>flex</code>, <code>stack</code>, <code>row</code>, <code>center</code>, <code>container</code>, <code>spacer</code>, <code>divider</code>, <code>columns</code>, <code>list</code>, and <code>dataTable</code>.</p>
+
+          <h4>Form helpers</h4>
+          <div class="table-wrap"><table>
+            <thead><tr><th>Method</th><th>Signature</th><th>Returns</th><th>Produces</th></tr></thead>
+            <tbody>
+              <tr><td><code>field</code></td><td><code>(label, options = {})</code></td><td><code>{ group, label, input }</code></td><td><code>&lt;div&gt;&lt;label for&gt;&lt;input id&gt;&lt;/div&gt;</code>, with the label wired to the input.</td></tr>
+              <tr><td><code>formGroup</code></td><td><code>(label, type?, attrs = {})</code></td><td>Wrapper element</td><td>Same structure as <code>field</code>, but only the wrapper is returned.</td></tr>
+              <tr><td><code>checkbox</code></td><td><code>(name, label, checked = false)</code></td><td>Wrapper element</td><td><code>&lt;div&gt;&lt;input type="checkbox" name id&gt;&lt;label for&gt;&lt;/div&gt;</code>.</td></tr>
+              <tr><td><code>radio</code></td><td><code>(name, options = [])</code></td><td>Wrapper element</td><td>One <code>&lt;div&gt;&lt;input type="radio"&gt;&lt;label&gt;&lt;/div&gt;</code> per option. Options are <code>{ value, label, checked }</code>, falling back to <code>text</code> then <code>value</code> for the visible label.</td></tr>
+              <tr><td><code>fieldset</code></td><td><code>(legend?, setupFn?)</code></td><td><code>&lt;fieldset&gt;</code></td><td>Adds a <code>&lt;legend&gt;</code> when one is given; <code>setupFn</code> receives the fieldset.</td></tr>
+              <tr><td><code>hiddenInput</code></td><td><code>(name, value)</code></td><td>Element</td><td><code>&lt;input type="hidden"&gt;</code>.</td></tr>
+            </tbody>
+          </table></div>
+          <p>Each of these generates the ID pairing <code>&lt;label for&gt;</code> with its input unless you supply one, via <code>field({ id })</code> or <code>attrs.id</code> on <code>formGroup()</code>.</p>
+
+          <h4>Layout helpers</h4>
+          <div class="table-wrap"><table>
+            <thead><tr><th>Method</th><th>Signature</th><th>Returns</th><th>Produces</th></tr></thead>
+            <tbody>
+              <tr><td><code>grid</code></td><td><code>(columns?, items?, gap?)</code></td><td>Element</td><td><code>display: grid</code>. A number becomes <code>repeat(n, 1fr)</code>; a string is used as-is.</td></tr>
+              <tr><td><code>flex</code></td><td><code>(items?, options = {})</code></td><td>Element</td><td><code>display: flex</code>. Options are <code>direction</code>, <code>gap</code>, <code>align</code>, <code>justify</code>, <code>wrap</code>.</td></tr>
+              <tr><td><code>stack</code>, <code>row</code></td><td><code>(items?, gap?)</code></td><td>Element</td><td><code>flex</code> with <code>flex-direction</code> set to <code>column</code> or <code>row</code>.</td></tr>
+              <tr><td><code>center</code></td><td><code>(setupFn?)</code></td><td>Element</td><td><code>flex</code> centred on both axes; <code>setupFn</code> receives the element.</td></tr>
+              <tr><td><code>container</code></td><td><code>(setupFn?, maxWidth?)</code></td><td>Element</td><td><code>margin: 0 auto</code>, plus <code>max-width</code> when given.</td></tr>
+              <tr><td><code>spacer</code></td><td><code>(height?)</code></td><td>Element</td><td>Empty <code>&lt;div&gt;</code>, with <code>height</code> when given.</td></tr>
+              <tr><td><code>divider</code></td><td><code>(options = {})</code></td><td><code>&lt;hr&gt;</code></td><td>Bare <code>&lt;hr&gt;</code>. <code>color</code> adds a top border; <code>margin</code> sets spacing.</td></tr>
+              <tr><td><code>columns</code></td><td><code>(count, columnFns = [], gap?)</code></td><td>Element</td><td>A grid with one column <code>&lt;div&gt;</code> per function.</td></tr>
+            </tbody>
+          </table></div>
+          <p><code>grid()</code>, <code>flex()</code>, <code>stack()</code>, and <code>row()</code> share the same <code>items</code> array, and each entry is handled by type: a function is called with a fresh child <code>&lt;div&gt;</code>, an element is appended as-is, and anything else is stringified into a <code>&lt;div&gt;</code>. Prefer the callback form — an element made with <code>create()</code> is already attached to the element that created it, so passing one as an item appends it a second time rather than moving it.</p>
+          <p>Every spacing, sizing, and colour argument is optional and emits nothing when omitted. <code>grid(2, items)</code> produces <code>display: grid; grid-template-columns: repeat(2, 1fr)</code> and no <code>gap</code>.</p>
+
+          <h4>Data helpers</h4>
+          <div class="table-wrap"><table>
+            <thead><tr><th>Method</th><th>Signature</th><th>Returns</th><th>Produces</th></tr></thead>
+            <tbody>
+              <tr><td><code>list</code></td><td><code>(items, renderer?, tag = 'ul')</code></td><td>The list element</td><td>One <code>&lt;li&gt;</code> per item. <code>renderer(li, item, index)</code> fills it, otherwise the item is stringified.</td></tr>
+              <tr><td><code>dataTable</code></td><td><code>(headers?, rows = [], options = {})</code></td><td><code>&lt;table&gt;</code></td><td><code>&lt;thead&gt;</code> when headers exist, then a <code>&lt;tbody&gt;</code> row per entry. Accepts array rows or object rows; with object rows <code>headers</code> selects and orders the keys, or <code>{ autoHeaders: true }</code> takes them from the first row. <code>{ class }</code> adds a class to the table.</td></tr>
+              <tr><td><code>each</code></td><td><code>(items, fn)</code></td><td>The same element, for chaining</td><td>Nothing on its own; <code>fn(this, item, index)</code> builds each iteration.</td></tr>
+              <tr><td><code>when</code></td><td><code>(condition, fn)</code></td><td>The same element, for chaining</td><td>Nothing unless <code>condition</code> is truthy, then <code>fn(this)</code> runs.</td></tr>
+            </tbody>
+          </table></div>
+
+          <h4>Styling what a helper returns</h4>
+          <p>Helpers return real elements, so style them at the call site with <code>addClass()</code>, <code>css()</code>, or any other element method. <code>field()</code> returns the group, label, and input separately, so each part is reachable:</p>
+          <pre><code>const jobCode = form.field('Job Code', {
+  groupClass: 'form-group',
+  attrs: { autocomplete: 'off' },
+});
+jobCode.label.addClass('field-label');
+jobCode.input.addClass('field-input').css({ width: '100%' });</code></pre>
+          <p><code>formGroup()</code>, <code>checkbox()</code>, and <code>radio()</code> return only their wrapper; use <code>field()</code> when you need the label and input references, or reach into the wrapper with <code>find('label')</code> and <code>find('input')</code>.</p>
         </div>
 
         <div class="api-group" data-search="exports configure metrics cache components template">
