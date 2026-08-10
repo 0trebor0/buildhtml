@@ -80,6 +80,7 @@ The callbacks are written in the server file but compiled to browser JavaScript.
 - [Security](#security)
 - [Common mistakes](#common-mistakes)
 - [API overview](#api-overview)
+- [Higher-level helpers](#higher-level-helpers)
 - [Full documentation](#full-documentation)
 
 ## Create pages and elements
@@ -1152,23 +1153,95 @@ The complete signature reference, including the `summary()` shortcut:
 | `a` | `(href, text?)` | `Element` | No | No | `doc.a('/help', 'Help')` |
 | `button` | `(text?)` | `Element` | No | No | `doc.button('Save')` |
 | `img` | `(src, alt?)` | `Element` | Yes | No | `doc.img('/logo.svg', 'Logo')` |
-| `input` | `(type = 'text', attrs = {})` | `Element` | Yes | No | `doc.input('email', { required: true })` |
+| `input` | `(type?, attrs = {})` | `Element` | Yes | No | `doc.input('email', { required: true })` |
 | `textarea` | `(attrs = {})` | `Element` | No | No | `doc.textarea({ name: 'notes' })` |
 | `select` | `(options = [], attrs = {})` | `Element` | No | No | `doc.select([{ value: 'en', text: 'English' }])` |
 | `hr` | `()` | `Element` | Yes | No | `doc.hr()` |
 | `br` | `()` | Parent object | Yes | No | `doc.p('Line one').br().text('Line two')` |
 
-All listed shortcuts are available on both `Document` and `Element`. Except for `br()`, each returns the created child element. `img()` defaults `alt` to an empty string for decorative images; provide meaningful alternative text for informative images.
+All listed shortcuts are available on both `Document` and `Element`. Except for `br()`, each returns the created child element. Omitted optional arguments are omitted from the markup: `doc.input()` renders `<input>` rather than `<input type="text">`, and `doc.img('/logo.svg')` renders no `alt`. Pass `alt` explicitly on every image — `''` for decorative ones, meaningful text for informative ones.
 
 In development mode, an extra positional argument produces `W_SHORTCUT_ARGUMENT` instead of being silently ignored. Production output remains quiet, and TypeScript rejects the unsupported call before runtime.
 
-Higher-level helpers include:
+### Higher-level helpers
 
-```text
-field · formGroup · checkbox · radio · fieldset · hiddenInput
-grid · flex · stack · row · center · container
-spacer · divider · columns · list · dataTable
+These compose the tag shortcuts into common structures. Like the shortcuts, they exist on both `Document` and `Element`, and they add no class, style, or attribute you did not pass — see [Styling what a helper returns](#styling-what-a-helper-returns).
+
+#### Form helpers
+
+| Method | Signature | Returns | Produces |
+|--------|-----------|---------|----------|
+| `field` | `(label, options = {})` | `{ group, label, input }` | `<div><label for><input id></div>`, with the label wired to the input |
+| `formGroup` | `(label, type?, attrs = {})` | Wrapper `Element` | Same structure as `field`, but only the wrapper is returned |
+| `checkbox` | `(name, label, checked = false)` | Wrapper `Element` | `<div><input type="checkbox" name id><label for></div>` |
+| `radio` | `(name, options = [])` | Wrapper `Element` | One `<div><input type="radio"><label></div>` per option, inside a wrapper |
+| `fieldset` | `(legend?, setupFn?)` | `<fieldset>` `Element` | `<fieldset>` with a `<legend>` when one is given; `setupFn` receives the fieldset |
+| `hiddenInput` | `(name, value)` | `Element` | `<input type="hidden">` |
+
+`field()` is the one to reach for: its [options table](#accessible-form-fields) covers `type`, `id`, `name`, `bind`, `groupClass`, and `attrs`, and it hands back all three elements. `radio()` options are `{ value, label, checked }`, falling back to `text` then `value` for the visible label.
+
+Each of these generates the ID pairing `<label for>` with its input unless you supply one — `field({ id })`, or `attrs.id` on `formGroup()`.
+
+#### Layout helpers
+
+| Method | Signature | Returns | Produces |
+|--------|-----------|---------|----------|
+| `grid` | `(columns?, items?, gap?)` | `Element` | `display: grid`; a number becomes `repeat(n, 1fr)`, a string is used as-is |
+| `flex` | `(items?, options = {})` | `Element` | `display: flex`; options are `direction`, `gap`, `align`, `justify`, `wrap` |
+| `stack` | `(items?, gap?)` | `Element` | `flex` with `flex-direction: column` |
+| `row` | `(items?, gap?)` | `Element` | `flex` with `flex-direction: row` |
+| `center` | `(setupFn?)` | `Element` | `flex` centred on both axes; `setupFn` receives the element |
+| `container` | `(setupFn?, maxWidth?)` | `Element` | `margin: 0 auto`, plus `max-width` when given |
+| `spacer` | `(height?)` | `Element` | Empty `<div>`, with `height` when given |
+| `divider` | `(options = {})` | `<hr>` `Element` | Bare `<hr>`; `color` adds a top border and `margin` sets spacing |
+| `columns` | `(count, columnFns = [], gap?)` | `Element` | A grid with one column `<div>` per function |
+
+`grid()`, `flex()`, `stack()`, and `row()` take the same `items` array, and each entry is handled by type: a function is called with a fresh child `<div>`, an `Element` is appended as-is, and anything else is stringified into a `<div>`.
+
+```javascript
+doc.grid(3, [
+  (cell) => cell.h3('Revenue'),
+  (cell) => cell.p('Up 12% this quarter'),
+  'Plain text',
+], '16px');
 ```
+
+Prefer the callback form. An element made with `create()` is already attached to the element that created it, so passing one as an item appends it a second time rather than moving it.
+
+Every spacing, sizing, and colour argument above is optional and emits nothing when omitted. `grid(2, items)` produces `display: grid; grid-template-columns: repeat(2, 1fr)` and no `gap`.
+
+#### Data helpers
+
+| Method | Signature | Returns | Produces |
+|--------|-----------|---------|----------|
+| `list` | `(items, renderer?, tag = 'ul')` | The list `Element` | One `<li>` per item; `renderer(li, item, index)` fills it, otherwise the item is stringified |
+| `dataTable` | `(headers?, rows = [], options = {})` | `<table>` `Element` | `<thead>` when headers exist, then a `<tbody>` row per entry |
+| `each` | `(items, fn)` | The same element, for chaining | Nothing on its own; `fn(this, item, index)` builds each iteration |
+| `when` | `(condition, fn)` | The same element, for chaining | Nothing unless `condition` is truthy, then `fn(this)` runs |
+
+`dataTable()` accepts array rows or object rows. With object rows, `headers` selects and orders the keys; omit `headers` and pass `{ autoHeaders: true }` to take them from the first row. `{ class }` adds a class to the table.
+
+```javascript
+doc.dataTable(null, [
+  { name: 'Ada', role: 'Engineer' },
+  { name: 'Grace', role: 'Admiral' },
+], { autoHeaders: true, class: 'data-table' });
+```
+
+#### Styling what a helper returns
+
+Helpers return real elements, so style them at the call site with `addClass()`, `css()`, or any other element method. `field()` returns the group, label, and input separately, so each part is reachable:
+
+```javascript
+const jobCode = form.field('Job Code', {
+  groupClass: 'form-group',
+  attrs: { autocomplete: 'off' },
+});
+jobCode.label.addClass('field-label');
+jobCode.input.addClass('field-input').css({ width: '100%' });
+```
+
+`formGroup()`, `checkbox()`, and `radio()` return only their wrapper; use `field()` when you need the label and input references, or reach into the wrapper with `find('label')` and `find('input')`.
 
 ## TypeScript
 
