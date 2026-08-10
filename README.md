@@ -1191,7 +1191,7 @@ Each of these generates the ID pairing `<label for>` with its input unless you s
 | `stack` | `(items?, gap?)` | `Element` | `flex` with `flex-direction: column` |
 | `row` | `(items?, gap?)` | `Element` | `flex` with `flex-direction: row` |
 | `center` | `(setupFn?)` | `Element` | `flex` centred on both axes; `setupFn` receives the element |
-| `container` | `(setupFn?, maxWidth?)` | `Element` | `margin: 0 auto`, plus `max-width` when given |
+| `container` | `(setupFn?, maxWidth?)` | `Element` | A `<div>` carrying `max-width` when given, and nothing otherwise; centre it yourself with `css({ margin: '0 auto' })` |
 | `spacer` | `(height?)` | `Element` | Empty `<div>`, with `height` when given |
 | `divider` | `(options = {})` | `<hr>` `Element` | Bare `<hr>`; `color` adds a top border and `margin` sets spacing |
 | `columns` | `(count, columnFns = [], gap?)` | `Element` | A grid with one column `<div>` per function |

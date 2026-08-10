@@ -642,6 +642,7 @@ test('helpers emit no styling the caller did not pass', () => {
   assert(!html.includes('gap:'), 'no default gap');
   assert(!html.includes('max-width:'), 'no default container width');
   assert(!html.includes('padding:'), 'no default container padding');
+  assert(!html.includes('margin:'), 'no default container margin');
   assert(!html.includes('height:'), 'no default spacer height');
   assert(html.includes('<hr style=""') || html.includes('<hr>'), 'bare divider has no border or margin');
   assert(!html.includes('type="text"'), 'no default input type');
