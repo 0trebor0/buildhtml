@@ -45,7 +45,7 @@ function buildAccountDocument({ values = {}, errors = {}, saved = false } = {}) 
         form.attr('method', 'post').attr('action', '/account');
 
         const displayName = form.field('Display name', {
-          id: 'display-name', name: 'displayName',
+          id: 'display-name', name: 'displayName', groupClass: 'form-group',
           attrs: {
             value: values.displayName || '', autocomplete: 'name', required: true,
             'aria-invalid': errors.displayName ? 'true' : null,
@@ -57,7 +57,7 @@ function buildAccountDocument({ values = {}, errors = {}, saved = false } = {}) 
         }
 
         const email = form.field('Email address', {
-          type: 'email', id: 'email', name: 'email',
+          type: 'email', id: 'email', name: 'email', groupClass: 'form-group',
           attrs: {
             value: values.email || '', autocomplete: 'email', required: true,
             'aria-invalid': errors.email ? 'true' : null,
@@ -69,7 +69,7 @@ function buildAccountDocument({ values = {}, errors = {}, saved = false } = {}) 
         }
 
         const password = form.field('New password', {
-          type: 'password', id: 'password', name: 'password',
+          type: 'password', id: 'password', name: 'password', groupClass: 'form-group',
           attrs: {
             autocomplete: 'new-password', minlength: 8, required: true,
             'aria-invalid': errors.password ? 'true' : null,
