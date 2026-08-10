@@ -788,7 +788,7 @@ doc.historyRouter({
               <tr><td><code>flex</code></td><td><code>(items?, options = {})</code></td><td>Element</td><td><code>display: flex</code>. Options are <code>direction</code>, <code>gap</code>, <code>align</code>, <code>justify</code>, <code>wrap</code>.</td></tr>
               <tr><td><code>stack</code>, <code>row</code></td><td><code>(items?, gap?)</code></td><td>Element</td><td><code>flex</code> with <code>flex-direction</code> set to <code>column</code> or <code>row</code>.</td></tr>
               <tr><td><code>center</code></td><td><code>(setupFn?)</code></td><td>Element</td><td><code>flex</code> centred on both axes; <code>setupFn</code> receives the element.</td></tr>
-              <tr><td><code>container</code></td><td><code>(setupFn?, maxWidth?)</code></td><td>Element</td><td><code>margin: 0 auto</code>, plus <code>max-width</code> when given.</td></tr>
+              <tr><td><code>container</code></td><td><code>(setupFn?, maxWidth?)</code></td><td>Element</td><td>A <code>&lt;div&gt;</code> carrying <code>max-width</code> when given, and nothing otherwise. Centre it yourself with <code>css({ margin: '0 auto' })</code>.</td></tr>
               <tr><td><code>spacer</code></td><td><code>(height?)</code></td><td>Element</td><td>Empty <code>&lt;div&gt;</code>, with <code>height</code> when given.</td></tr>
               <tr><td><code>divider</code></td><td><code>(options = {})</code></td><td><code>&lt;hr&gt;</code></td><td>Bare <code>&lt;hr&gt;</code>. <code>color</code> adds a top border; <code>margin</code> sets spacing.</td></tr>
               <tr><td><code>columns</code></td><td><code>(count, columnFns = [], gap?)</code></td><td>Element</td><td>A grid with one column <code>&lt;div&gt;</code> per function.</td></tr>

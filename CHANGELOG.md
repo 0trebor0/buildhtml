@@ -31,12 +31,14 @@ rather than complete records.
 - **Layout helpers no longer inject design values.** `grid()`, `flex()`,
   `stack()`, `row()`, and `columns()` no longer default `gap` to `16px`;
   `flex()` no longer emits `flex-direction: row`; `container()` no longer
-  defaults to `max-width: 1200px` with `padding: 0 20px`; `spacer()` no longer
-  defaults to `height: 16px`; `divider()` no longer emits a `#e0e0e0` border
-  with `16px 0` margin. Each still emits the display mode it is named for
-  (`display: grid`, `display: flex`, `container`'s `margin: 0 auto`,
-  `center`'s centring) plus whatever you pass. Supply spacing, sizing, and
-  colour yourself.
+  defaults to `max-width: 1200px` with `padding: 0 20px`, and no longer centres
+  itself with `margin: 0 auto`; `spacer()` no longer defaults to
+  `height: 16px`; `divider()` no longer emits a `#e0e0e0` border with `16px 0`
+  margin, so a divider given only a `margin` now shows the browser's default
+  `<hr>` border. Each helper still emits the display mode it is named for
+  (`display: grid`, `display: flex`, `center`'s centring), because that is what
+  you asked for by calling it, plus whatever you pass. Supply spacing, sizing,
+  and colour yourself with `css()`.
 - **`type="text"` is no longer emitted when no type is given.** Applies to
   `input()`, `formGroup()`, and `field()`. A bare `<input>` is already text by
   browser default, so the rendered result is unchanged; only the markup differs.
@@ -54,8 +56,8 @@ names produced by `css()` are also unaffected — they carry styles you requeste
 - Add `groupClass: 'form-group'` to `field()` calls whose wrappers you style, or
   switch those rules to your own class via `addClass()` on the returned `group`.
 - Pass the spacing you were relying on: `grid(2, items, '16px')`,
-  `container(fn, '1200px')`, `spacer('16px')`,
-  `divider({ color: '#e0e0e0', margin: '16px 0' })`.
+  `spacer('16px')`, `divider({ color: '#e0e0e0', margin: '16px 0' })`. For a
+  centred container, `container(fn, '1200px').css({ margin: '0 auto', padding: '0 20px' })`.
 - `formGroup()` and `checkbox()` return the wrapper element, and `field()`
   returns `{ group, label, input }`, so any of these can be styled at the call
   site without a class.
