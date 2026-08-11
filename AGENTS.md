@@ -33,6 +33,32 @@
 * Do not edit secrets, `.env` files, tokens, keys, credentials, or generated sensitive values.
 * Preserve all existing authentication, authorization, validation, and security checks.
 
+### Progress Tracking Is Required
+
+* Create a `TASK_PROGRESS.md` file in the repository root to keep track of where the task currently stands.
+* Record the task objective and current status.
+* List all relevant files inspected.
+* List every file created, modified, or deleted.
+* Record what has been completed and what still needs to be done.
+* Record tests added or updated.
+* Record tests run and their results.
+* Record any blockers, unresolved questions, assumptions, limitations, or remaining risks.
+* Update the file after every meaningful change and before ending the work session.
+* Keep the file concise, factual, and up to date.
+* Do not include secrets, tokens, keys, credentials, or other sensitive values.
+
+### Changelog Is Required
+
+* Create a `CHANGELOG.md` file in the repository root if one does not already exist.
+* Record completed changes that affect users, integrations, APIs, configuration, data formats, deployment, or documented behavior.
+* Group changes under clear version or date headings.
+* Categorize entries when appropriate, such as Added, Changed, Fixed, Deprecated, Removed, or Security.
+* Write entries in clear language that explains what changed and why it matters.
+* Do not include unfinished work, investigation notes, temporary implementation details, or internal progress updates.
+* Do not duplicate the contents of `TASK_PROGRESS.md`.
+* Update the changelog before completing any task that introduces a changelog-worthy change.
+* Do not rewrite or remove existing changelog history unless explicitly asked.
+
 ### Testing Is Required
 
 * Identify the relevant test method before or while implementing the change.
@@ -52,10 +78,9 @@
 * Do not rewrite, reset, rebase, or otherwise change git history.
 * Do not discard existing user changes.
 * Do not modify generated files unless the task specifically requires regeneration.
-* Never add Co-Authored-By or any AI attribution lines
-* Never add Claude attribution to PR descriptions
+* Never add Co-Authored-By or any AI attribution lines.
+* Never add Claude attribution to PR descriptions.
 * Commit message format: [type]: [description]
-
 
 ### Final Response Requirements
 
@@ -67,3 +92,5 @@ The final response must include:
 * Tests run and their results.
 * Anything not tested or not completed.
 * Any assumptions, limitations, or remaining risks.
+* Confirmation that `TASK_PROGRESS.md` is up to date.
+* Confirmation that `CHANGELOG.md` was updated when required.
