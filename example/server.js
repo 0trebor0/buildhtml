@@ -1,3 +1,5 @@
+// Unlike the other examples, this one needs Express, which is not a dependency
+// of this package. Install it before running:  npm install --no-save express
 const express = require('express');
 const { page, createCachedRenderer, getCacheStats } = require('../');
 
