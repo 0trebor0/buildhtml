@@ -283,6 +283,35 @@ test('optional object and array parameters tolerate null', () => {
   assert.doesNotThrow(() => doc.radio('n', null), 'radio(name, null)');
   assert.doesNotThrow(() => doc.columns(2, null), 'columns(count, null)');
 
+  // Guarding the collection is not enough: a null entry *inside* it still
+  // reached the property reads. grid/flex/list already tolerate one, so these
+  // were the outliers. A nullish entry is skipped rather than rendered.
+  assert.doesNotThrow(() => doc.select([null, undefined]), 'select([null, undefined])');
+  assert.doesNotThrow(() => doc.radio('n', [null, undefined]), 'radio(name, [null, undefined])');
+  assert.doesNotThrow(() => doc.dataTable(null, [null]), 'dataTable(null, [null])');
+  assert.doesNotThrow(() => doc.dataTable(['a'], [null]), 'dataTable(headers, [null])');
+  assert.doesNotThrow(
+    () => doc.dataTable(null, [null], { autoHeaders: true }),
+    'dataTable(null, [null], { autoHeaders: true })'
+  );
+
+  const skipped = new api.Document();
+  assert.strictEqual(
+    skipped.select([null, { value: 'a', text: 'A' }]).html(),
+    '<select><option value="a">A</option></select>',
+    'a nullish option is skipped, not rendered as an empty <option>'
+  );
+  assert.strictEqual(
+    skipped.radio('n', [null]).html(),
+    '<div></div>',
+    'a nullish radio option is skipped'
+  );
+  assert.strictEqual(
+    skipped.dataTable(['a'], [null, { a: '1' }]).html(),
+    '<table><thead><tr><th>a</th></tr></thead><tbody><tr></tr><tr><td>1</td></tr></tbody></table>',
+    'a null row yields an empty <tr>, matching how undefined already behaved'
+  );
+
   // Primitives in the declarative builder render as text instead of throwing on
   // the `'if' in def` check.
   const built = new api.Document();
@@ -437,12 +466,15 @@ test('container and text tag shortcuts accept text consistently', () => {
   main.strong('Important');
   main.small('Updated now');
   main.label('Email');
+  main.ol('Steps');
   const table = main.table();
+  table.caption('Monthly totals');
   table.thead((head) => head.tr((row) => row.th('Month')));
   table.tbody((body) => body.tr((row) => row.td('August')));
+  table.tfoot((foot) => foot.tr((row) => row.td('Total')));
 
   const html = doc.render();
-  for (const text of ['Dashboard', '82%', 'Active', 'Overview', 'Important', 'Updated now', 'Email', 'Month', 'August']) {
+  for (const text of ['Dashboard', '82%', 'Active', 'Overview', 'Important', 'Updated now', 'Email', 'Month', 'August', 'Steps', 'Monthly totals', 'Total']) {
     assert(html.includes(text), `rendered output should include ${text}`);
   }
 });
