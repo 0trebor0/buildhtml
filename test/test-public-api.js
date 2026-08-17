@@ -313,6 +313,29 @@ test('optional object and array parameters tolerate null', () => {
     '<select><option value="a">A</option></select>',
     'a nullish option is skipped, not rendered as an empty <option>'
   );
+
+  // A primitive option used to fall through the object property reads and emit
+  // <option></option> — no value, no label, and no error.
+  assert.strictEqual(
+    skipped.select(['uk', 'fr']).html(),
+    '<select><option value="uk">uk</option><option value="fr">fr</option></select>',
+    'a string option becomes its own value and label'
+  );
+  assert.strictEqual(
+    skipped.select([1, 2]).html(),
+    '<select><option value="1">1</option><option value="2">2</option></select>',
+    'a numeric option is stringified'
+  );
+  assert.strictEqual(
+    skipped.select(['uk', { value: 'fr', text: 'France' }]).html(),
+    '<select><option value="uk">uk</option><option value="fr">France</option></select>',
+    'string and object options mix'
+  );
+  assert.strictEqual(
+    skipped.select(['<script>x</script>']).html(),
+    '<select><option value="&lt;script&gt;x&lt;/script&gt;">&lt;script&gt;x&lt;/script&gt;</option></select>',
+    'a string option is escaped in both the value and the label'
+  );
   assert.strictEqual(
     skipped.radio('n', [null]).html(),
     '<div></div>',
