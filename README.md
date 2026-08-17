@@ -1,44 +1,34 @@
 # @trebor/buildhtml
 
-**Build secure, reactive HTML entirely in Node.js with a focused server-side API.**
+**Server-rendered HTML for Node.js with optional compiled reactivity. No JSX, build step, or runtime dependencies.**
 
-`@trebor/buildhtml` is a zero-dependency server-side HTML compiler. Describe pages with JavaScript, render complete HTML on the server, and opt into browser behavior with declarative state, bindings, events, reactive lists, and routing.
+You write JavaScript on the server; you get a complete HTML page. If the page needs browser behavior, you attach state and event callbacks to it, and buildhtml compiles them into the page as generated JavaScript. Pages that don't use those APIs ship no JavaScript at all.
 
 [Complete guide and API reference](https://0trebor0.github.io/buildhtml/docs/) · [Examples](https://github.com/0trebor0/buildhtml/tree/main/example) · [Report an issue](https://github.com/0trebor0/buildhtml/issues)
+
+## Install
 
 ```bash
 npm install @trebor/buildhtml
 ```
+
+Node.js 18+. Works from both CommonJS and ESM.
+
+## A static page
 
 ```javascript
 const { page } = require('@trebor/buildhtml');
 
 const doc = page('Hello');
 doc.h1('Hello world');
-doc.p('Rendered safely on the server. No build step required.');
+doc.p('Rendered on the server.');
 
 console.log(doc.render());
 ```
 
-## Why buildhtml?
+461 bytes of HTML, and **zero `<script>` tags**.
 
-Use one JavaScript API for the page, styles, state, and browser interactions:
-
-- **Server-rendered by default** — send complete HTML immediately or generate static files at startup.
-- **Reactive when needed** — compile state bindings and events only for pages that use them.
-- **Focused browser runtime** — generated pages include only the state and event behavior they use.
-- **Secure defaults** — escaped text and attributes, sanitized URLs, blocked inline `on*` attributes, and CSP nonce support.
-- **Zero runtime dependencies** — a small supply chain and straightforward deployment.
-- **Flexible output** — strings, streams, static files, Express responses, JSON-driven pages, or `.bhtml` templates.
-- **SPA-capable** — reactive lists plus hash or History API routing for focused applications.
-
-```text
-Node.js API  →  complete HTML  →  optional compiled browser runtime
-```
-
-The browser receives only the behavior the page uses. A static page stays static. Adding `.states()`, `.bind()`, or `.onClick()` automatically adds the required client runtime.
-
-## A reactive page from one Node.js file
+## A reactive page
 
 ```javascript
 const { page } = require('@trebor/buildhtml');
@@ -47,19 +37,71 @@ const doc = page('Counter');
 doc.states({ count: 0 });
 
 doc.h1().bind('count', (count) => `Count: ${count}`);
-
 doc.button('+1').onClick(function () {
   State.count++;
 });
 
-doc.button('Reset').onClick(function () {
-  State.count = 0;
-});
-
-const html = doc.render();
+console.log(doc.render());
 ```
 
-The callbacks are written in the server file but compiled to browser JavaScript. Mutating `State.count` updates every binding watching `count`.
+The `onClick` callback is written in your server file but runs in the browser. Assigning to `State.count` updates every binding watching `count`.
+
+## What actually gets sent to the browser
+
+```text
+your server JS  →  buildhtml  →  complete HTML  +  optional generated browser JS
+```
+
+There is no runtime library to load. Every byte of browser JavaScript is generated per page, from the features that page uses:
+
+| Page | HTML | Browser JS |
+|---|---:|---:|
+| The static page above | 461 B | **0 B** |
+| The counter above | ~5.0 KB | ~4.5 KB |
+
+A static page stays static. Add `.states()`, `.bind()`, or `.onClick()` and the page carries the code for exactly those bindings — nothing more, and nothing shared across pages to cache.
+
+## Why you might use it
+
+- **Static pages ship no JavaScript.** Not "a small runtime" — none.
+- **Reactive pages ship only what they use.** No framework bundle; the code is generated per page.
+- **No build step.** No JSX, no bundler, no transpiler. It's a Node library.
+- **Zero runtime dependencies.** One package, nothing transitive.
+- **Safe-by-default rendering.** Text and attributes are escaped, URLs sanitized, and inline `on*` attributes are never emitted. Your application still owns its own CSP, authentication, and input validation.
+
+## At a glance
+
+| | |
+|---|---|
+| Runtime dependencies | none |
+| Module formats | CommonJS and ESM, plus six subpath exports |
+| TypeScript | declarations bundled (`typescript/*.d.ts`) |
+| Node.js | 18+; CI runs 18, 20, 22, 24 |
+| Testing | 20 suites, 4 Playwright browser suites, 15 fuzz properties |
+| Escaping | text, attributes, CSS values, and JSON context |
+| CSP | nonce support for generated `<script>`/`<style>`; no inline `on*` attributes |
+| Client runtime | generated per page; 0 bytes when no reactive API is used |
+| npm provenance | 1.2.5 yes; 2.0.0 no (published manually) |
+
+## How reactivity works
+
+This is the part that surprises people, so here it is directly.
+
+**Callbacks are serialized as source text.** buildhtml calls `Function.prototype.toString()` on your callback and embeds the resulting source in the page. It never sends the closure.
+
+**That means they capture nothing from your server scope.** A callback can use `State`, its own parameters and locals, and standard browser globals. It cannot see variables from the surrounding server file — those names simply aren't defined in the browser. `doc.validate()` catches this before you ship, reporting `W_CALLBACK_CAPTURE` with the offending variable names.
+
+**So server secrets don't leak through callbacks.** Closing over `const apiKey = …` embeds the *identifier* `apiKey`, never its value; the code then fails in the browser and `validate()` warns. Event handlers must be functions — passing a string is rejected — so you can't accidentally interpolate a secret into one either. The channel that *does* serialize server values is `doc.states({ … })`: those values are written into the page as data, so treat state as public and keep secrets out of it.
+
+**No `eval`, no `new Function`.** Neither appears in the generated output. A callback whose source contains `eval(`, `Function(`, `document.cookie`, `.innerHTML =`, or a `</script>` sequence is refused: the handler is dropped and an error logged rather than emitted, so the page renders without it. Every source is also parsed with `node:vm`, so invalid syntax is caught before it can reach a page. Text that merely *looks* like a script close is escaped, and generated `<script>` tags stay balanced.
+
+**The generated JavaScript is a plain IIFE** holding a state object and the bindings for that page, injected as one `<script>`. Pass `nonce` and it is applied to the generated `<script>` and `<style>` tags so a strict CSP works without `unsafe-inline`.
+
+**There is no permanent client runtime.** No shared bundle, no CDN, nothing cached across pages — which is the tradeoff: a site with many reactive pages repeats the core runtime on each one rather than caching it once.
+
+**If you use no reactive APIs, none of this happens** and you get plain HTML.
+
+→ [Reactive state and events](#reactive-state-and-events) · [Security](#security) · [Full guide](https://0trebor0.github.io/buildhtml/docs/)
 
 ## Quick navigation
 

@@ -120,13 +120,24 @@ const hello = executeReadmeBlock(0);
 assert.equal(hello.logs.length, 1);
 assert.match(hello.logs[0], /<!DOCTYPE html>/);
 assert.match(hello.logs[0], /<h1>Hello world<\/h1>/);
-assert.match(hello.logs[0], /Rendered safely on the server/);
+assert.match(hello.logs[0], /Rendered on the server/);
+// The README's headline claim: a page using no reactive API ships no JavaScript.
+assert.doesNotMatch(hello.logs[0], /<script/i, 'static quick start must emit no <script>');
+assert.equal(hello.logs[0].length, 461, 'README quotes 461 bytes for the static quick start');
 
-const counter = executeReadmeBlock(1, 'globalThis.__renderedReadmeHtml = html;');
-assert.match(counter.context.__renderedReadmeHtml, /Count:/);
-assert.match(counter.context.__renderedReadmeHtml, /<button[^>]*>\+1<\/button>/);
-assert.match(counter.context.__renderedReadmeHtml, /<button[^>]*>Reset<\/button>/);
-assert.match(counter.context.__renderedReadmeHtml, /addEventListener\("click"/);
+const counter = executeReadmeBlock(1);
+assert.equal(counter.logs.length, 1);
+assert.match(counter.logs[0], /Count:/);
+assert.match(counter.logs[0], /<button[^>]*>\+1<\/button>/);
+assert.match(counter.logs[0], /addEventListener\("click"/);
+// The counter's companion claim: reactive pages do carry generated browser JS.
+// Deliberately a range, not an exact count: callbacks are serialized as source
+// text, so the byte total shifts by the line endings of the checkout.
+assert.match(counter.logs[0], /<script/i, 'reactive quick start must emit a <script>');
+assert.ok(
+  counter.logs[0].length > 4000 && counter.logs[0].length < 7000,
+  `README quotes ~5 KB for the counter; got ${counter.logs[0].length}`
+);
 
 console.log(
   `Documentation examples passed: ${javascriptBlocks.length} README and ${guideJavaScriptBlocks.length} guide JavaScript blocks parse, 2 complete quick starts execute, ${localLinks.length + guideLocalLinks.length} local links resolve, and ${documentedShortcuts.length} runtime shortcuts are documented.`
