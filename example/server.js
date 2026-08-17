@@ -1,6 +1,18 @@
-// Unlike the other examples, this one needs Express, which is not a dependency
-// of this package. Install it before running:  npm install --no-save express
-const express = require('express');
+// Unlike the other examples, this one needs Express. buildhtml has no runtime
+// dependencies and no devDependencies, so Express is not installed for you —
+// a bare MODULE_NOT_FOUND stack here tells a contributor nothing useful.
+let express;
+try {
+  express = require('express');
+} catch (err) {
+  if (err.code !== 'MODULE_NOT_FOUND') throw err;
+  console.error('This example needs Express, which this package does not depend on.');
+  console.error('Install it without touching package.json, then run this again:');
+  console.error('');
+  console.error('  npm install --no-save express');
+  process.exit(1);
+}
+
 const { page, createCachedRenderer, getCacheStats } = require('../');
 
 const app = express();

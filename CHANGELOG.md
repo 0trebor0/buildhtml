@@ -15,6 +15,55 @@ rather than complete records.
 
 ### Added
 
+- **TypeScript now knows about the `State` global.** Callbacks reference `State`
+  by name, but it was never declared, so every reactive handler produced
+  `TS2304: Cannot find name 'State'` in a `.ts` file or a `@ts-check` JavaScript
+  file — on the library's signature feature. It is declared as a global typed by
+  the new exported `BuildHtmlState` interface, which you can merge into from your
+  own project to get real key completion:
+
+  ```ts
+  declare module '@trebor/buildhtml' {
+    interface BuildHtmlState { count: number }
+  }
+  ```
+
+- **Hover documentation for the methods whose behaviour is not guessable.** 38
+  JSDoc blocks covering argument order (`toggleClass`, `classIf`), return shapes
+  (`renderFragment` → `{ html, css }`, `wrap` → the new wrapper, `field` →
+  `{ group, label, input }`), callbacks that take no arguments (`oncreate`,
+  `computed`), the two `dataTable` row shapes, `liveList` returning node
+  definitions, the third argument of `component`/`use`, and `render()` consuming
+  the document.
+
+### Changed
+
+- **`select()` accepts a plain string or number as an option.** It becomes both
+  the value and the label. Previously such an entry fell through the object
+  property reads and emitted `<option></option>` — no value, no label, no
+  warning. Object options are unchanged, the two forms can be mixed, and nullish
+  entries are still skipped.
+- `example/server.js` now exits with an explanation and the install command when
+  Express is absent, instead of a bare `MODULE_NOT_FOUND` stack. buildhtml keeps
+  its zero-dependency, zero-devDependency stance, so Express is still not
+  installed for you.
+
+### Fixed
+
+- **Documentation: `component()` and `use()` had the wrong third parameter.** The
+  API reference listed both as taking `children?`. `component(name, props,
+  overrides)` takes an overrides object whose `tag` replaces the registered tag,
+  and `use(fn, props, tag)` takes the wrapper tag name. Neither accepts children,
+  so following the reference produced silently ignored output.
+- **Documentation: `oncreate` was listed as `fn(State)`.** The callback is
+  invoked with no arguments; state is reached through the `State` global inside
+  the body. Written as documented, the parameter was always `undefined`.
+- **Documentation: `output()` was described as returning the rendered page.** It
+  returns the *most recent* render and does not render on its own, so it is `''`
+  until `render()` or `save()` has run.
+
+### Added
+
 - **A 21-section tutorial in the guide.** A step-by-step walkthrough of the whole
   API — elements and tag shortcuts, attributes, scoped CSS, layout, forms,
   tables, the head, tree operations, state and every binding kind, events,
@@ -24,6 +73,14 @@ rather than complete records.
   and search. Every code block in it is executed by the test suite, and the
   behavioural claims in the prose are asserted, so the documentation cannot
   drift from the library.
+- **Reference coverage for the whole public API.** Sixty public methods and
+  exports were previously not mentioned anywhere in the guide, including
+  `renderFragment`, `portal`, `slot`/`fillSlot`, `bindState`, `computed`, the
+  tree helpers, the full event and attribute shortcut lists, and the template and
+  router compilers. All are now documented, with the return shape of
+  `renderFragment` (`{ html, css }`, not a string), the middleware shape of
+  `createCachedRenderer`, the `Document` return of `compileTemplate`, and the
+  router and view defaults stated explicitly.
 
 ## [2.0.1] - 2026-08-17
 

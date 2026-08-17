@@ -392,6 +392,74 @@ Verified in a browser: 36/36 sections balanced, no duplicate ids, all 22 nav
 links resolve, callouts and code blocks render, and the guide's search filters
 tutorial sections correctly.
 
+## Documentation audit
+
+Cross-checked the guide against the implementation, then fixed what it found.
+
+Three statements were **wrong**, each silent when followed:
+
+- `component(name, props?, children?)` and `use(fn, props?, children?)` — the
+  third parameter is `overrides` (an object whose `tag` replaces the registered
+  tag) and `tag` (a string) respectively. Proven: `component('C', {}, { tag:
+  'article' })` yields `<article>`, `use(fn, {}, 'section')` yields `<section>`.
+- `oncreate | fn(State)` — the generated code invokes it as `(source)()` with no
+  arguments (`lib/renderer.js:322`), so the parameter was always `undefined`.
+- `output()` was described as returning the rendered page. It returns
+  `this._lastRendered` (`lib/document.js:746`) and never renders, so it is `''`
+  until `render()` or `save()` has run. Found while verifying the replacement
+  wording, not in the original audit.
+
+**Sixty public methods and exports** were never mentioned anywhere in the guide —
+47 on `Element`, 7 on `Document`, 6 top-level. All are now in the reference. The
+audit re-run reports 0. All 60 were already in `index.d.ts`, so autocomplete had
+them; only the prose was missing.
+
+Also verified as correct and left alone: no method is documented that does not
+exist; all 55 guide code blocks execute (the suite only *parses* the
+non-tutorial ones); `Document` option defaults; `views` selectors; and the
+`bindShow`/`bindClass`/`bindAttr`/`bindStyle`/`bindProp`/`state`/`addLink`
+signatures.
+
+Two of my own first-pass readings were wrong and are recorded so they are not
+repeated: `addLink` takes a stylesheet URL *string* and hardcodes
+`rel="stylesheet"` (the guide was right), and `TemplateParser` *is* declared in
+`index.d.ts` at line 924 — a too-strict regex reported it missing.
+
+Note that `render()` consuming the document is still explained only in the
+tutorial sections; the reference tables mention it under `validate` but not
+under `render`.
+
+## Remaining items, fixed
+
+Everything outstanding apart from the npm release itself:
+
+- **`select()` dropped primitive options.** A string or number fell through the
+  object property reads and emitted `<option></option>` — no value, no label, no
+  warning, the same silent-wrong-output class as the `dataTable` headers bug. It
+  is now used as both value and label. Objects unchanged, forms mix, nullish
+  entries still skipped, and both value and label are escaped. Declaration
+  widened to `Array<SelectOption | string | number>`; four tests added.
+- **`State` was undeclared in TypeScript.** Every reactive callback produced
+  `TS2304: Cannot find name 'State'` under `.ts` or `@ts-check`. Declared as a
+  global typed by a new exported `BuildHtmlState` interface, so it works out of
+  the box and can be sharpened by declaration merging. Verified against a clean
+  consumer project: the file that previously failed now compiles with exit 0.
+- **JSDoc was sparse** (36 blocks in 1,068 lines). Added 38 covering argument
+  order, return shapes, no-argument callbacks, and the methods whose behaviour
+  is not guessable from the signature. One block landed on `Head.render()` by
+  prefix collision and was corrected to describe the head, not the document; a
+  placement audit over all 39 documented declarations found no other mismatch.
+- **`render()` consuming the document** is now stated in the reference row, not
+  only in the tutorial.
+- **`example/server.js`** exits with an explanation and the install command when
+  Express is missing, rather than a bare `MODULE_NOT_FOUND` stack.
+
+`express` was deliberately **not** added to `devDependencies`: the project has
+none at all, and CI installs its tooling with `--no-save --package-lock=false`.
+Adding one to make a single example run would break that stance. Harness F still
+reports `server.js`, because that harness asserts every example runs with no
+setup — which is not true of this one by design.
+
 ## Open items
 
 - **Release the security fix.** Finding 0 is fixed in the tree but 2.0.0 remains
