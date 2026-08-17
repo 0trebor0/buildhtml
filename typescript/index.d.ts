@@ -279,7 +279,8 @@ export interface SharedShortcuts<TSelf, S extends StateShape = StateShape> {
 
   // Data helpers
   list<T>(items: T[], renderer?: (li: Element<S>, item: T, index: number) => void, tag?: string): Element<S>;
-  dataTable(headers: string[] | null, rows: any[][], options?: { class?: string; autoHeaders?: boolean }): Element<S>;
+  /** Rows may be arrays (positional cells) or objects (keyed by `headers`, or by `autoHeaders` from the first row). */
+  dataTable(headers: string[] | null, rows: Array<any[] | Record<string, any>>, options?: { class?: string; autoHeaders?: boolean }): Element<S>;
 
   // Utility
   each<T>(items: T[], fn: (self: TSelf, item: T, index: number) => void): TSelf;
@@ -562,7 +563,8 @@ export declare class Element<S extends StateShape = StateShape> implements Share
   divider(options?: { color?: string; margin?: string }): Element<S>;
   columns(count: number, columnFns?: Array<(col: Element<S>) => void>, gap?: string): Element<S>;
   list<T>(items: T[], renderer?: (li: Element<S>, item: T, index: number) => void, tag?: string): Element<S>;
-  dataTable(headers: string[] | null, rows: any[][], options?: { class?: string; autoHeaders?: boolean }): Element<S>;
+  /** Rows may be arrays (positional cells) or objects (keyed by `headers`, or by `autoHeaders` from the first row). */
+  dataTable(headers: string[] | null, rows: Array<any[] | Record<string, any>>, options?: { class?: string; autoHeaders?: boolean }): Element<S>;
   each<T>(items: T[], fn: (self: Element<S>, item: T, index: number) => void): this;
   when(condition: boolean | any, fn: (self: Element<S>) => void): this;
 }
@@ -833,7 +835,8 @@ export declare class Document<S extends StateShape = StateShape> implements Shar
   divider(options?: { color?: string; margin?: string }): Element<S>;
   columns(count: number, columnFns?: Array<(col: Element<S>) => void>, gap?: string): Element<S>;
   list<T>(items: T[], renderer?: (li: Element<S>, item: T, index: number) => void, tag?: string): Element<S>;
-  dataTable(headers: string[] | null, rows: any[][], options?: { class?: string; autoHeaders?: boolean }): Element<S>;
+  /** Rows may be arrays (positional cells) or objects (keyed by `headers`, or by `autoHeaders` from the first row). */
+  dataTable(headers: string[] | null, rows: Array<any[] | Record<string, any>>, options?: { class?: string; autoHeaders?: boolean }): Element<S>;
   each<T>(items: T[], fn: (self: Document<S>, item: T, index: number) => void): this;
   when(condition: boolean | any, fn: (self: Document<S>) => void): this;
 }

@@ -264,7 +264,25 @@ const jsonHtml: string = renderFromJSON(def);
 console.log('--- JSON page ---');
 console.log(jsonHtml.slice(0, 200) + '...\n');
 
-// ─── 7. configure & stats ─────────────────────────────────────────────────────
+// ─── 7. dataTable row shapes ──────────────────────────────────────────────────
+
+// Both documented row shapes must type-check. Object rows are the form the
+// README shows with autoHeaders, and they were rejected while rows was any[][].
+const tableDoc: Document = page('Tables');
+
+tableDoc.dataTable(['Name', 'Role'], [
+  ['Ada', 'Engineer'],
+  ['Grace', 'Admiral'],
+]);
+
+tableDoc.dataTable(null, [
+  { name: 'Ada', role: 'Engineer' },
+  { name: 'Grace', role: 'Admiral' },
+], { autoHeaders: true, class: 'data-table' });
+
+tableDoc.dataTable(['name'], [{ name: 'Ada' }]);
+
+// ─── 8. configure & stats ─────────────────────────────────────────────────────
 
 configure({ mode: 'prod', cacheLimit: 500 });
 
