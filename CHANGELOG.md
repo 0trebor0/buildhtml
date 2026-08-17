@@ -13,8 +13,45 @@ rather than complete records.
 
 ## [Unreleased]
 
+### Security
+
+- **`javascript:` URLs could bypass `sanitizeUrl()` when the scheme was split by
+  a tab, newline, or carriage return.** The sanitizer stripped control characters
+  before checking the protocol, but its strip range excluded `\x09`, `\x0A` and
+  `\x0D` — exactly the three characters the URL parser removes from an attribute
+  value. `href="java<TAB>script:alert(1)"` therefore passed the check and was
+  reassembled by the browser into a working `javascript:` URL. The strip now
+  covers the whole C0 range, so the protocol check sees what the browser will
+  see. Affected `href`, `src`, `action`, `formaction`, `cite`, `poster` and
+  `xlink:href` on all releases up to and including 2.0.0; `vbscript:` and
+  `data:text/html` could be split the same way. A literal space is still
+  preserved. **Upgrade if you render URLs from untrusted input.**
+
 ### Fixed
 
+- **`wrap()` did nothing on a top-level element**, returning it unwrapped. It now
+  wraps in place, keeping the element's position among its siblings, and returns
+  a wrapper that accepts further configuration and children as it always did for
+  nested elements. With this, every tree operation — `wrap()`, `before()`,
+  `after()`, `remove()` — behaves the same whether the element sits at the top
+  level or inside another element.
+- **`before()` and `after()` did nothing on a top-level element**, for the same
+  reason as `remove()` below: they resolved siblings only through a parent
+  element, which a document-level element does not have. Both now fall back to
+  the document body, insert at the correct position, and still escape a string
+  sibling. Nested elements were never affected.
+- **`remove()` did nothing on a top-level element.** Elements created directly on
+  the document (`doc.div()`, `doc.create('div')`) are appended to the document
+  body without a parent element, so `remove()` hit its no-parent guard and
+  returned silently — no removal, no error, no way for the caller to tell. It now
+  falls back to removing the element from the document body. Elements nested
+  inside another element were never affected. Calling `remove()` twice remains
+  harmless, and it still returns the element for chaining.
+- **Documentation: the `toggleClass` and `classIf` argument order was listed
+  backwards** in the guide's quick-reference table. Both take the condition
+  first — `toggleClass(true, 'active')` — and following the documented order
+  applied no class at all. The implementation and TypeScript declarations were
+  always correct; only the guide was wrong.
 - **`dataTable()` mishandled a non-array `headers` value.** Only truthiness was
   checked, so the value reached the row loop intact: a number, object, or
   boolean threw `TypeError: keys is not iterable`, and — worse — a string spread
