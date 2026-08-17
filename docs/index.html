@@ -1086,8 +1086,8 @@ doc.component('Card', { title: 'Hello', body: 'Reusable server UI.' });</code></
           <thead><tr><th>Operation</th><th>Parameters</th><th>Result</th></tr></thead>
           <tbody>
             <tr><td><code>components.register</code></td><td><code>name, fn, options?</code></td><td>Registers a named component. <code>options.tag</code> selects the root tag.</td></tr>
-            <tr><td><code>doc.component</code></td><td><code>name, props?, children?</code></td><td>Builds a registered component.</td></tr>
-            <tr><td><code>doc.use</code></td><td><code>fn, props?, children?</code></td><td>Builds an inline component function.</td></tr>
+            <tr><td><code>doc.component</code></td><td><code>name, props?, overrides?</code></td><td>Builds a registered component. <code>overrides.tag</code> replaces the tag the component was registered with.</td></tr>
+            <tr><td><code>doc.use</code></td><td><code>fn, props?, tag?</code></td><td>Builds an inline component function. <code>tag</code> is the wrapper element name, default <code>'div'</code>.</td></tr>
             <tr><td><code>components.extend</code></td><td><code>newName, baseName, extendFn, options?</code></td><td>Runs a base component, then its extension.</td></tr>
             <tr><td><code>components.unregister</code></td><td><code>name</code></td><td>Removes a component registration.</td></tr>
           </tbody>
@@ -1176,7 +1176,7 @@ doc.button('+1').onClick(function () {
             <tr><td><code>bindProp</code></td><td><code>key, name, fn?</code></td><td>Assigns a DOM property.</td></tr>
             <tr><td><code>bindInput</code></td><td><code>key</code></td><td>Two-way input value synchronization.</td></tr>
             <tr><td><code>on</code></td><td><code>eventName, fn(event, State, element, context)</code></td><td>Adds an event listener; <code>this</code> is the DOM element.</td></tr>
-            <tr><td><code>oncreate</code></td><td><code>fn(State)</code></td><td>Runs after the page is ready.</td></tr>
+            <tr><td><code>oncreate</code></td><td><code>fn()</code></td><td>Runs once after the page is ready. The callback is invoked with <strong>no arguments</strong> — reach state through the <code>State</code> global inside the body. May return a promise.</td></tr>
             <tr><td><code>onMount</code></td><td><code>fn(State)</code></td><td>Runs when the element exists; may return cleanup.</td></tr>
             <tr><td><code>onUpdate</code></td><td><code>key, fn(value, State)</code></td><td>Runs after changes, not for the initial value.</td></tr>
             <tr><td><code>onDestroy</code></td><td><code>fn(State)</code></td><td>Runs when the element is removed.</td></tr>
@@ -1379,7 +1379,7 @@ doc.historyRouter({
           <div class="table-wrap"><table>
             <thead><tr><th>Methods</th><th>Parameters / result</th></tr></thead>
             <tbody>
-              <tr><td><code>render</code></td><td>No parameters → complete HTML string.</td></tr>
+              <tr><td><code>render</code></td><td>No parameters → complete HTML string. <strong>Consumes the document</strong>: it clears the body and releases pooled elements, so call it once and build a fresh document per request.</td></tr>
               <tr><td><code>renderStream</code></td><td>No parameters → readable HTML stream.</td></tr>
               <tr><td><code>clear</code></td><td>Resets body, state, and per-render scripts; preserves head.</td></tr>
               <tr><td><code>create</code>, <code>createElement</code>, <code>child</code></td><td><code>tag</code> → new body element.</td></tr>
@@ -1395,8 +1395,15 @@ doc.historyRouter({
               <tr><td><code>build</code>, <code>fromJSON</code></td><td>Node/page definition.</td></tr>
               <tr><td><code>toJSON</code></td><td>No parameters → serializable definition.</td></tr>
               <tr><td><code>liveList</code></td><td><code>stateKey, itemFn, options?</code> → container element.</td></tr>
-              <tr><td><code>views</code></td><td>State key, default value, navigation selector, view selector, and active class.</td></tr>
-              <tr><td><code>hashRouter</code>, <code>historyRouter</code></td><td>Router options.</td></tr>
+              <tr><td><code>views</code></td><td>State key, default value, navigation selector, view selector, and active class. Defaults: <code>stateKey: 'activeView'</code>, <code>[data-view-nav]</code>, <code>[data-view]</code>, <code>activeClass: 'active'</code>.</td></tr>
+              <tr><td><code>hashRouter</code>, <code>historyRouter</code></td><td>Router options. <code>routes</code> maps a pattern to a <strong>state value string</strong>, not a function — e.g. <code>{ 'users/:id': 'user', '*': 'not-found' }</code>. Defaults: <code>stateKey: 'view'</code>, <code>paramsKey: 'routeParams'</code>, <code>notFound: 'not-found'</code>; <code>historyRouter</code> adds <code>base: '/'</code> and <code>linkSelector: 'a[data-route]'</code>.</td></tr>
+              <tr><td><code>isEmpty</code>, <code>elementCount</code></td><td>No parameters. Inspection helpers for the document body.</td></tr>
+              <tr><td><code>comment</code>, <code>raw</code></td><td>Adds an HTML comment, or trusted raw markup, to the body.</td></tr>
+              <tr><td><code>addStyle</code>, <code>addScript</code>, <code>addLink</code></td><td>A CSS string, a script URL, and a <strong>stylesheet URL</strong> respectively. <code>addLink</code> always emits <code>rel="stylesheet"</code>; use <code>favicon</code>, <code>preload</code>, or <code>canonical</code> for other link types.</td></tr>
+              <tr><td><code>group</code>, <code>useFragment</code></td><td><code>fn(doc)</code> — run a builder function against the document without creating a wrapper element.</td></tr>
+              <tr><td><code>template</code>, <code>useTemplate</code>, <code>stamp</code></td><td><code>template(name, fn)</code> registers a reusable builder on the document; <code>useTemplate(name, vars?)</code> applies it; <code>stamp(fragment)</code> inserts a prepared fragment.</td></tr>
+              <tr><td><code>save</code>, <code>output</code></td><td><code>save(path)</code> writes the page to disk, rendering first if it has not been rendered yet. <code>output()</code> returns the <strong>most recent render</strong> and does not render on its own — it is <code>''</code> until <code>render()</code> or <code>save()</code> has run.</td></tr>
+              <tr><td><code>clear</code></td><td>No parameters. Empties the document body.</td></tr>
             </tbody>
           </table></div>
         </div>
@@ -1422,9 +1429,17 @@ doc.historyRouter({
               <tr><td><code>build</code></td><td><code>node | node[]</code> → adds declarative children and returns the element.</td></tr>
               <tr><td><code>each</code></td><td><code>items, fn(self, item, index)</code>.</td></tr>
               <tr><td><code>when</code></td><td><code>condition, fn(self)</code>.</td></tr>
-              <tr><td><code>find</code>, <code>findAll</code>, <code>closest</code></td><td>Query → matching element(s).</td></tr>
+              <tr><td><code>find</code>, <code>findAll</code>, <code>findById</code>, <code>closest</code></td><td>Query → matching element(s). <code>findById</code> exists on <code>Element</code> only, not on <code>Document</code>.</td></tr>
               <tr><td><code>clone</code></td><td>No parameters → cloned element.</td></tr>
-              <tr><td><code>remove</code>, <code>empty</code></td><td>No parameters.</td></tr>
+              <tr><td><code>remove</code>, <code>empty</code></td><td>No parameters. Both work on top-level elements as well as nested ones.</td></tr>
+              <tr><td><code>before</code>, <code>after</code></td><td><code>sibling</code> — an <code>Element</code>, or a string inserted as escaped text.</td></tr>
+              <tr><td><code>wrap</code></td><td><code>tag</code> → the <strong>new wrapper</strong> element, with this element inside it.</td></tr>
+              <tr><td><code>replaceWith</code>, <code>prependChild</code>, <code>insertAt</code></td><td>Tag or element; <code>insertAt</code> takes <code>index, tag</code>.</td></tr>
+              <tr><td><code>parent</code>, <code>siblings</code>, <code>nextSibling</code>, <code>prevSibling</code></td><td>No parameters → related element(s).</td></tr>
+              <tr><td><code>childCount</code>, <code>index</code>, <code>isVoid</code>, <code>hasClass</code></td><td>Inspection. <code>index</code> is the position among siblings; <code>isVoid</code> is true for <code>&lt;br&gt;</code>, <code>&lt;img&gt;</code>, and similar.</td></tr>
+              <tr><td><code>renderFragment</code></td><td>No parameters → <code>{ html, css }</code>, <strong>not a string</strong>. Static markup and CSS only: events, state, bindings, and lifecycle hooks on the subtree are dropped.</td></tr>
+              <tr><td><code>portal</code></td><td><code>targetId</code> — renders the element into the container with that id at runtime instead of in place.</td></tr>
+              <tr><td><code>slot</code>, <code>fillSlot</code></td><td><code>slot(name?)</code> marks an insertion point; <code>fillSlot(name, contentFn)</code> populates it.</td></tr>
               <tr><td><code>on</code></td><td><code>eventName, handler</code>.</td></tr>
               <tr><td><code>onClick</code>, <code>onInput</code>, <code>onChange</code>, <code>onSubmit</code></td><td>Browser handler receiving <code>(event, State, element, context)</code>; optional context is the second method argument and <code>this</code> is the element. Development mode reports thrown errors and rejected promises.</td></tr>
               <tr><td><code>bind</code>, <code>bindShow</code>, <code>bindClass</code></td><td><code>stateKey, computedFn?, context?</code>. Callbacks receive <code>(value, State, context)</code>; context must be JSON-serializable.</td></tr>
@@ -1434,8 +1449,15 @@ doc.historyRouter({
               <tr><td><code>bindAttr</code>, <code>bindProp</code></td><td><code>stateKey, name, computedFn?</code>.</td></tr>
               <tr><td><code>bindStyle</code></td><td><code>stateKey, computedFn</code>.</td></tr>
               <tr><td><code>bindInput</code></td><td><code>stateKey</code>.</td></tr>
-              <tr><td><code>onMount</code>, <code>onDestroy</code></td><td>Lifecycle callback.</td></tr>
+              <tr><td><code>onMount</code>, <code>onDestroy</code></td><td>Lifecycle callback. <code>onMount</code> may return a cleanup function; <code>this</code> is the element.</td></tr>
               <tr><td><code>onUpdate</code></td><td><code>stateKey, callback</code>.</td></tr>
+              <tr><td><code>bindState</code></td><td><code>target, event, fn, context?</code> — updates state from an event on <em>another</em> element.</td></tr>
+              <tr><td><code>computed</code></td><td><code>fn()</code> — derives the element's text from <code>State</code>; re-runs when the keys it reads change.</td></tr>
+              <tr><td>Other event shortcuts</td><td><code>onKeydown</code>, <code>onKeyup</code>, <code>onKeypress</code>, <code>onFocus</code>, <code>onBlur</code>, <code>onMouseenter</code>, <code>onMouseleave</code>, <code>onMousedown</code>, <code>onMouseup</code>, <code>onMousemove</code>, <code>onDblclick</code>, <code>onContextmenu</code>, <code>onScroll</code>, <code>onLoad</code>, <code>onError</code>, <code>onDragstart</code>, <code>onDragend</code>, <code>onDragover</code>, <code>onDrop</code>, <code>onTouchstart</code>, <code>onTouchend</code>, <code>onTouchmove</code> — all take the same handler shape.</td></tr>
+              <tr><td>Attribute shortcuts</td><td><code>id</code>, <code>href</code>, <code>src</code>, <code>type</code>, <code>name</code>, <code>value</code>, <code>placeholder</code>, <code>role</code>, <code>for</code>, <code>title</code>, <code>alt</code>, <code>rel</code>, <code>target</code>, <code>action</code>, <code>method</code>, <code>tabindex</code>, <code>width</code>, <code>height</code>, <code>min</code>, <code>max</code>, <code>step</code>, <code>pattern</code>, <code>accept</code>, <code>rows</code>, <code>cols</code>, <code>minLength</code>, <code>maxLength</code>, <code>autocomplete</code>, <code>contentEditable</code>, <code>draggable</code>.</td></tr>
+              <tr><td>Boolean attributes</td><td><code>required</code>, <code>readonly</code>, <code>autofocus</code>, <code>multiple</code>, <code>checked</code>, <code>selected</code>, <code>disabled</code>, <code>hidden</code> — called with <strong>no argument</strong>.</td></tr>
+              <tr><td>Style shortcuts</td><td><code>display</code>, <code>position</code>, <code>overflow</code>, <code>cursor</code>, <code>size</code>, <code>tooltip</code>, <code>animate</code>, <code>firstChild</code>, <code>lastChild</code>, <code>nthChild</code>.</td></tr>
+              <tr><td><code>show</code>, <code>hide</code>, <code>enable</code>, <code>disable</code>, <code>focus</code></td><td>No parameters. These set or remove the rendered attribute — <code>hidden</code>, <code>disabled</code>, <code>autofocus</code> — at build time. For runtime toggling driven by state, use <code>bindShow</code> or <code>bindAttr</code>.</td></tr>
               <tr><td><code>validate</code></td><td>No parameters. Returns <code>{ valid, errors, warnings }</code> with stable codes for callback captures, rejected callback registration, duplicate IDs, accessibility, URLs, nesting, state, ineffective document caching, History fallback requirements, and validation attempted after <code>render()</code> already cleared the body. <code>E_CALLBACK_REGISTRATION</code> retains oversized, unsafe, invalid, or context-serialization failures with callback and element context.</td></tr>
             </tbody>
           </table></div>
@@ -1519,6 +1541,22 @@ jobCode.input.addClass('field-input').css({ width: '100%' });</code></pre>
         <div class="api-group" data-search="exports configure metrics cache components template">
           <h3>Package exports</h3>
           <p><code>Document</code>, <code>Element</code>, <code>Head</code>, <code>page</code>, <code>components</code>, <code>configure</code>, <code>CONFIG</code>, <code>Metrics</code>, <code>metrics</code>, <code>renderJSON</code>, template functions, SPA compilers, caching middleware, cache controls, health checks, and pool controls are exported from the package root.</p>
+          <div class="table-wrap"><table>
+            <thead><tr><th>Export</th><th>Purpose</th></tr></thead>
+            <tbody>
+              <tr><td><code>page</code>, <code>Document</code>, <code>Element</code>, <code>Head</code></td><td>Page and node constructors. <code>page(title, options?)</code> preconfigures charset, viewport, reset CSS, and language.</td></tr>
+              <tr><td><code>renderFromJSON</code>, <code>renderJSON</code></td><td>Render a page from a plain definition: <code>renderFromJSON({ title, body }, setup?)</code>.</td></tr>
+              <tr><td><code>compileTemplate</code>, <code>compileFile</code></td><td>Compile <code>.bhtml</code> source or a file → a <code>Document</code>, <strong>not</strong> a render function.</td></tr>
+              <tr><td><code>renderTemplate</code>, <code>renderFile</code></td><td>Compile and render in one step → HTML string.</td></tr>
+              <tr><td><code>parseTemplate</code>, <code>TemplateParser</code></td><td>The parser behind the template functions, for tooling that needs the AST.</td></tr>
+              <tr><td><code>templateEngine</code></td><td>Express view-engine adapter: <code>app.engine('bhtml', templateEngine)</code>.</td></tr>
+              <tr><td><code>compileHashRouter</code>, <code>compileHistoryRouter</code>, <code>compileViews</code>, <code>compileLiveList</code></td><td>The compilers behind <code>doc.hashRouter()</code>, <code>doc.historyRouter()</code>, <code>doc.views()</code>, and <code>doc.liveList()</code>. Call the document methods unless you are building tooling.</td></tr>
+              <tr><td><code>createCachedRenderer</code></td><td>From the root or <code>@trebor/buildhtml/middleware</code>. Returns an Express-style <code>(req, res, next)</code> middleware, <strong>not</strong> a plain memoiser.</td></tr>
+              <tr><td><code>clearCache</code>, <code>getCacheStats</code>, <code>responseCache</code>, <code>healthCheck</code>, <code>resetPools</code></td><td>Cache, health, and element-pool controls.</td></tr>
+              <tr><td><code>configure</code>, <code>CONFIG</code>, <code>metrics</code>, <code>Metrics</code></td><td>Runtime configuration and instrumentation.</td></tr>
+              <tr><td><code>components</code></td><td>Registry: <code>register</code>, <code>get</code>, <code>has</code>, <code>list</code>, <code>unregister</code>, <code>extend</code>, <code>clear</code>.</td></tr>
+            </tbody>
+          </table></div>
           <div class="table-wrap"><table>
             <thead><tr><th>Configuration option</th><th>Purpose</th></tr></thead>
             <tbody>
