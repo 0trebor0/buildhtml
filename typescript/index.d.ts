@@ -123,6 +123,7 @@ export declare class Head {
   globalCss(selector: string, rules: CSSRules): Head;
   addClass(name: string, rules: CSSRules): Head;
   hasStyles(): boolean;
+  /** Renders the `<head>` contents. Does not consume the document. */
   render(): string;
 }
 
@@ -248,14 +249,32 @@ export interface SharedShortcuts<TSelf, S extends StateShape = StateShape> {
   button(text?: string): Element<S>;
   input(type?: string, attrs?: Record<string, any>): Element<S>;
   textarea(attrs?: Record<string, any>): Element<S>;
-  select(options?: SelectOption[], attrs?: Record<string, any>): Element<S>;
+  /**
+   * Builds a `<select>`.
+   *
+   * An option may be an object (`{ value, text?, selected?, disabled? }`) or a
+   * plain string or number, which becomes both the value and the label.
+   * Nullish entries are skipped.
+   */
+  select(options?: Array<SelectOption | string | number>, attrs?: Record<string, any>): Element<S>;
   br(): TSelf;
   hr(): Element<S>;
 
   // Form helpers
   formGroup(label: string, inputType?: string, inputAttrs?: Record<string, any>): Element<S>;
+  /**
+   * Builds a labelled form control, wiring `label[for]` to a generated input id.
+   *
+   * Returns `{ group, label, input }` so each part can be configured.
+   */
   field(label: string, options?: FieldOptions<S>): FieldResult<S>;
+  /**
+   * Builds a checkbox with its label. Returns the **wrapper** element.
+   */
   checkbox(name: string, label: string, checked?: boolean): Element<S>;
+  /**
+   * Builds a group of radio inputs with labels. Returns the **wrapper** element.
+   */
   radio(name: string, options?: RadioOption[]): Element<S>;
   fieldset(legend?: string, setupFn?: (fs: Element<S>) => void): Element<S>;
   hiddenInput(name: string, value: string): Element<S>;
@@ -278,6 +297,12 @@ export interface SharedShortcuts<TSelf, S extends StateShape = StateShape> {
   columns(count: number, columnFns?: Array<(col: Element<S>) => void>, gap?: string): Element<S>;
 
   // Data helpers
+  /**
+   * Builds a list with one `<li>` per item, `<ul>` by default.
+   *
+   * Pass `tag` to change the container — `list(items, null, 'ol')`. Note that
+   * the `ol()` shortcut takes text, not an array.
+   */
   list<T>(items: T[], renderer?: (li: Element<S>, item: T, index: number) => void, tag?: string): Element<S>;
   /** Rows may be arrays (positional cells) or objects (keyed by `headers`, or by `autoHeaders` from the first row). */
   dataTable(headers: string[] | null, rows: Array<any[] | Record<string, any>>, options?: { class?: string; autoHeaders?: boolean }): Element<S>;
@@ -305,9 +330,27 @@ export declare class Element<S extends StateShape = StateShape> implements Share
   appendUnsafe(html: string): this;
   text(content: string | number | null): this;
   set textContent(value: string | null);
+  /**
+   * Inserts a sibling immediately before this element.
+   * A string is inserted as **escaped text**, not parsed as markup.
+   */
   before(sibling: Element<S> | string): this;
+  /**
+   * Inserts a sibling immediately after this element.
+   * A string is inserted as **escaped text**, not parsed as markup.
+   */
   after(sibling: Element<S> | string): this;
+  /**
+   * Wraps this element in a new `tag` element, in place.
+   *
+   * Returns the **new wrapper**, not this element. Works whether this element
+   * is nested or at the top level of the document.
+   */
   wrap(tag: string): this;
+  /**
+   * Detaches this element from its parent, or from the document body when it
+   * is a top-level element. Calling it twice is harmless.
+   */
   remove(): this;
   empty(): this;
   clone(): Element<S>;
@@ -366,7 +409,15 @@ export declare class Element<S extends StateShape = StateShape> implements Share
   style(prop: string, value: string | number): this;
   addClass(...names: string[]): this;
   removeClass(...names: string[]): this;
+  /**
+   * Adds `name` when `condition` is true, removes it when false.
+   * **The condition comes first** — `toggleClass(true, 'active')`.
+   */
   toggleClass(condition: boolean, name: string): this;
+  /**
+   * Adds `trueClass` when `condition` holds, otherwise `falseClass` if given.
+   * The condition comes first.
+   */
   classIf(condition: boolean, trueClass: string, falseClass?: string): this;
   classMap(map: Record<string, boolean>): this;
   hasClass(name: string): boolean;
@@ -415,10 +466,20 @@ export declare class Element<S extends StateShape = StateShape> implements Share
   focus(): this;
 
   // Slots
+  /**
+   * Marks this element as a named insertion point for `fillSlot()`.
+   */
   slot(name?: string): this;
+  /**
+   * Populates a slot previously declared with `slot(name)`.
+   */
   fillSlot(name: string, contentFn: (slotEl: Element<S>) => void): this;
 
   // Portal
+  /**
+   * Renders this element into the container with `targetId` at runtime rather
+   * than at its position in the tree.
+   */
   portal(targetId: string): this;
 
   // State & events
@@ -432,6 +493,11 @@ export declare class Element<S extends StateShape = StateShape> implements Share
   bindProp<K extends StateKey<S>, C = any>(stateKey: K, prop: string, fn?: (val: StateValue<S, K>, state: S, context: C) => any, context?: C): Element<S>;
   bindInput<K extends StateKey<S>>(stateKey: K): Element<S>;
   state(value: any): this;
+  /**
+   * Derives this element's text from `State`. The callback takes **no
+   * arguments** — read state through the `State` global — and re-runs when the
+   * keys it reads change.
+   */
   computed(fn: () => any): this;
   on<C = any>(event: string, fn: ClientEventHandler<Event, C, S>, context?: C): Element<S>;
   bindState<C = any>(target: Element<S>, event: string, fn: ClientEventHandler<Event, C, S>, context?: C): Element<S>;
@@ -482,13 +548,38 @@ export declare class Element<S extends StateShape = StateShape> implements Share
   tooltip(text: string): this;
 
   // Component system
+  /**
+   * Builds a component previously registered with `components.register()`.
+   *
+   * The third argument is an **overrides object** — `overrides.tag` replaces the
+   * tag the component was registered with. It is not children.
+   */
   component(name: string, props?: Record<string, any>, overrides?: ComponentOptions): Element<S>;
+  /**
+   * Builds an inline component without registering it.
+   *
+   * The third argument is the **wrapper tag name** (default `'div'`), not children.
+   */
   use<TProps = Record<string, any>>(fn: ComponentFn<TProps>, props?: TProps, tag?: string): Element<S>;
 
   // SPA compilation
+  /**
+   * Renders an array from state and keeps it in sync in the browser.
+   *
+   * `itemFn` returns a **node definition object** (`{ tag, text, class, ... }`),
+   * not an Element. `filter` and `sort` also run during server rendering, and
+   * `filterKeys` lists extra state keys that should trigger a re-render.
+   */
   liveList<K extends StateKey<S>>(stateKey: K, itemFn: (item: ArrayItem<S[K]>, index: number) => NodeDef, options?: LiveListOptions<S, ArrayItem<S[K]>>): Element<S>;
 
   // Fragment rendering
+  /**
+   * Renders this subtree on its own.
+   *
+   * Returns `{ html, css }` — **not a string**. Static markup and CSS only:
+   * events, state bindings, and lifecycle hooks on the subtree are dropped,
+   * because a fragment has no page to attach them to.
+   */
   renderFragment(): Fragment;
 
   // SharedShortcuts implementations (see interface above)
@@ -538,12 +629,30 @@ export declare class Element<S extends StateShape = StateShape> implements Share
   button(text?: string): Element<S>;
   input(type?: string, attrs?: Record<string, any>): Element<S>;
   textarea(attrs?: Record<string, any>): Element<S>;
-  select(options?: SelectOption[], attrs?: Record<string, any>): Element<S>;
+  /**
+   * Builds a `<select>`.
+   *
+   * An option may be an object (`{ value, text?, selected?, disabled? }`) or a
+   * plain string or number, which becomes both the value and the label.
+   * Nullish entries are skipped.
+   */
+  select(options?: Array<SelectOption | string | number>, attrs?: Record<string, any>): Element<S>;
   br(): this;
   hr(): Element<S>;
   formGroup(label: string, inputType?: string, inputAttrs?: Record<string, any>): Element<S>;
+  /**
+   * Builds a labelled form control, wiring `label[for]` to a generated input id.
+   *
+   * Returns `{ group, label, input }` so each part can be configured.
+   */
   field(label: string, options?: FieldOptions<S>): FieldResult<S>;
+  /**
+   * Builds a checkbox with its label. Returns the **wrapper** element.
+   */
   checkbox(name: string, label: string, checked?: boolean): Element<S>;
+  /**
+   * Builds a group of radio inputs with labels. Returns the **wrapper** element.
+   */
   radio(name: string, options?: RadioOption[]): Element<S>;
   fieldset(legend?: string, setupFn?: (fs: Element<S>) => void): Element<S>;
   hiddenInput(name: string, value: string): Element<S>;
@@ -562,6 +671,12 @@ export declare class Element<S extends StateShape = StateShape> implements Share
   spacer(height?: string): Element<S>;
   divider(options?: { color?: string; margin?: string }): Element<S>;
   columns(count: number, columnFns?: Array<(col: Element<S>) => void>, gap?: string): Element<S>;
+  /**
+   * Builds a list with one `<li>` per item, `<ul>` by default.
+   *
+   * Pass `tag` to change the container — `list(items, null, 'ol')`. Note that
+   * the `ol()` shortcut takes text, not an array.
+   */
   list<T>(items: T[], renderer?: (li: Element<S>, item: T, index: number) => void, tag?: string): Element<S>;
   /** Rows may be arrays (positional cells) or objects (keyed by `headers`, or by `autoHeaders` from the first row). */
   dataTable(headers: string[] | null, rows: Array<any[] | Record<string, any>>, options?: { class?: string; autoHeaders?: boolean }): Element<S>;
@@ -720,6 +835,12 @@ export declare class Document<S extends StateShape = StateShape> implements Shar
   states(obj: S): Document<S>;
 
   // Lifecycle
+  /**
+   * Runs once in the browser after the page is ready.
+   *
+   * The callback is invoked with **no arguments**; reach state through the
+   * `State` global. May return a promise, whose rejection is reported.
+   */
   oncreate(fn: () => void | Promise<void>): this;
 
   // Element creation
@@ -728,7 +849,18 @@ export declare class Document<S extends StateShape = StateShape> implements Shar
   child(tag: string): Element<S>;
 
   // Component system
+  /**
+   * Builds a component previously registered with `components.register()`.
+   *
+   * The third argument is an **overrides object** — `overrides.tag` replaces the
+   * tag the component was registered with. It is not children.
+   */
   component(name: string, props?: Record<string, any>, overrides?: ComponentOptions): Element<S>;
+  /**
+   * Builds an inline component without registering it.
+   *
+   * The third argument is the **wrapper tag name** (default `'div'`), not children.
+   */
   use<TProps = Record<string, any>>(fn: ComponentFn<TProps>, props?: TProps, tag?: string): Element<S>;
   useFragment(fn: (doc: Document<S>) => void): Document<S>;
 
@@ -736,6 +868,13 @@ export declare class Document<S extends StateShape = StateShape> implements Shar
   build(defs: NodeDef | NodeDef[]): this;
 
   // SPA compilation
+  /**
+   * Renders an array from state and keeps it in sync in the browser.
+   *
+   * `itemFn` returns a **node definition object** (`{ tag, text, class, ... }`),
+   * not an Element. `filter` and `sort` also run during server rendering, and
+   * `filterKeys` lists extra state keys that should trigger a re-render.
+   */
   liveList<K extends StateKey<S>>(stateKey: K, itemFn: (item: ArrayItem<S[K]>, index: number) => NodeDef, options?: LiveListOptions<S, ArrayItem<S[K]>>): Element<S>;
   hashRouter(options?: HashRouterOptions<S>): Document<S>;
   historyRouter(options?: HistoryRouterOptions<S>): Document<S>;
@@ -750,6 +889,13 @@ export declare class Document<S extends StateShape = StateShape> implements Shar
   useTemplate(name: string, vars?: Record<string, any>): this;
   isEmpty(): boolean;
   elementCount(): number;
+  /**
+   * Inspects the document and returns `{ valid, errors, warnings }`.
+   *
+   * Call it **before** `render()`, which clears the body. Reports duplicate ids,
+   * accessibility problems, undeclared state keys, and `W_CALLBACK_CAPTURE` for
+   * callbacks referencing variables the browser will not have.
+   */
   validate(): ValidationResult;
 
   // JSON import / export
@@ -757,9 +903,24 @@ export declare class Document<S extends StateShape = StateShape> implements Shar
   toJSON(): object;
 
   // Rendering
+  /**
+   * Renders the complete HTML document.
+   *
+   * **Consumes the document**: clears the body and releases pooled elements, so
+   * call it once and build a fresh document per request.
+   */
   render(): string;
   renderStream(): import('stream').Readable;
+  /**
+   * Returns the **most recent** render.
+   *
+   * Does not render on its own, so this is `''` until `render()` or `save()`
+   * has run.
+   */
   output(): string;
+  /**
+   * Writes the page to `path`, rendering first if it has not been rendered.
+   */
   save(path: string): this;
   clear(): void;
 
@@ -810,12 +971,30 @@ export declare class Document<S extends StateShape = StateShape> implements Shar
   button(text?: string): Element<S>;
   input(type?: string, attrs?: Record<string, any>): Element<S>;
   textarea(attrs?: Record<string, any>): Element<S>;
-  select(options?: SelectOption[], attrs?: Record<string, any>): Element<S>;
+  /**
+   * Builds a `<select>`.
+   *
+   * An option may be an object (`{ value, text?, selected?, disabled? }`) or a
+   * plain string or number, which becomes both the value and the label.
+   * Nullish entries are skipped.
+   */
+  select(options?: Array<SelectOption | string | number>, attrs?: Record<string, any>): Element<S>;
   br(): this;
   hr(): Element<S>;
   formGroup(label: string, inputType?: string, inputAttrs?: Record<string, any>): Element<S>;
+  /**
+   * Builds a labelled form control, wiring `label[for]` to a generated input id.
+   *
+   * Returns `{ group, label, input }` so each part can be configured.
+   */
   field(label: string, options?: FieldOptions<S>): FieldResult<S>;
+  /**
+   * Builds a checkbox with its label. Returns the **wrapper** element.
+   */
   checkbox(name: string, label: string, checked?: boolean): Element<S>;
+  /**
+   * Builds a group of radio inputs with labels. Returns the **wrapper** element.
+   */
   radio(name: string, options?: RadioOption[]): Element<S>;
   fieldset(legend?: string, setupFn?: (fs: Element<S>) => void): Element<S>;
   hiddenInput(name: string, value: string): Element<S>;
@@ -834,6 +1013,12 @@ export declare class Document<S extends StateShape = StateShape> implements Shar
   spacer(height?: string): Element<S>;
   divider(options?: { color?: string; margin?: string }): Element<S>;
   columns(count: number, columnFns?: Array<(col: Element<S>) => void>, gap?: string): Element<S>;
+  /**
+   * Builds a list with one `<li>` per item, `<ul>` by default.
+   *
+   * Pass `tag` to change the container — `list(items, null, 'ol')`. Note that
+   * the `ol()` shortcut takes text, not an array.
+   */
   list<T>(items: T[], renderer?: (li: Element<S>, item: T, index: number) => void, tag?: string): Element<S>;
   /** Rows may be arrays (positional cells) or objects (keyed by `headers`, or by `autoHeaders` from the first row). */
   dataTable(headers: string[] | null, rows: Array<any[] | Record<string, any>>, options?: { class?: string; autoHeaders?: boolean }): Element<S>;
@@ -1066,3 +1251,37 @@ export interface ResponseCache {
 }
 
 export declare const responseCache: ResponseCache;
+
+// ─── The browser-side State global ────────────────────────────────────────────
+
+/**
+ * Shape of the `State` global inside serialized callbacks.
+ *
+ * It is intentionally open so any key declared with `doc.states()` resolves.
+ * To get real key completion, merge your own keys into it from your project:
+ *
+ *     declare module '@trebor/buildhtml' {
+ *       interface BuildHtmlState {
+ *         count: number;
+ *         user: { name: string };
+ *       }
+ *     }
+ */
+export interface BuildHtmlState {
+  [key: string]: any;
+}
+
+declare global {
+  /**
+   * The reactive state proxy, available inside event handlers, computed
+   * bindings, lifecycle hooks, `liveList` item functions, and `oncreate`.
+   *
+   * It exists only in the browser: these callbacks are serialized as source
+   * text and run on the page, so `State` is not defined on the server. Assigning
+   * to a key updates every binding watching it.
+   *
+   * Handlers that receive a typed `state` argument should prefer that argument —
+   * it carries the document's declared state shape, while this global is open.
+   */
+  const State: BuildHtmlState;
+}
