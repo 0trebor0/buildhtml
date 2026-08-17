@@ -13,6 +13,16 @@ rather than complete records.
 
 ## [Unreleased]
 
+### Fixed
+
+- `select()`, `radio()`, and `dataTable()` no longer throw on a `null` entry
+  *inside* the collection they are given. 1.2.5 guarded the collection itself,
+  but `typeof null === 'object'`, so a null option or row still reached the
+  property reads and threw "Cannot read properties of null". Nullish options are
+  now skipped, and a null row renders an empty `<tr>` — which is what an
+  `undefined` row already did. `grid()`, `flex()`, and `list()` were already
+  tolerant and are unchanged.
+
 ## [2.0.0] - 2026-08-10
 
 > **The form and layout helpers no longer add anything you did not pass.**
