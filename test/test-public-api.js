@@ -295,6 +295,18 @@ test('optional object and array parameters tolerate null', () => {
     'dataTable(null, [null], { autoHeaders: true })'
   );
 
+  // A truthy non-array `headers` reached the row loop: numbers and objects threw
+  // "keys is not iterable", and a string spread into one column per character,
+  // which is silently wrong output rather than a failure.
+  assert.doesNotThrow(() => doc.dataTable(-1, [{ a: 1 }]), 'dataTable(number, objectRows)');
+  assert.doesNotThrow(() => doc.dataTable({}, [{ a: 1 }]), 'dataTable(object, objectRows)');
+  assert.doesNotThrow(() => doc.dataTable(true, [{ a: 1 }]), 'dataTable(true, objectRows)');
+  assert.strictEqual(
+    new api.Document().dataTable('ab', [{ a: '1' }]).html(),
+    '<table><tbody><tr><td>1</td></tr></tbody></table>',
+    'a string headers value is ignored, not spread into one column per character'
+  );
+
   const skipped = new api.Document();
   assert.strictEqual(
     skipped.select([null, { value: 'a', text: 'A' }]).html(),
