@@ -115,8 +115,13 @@ property('a fuzzed text node never produces markup', ITERATIONS, (s) => {
 });
 
 /* ---- URLs ---- */
+// Both URL properties test what the *browser* resolves, not the raw output: the
+// URL parser removes \t, \n and \r from an attribute value, so a scheme split
+// across them satisfied a check on the raw string while still executing.
+const asBrowserSees = (s) => String(s).replace(/[\t\n\r]/g, '');
+
 property('sanitizeUrl never lets an executable scheme through', ITERATIONS, (s) => {
-  const out = String(sanitizeUrl(s));
+  const out = asBrowserSees(sanitizeUrl(s));
   assert(!/^[\x00-\x20]*(?:javascript|vbscript|data)\s*:/i.test(out), 'no executable scheme');
 });
 
@@ -129,7 +134,7 @@ property('a rendered href never begins with an executable scheme', ITERATIONS, (
   assert(!m[1].includes('"'), 'no quote breakout');
   // Only the leading scheme is executable. "…?q=javascript:x" is an ordinary URL
   // and must survive, so the invariant is about position, not substring presence.
-  const raw = unescapeHtml(m[1]);
+  const raw = asBrowserSees(unescapeHtml(m[1]));
   assert(!/^[\x00-\x20]*(?:javascript|vbscript|data)\s*:/i.test(raw),
     `href does not start with an executable scheme: ${JSON.stringify(raw)}`);
 });
