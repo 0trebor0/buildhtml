@@ -353,9 +353,15 @@ session: `54cbaff`, `429caa2`, `ebf6cfe`, `d858ae6`. Those predate the rules
 update and carry `Co-Authored-By` trailers; history has not been rewritten to
 remove them, per the rule against rewriting history.
 
-`package.json` is still at `2.0.0`, which is already published to npm. npm does
-not allow republishing a version number, so any further release must be `2.0.1`.
-The `[Unreleased]` changelog section holds two entries awaiting that version.
+`package.json` is at `2.0.1` and the changelog section `[2.0.1] - 2026-08-17` is
+cut, carrying the security fix plus the tree-operation, `dataTable` and
+documentation fixes. 2.0.0 remains published and vulnerable until 2.0.1 ships.
+`scripts/release-notes.js` extracts the section cleanly (4110 bytes, Security /
+Fixed / Changed all present), and `npm pack --dry-run` reports 38 files,
+118.5 kB packed. The packed tarball was installed into a clean project and
+verified: the URL fix blocks tab- and newline-split schemes, all four tree
+operations work at the top level, a static page still emits no script, and both
+entry points plus all six subpaths resolve.
 
 ## Open items
 
@@ -364,8 +370,9 @@ The `[Unreleased]` changelog section holds two entries awaiting that version.
 - **Decide on `express` for `example/server.js`** — add it to `devDependencies`
   so the example runs unattended, or leave it as a documented manual install.
   Adding a dependency needs explicit approval.
-- **Release the fixes.** The security fix and the four tree-operation fixes are
-  in the tree; npm still serves the vulnerable 2.0.0 until a 2.0.1 is published.
+- **Publish 2.0.1.** The version is bumped and the changelog section is cut, but
+  npm still serves the vulnerable 2.0.0 until the release is actually published.
+  Tagging and publishing are left to the maintainer.
 - Bump to `2.0.1` and promote the `[Unreleased]` changelog section when a release
   is wanted.
 - No `NPM_TOKEN` or trusted publisher is configured, so the tagged release

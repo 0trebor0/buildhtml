@@ -13,6 +13,12 @@ rather than complete records.
 
 ## [Unreleased]
 
+## [2.0.1] - 2026-08-17
+
+> **Security release.** A `javascript:` URL could bypass URL sanitization when
+> its scheme was split by a tab, newline, or carriage return. Upgrade if you
+> render URLs from untrusted input. No API changed; 2.0.0 code runs unmodified.
+
 ### Security
 
 - **`javascript:` URLs could bypass `sanitizeUrl()` when the scheme was split by
