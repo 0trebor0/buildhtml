@@ -1392,30 +1392,46 @@ The benchmark validates renderer output before measuring throughput, latency, HT
 
 ### Published results
 
-Measured on Node v22.23.1, Intel Core i7-11800H @ 2.30GHz, Windows 11, 68 GB RAM. 50 rows, 7 samples, ~250 ms per sample. Absolute numbers depend on CPU, Node version, power state, and background load — the ratios are the portable part, and they were stable across repeated runs while absolute throughput moved by a third.
+Measured against the published 2.0.0 release.
+
+| | |
+|---|---|
+| Version | buildhtml 2.0.0 (tag `v2.0.0`) |
+| Command | `npm run benchmark` |
+| Node | v25.6.1 (V8 14.1) |
+| Hardware | AMD Ryzen 7 3800XT (8C/16T), 32 GB RAM, Windows 10 x64 |
+| Workload | 50-row table page, rendered end to end |
+| Sampling | 7 samples, ~250 ms per sample, ~100 ms warmup; median reported |
+| Comparisons | react 19.2.8, react-dom 19.2.8, preact 10.29.8, preact-render-to-string 6.7.0 |
+
+Tune with `BENCH_SAMPLES` and `BENCH_ITEMS`. Install `react react-dom preact preact-render-to-string` to reproduce the comparison rows; the benchmark skips them when absent.
 
 | Renderer | median ops/s | median ms | p95 ms | HTML bytes | gzip |
 |---|---:|---:|---:|---:|---:|
-| Raw string baseline | 52,890 | 0.0189 | 0.0193 | 3,927 | 557 |
-| Preact 10.29.8 (string) | 38,495 | 0.0260 | 0.0277 | 3,927 | 557 |
-| buildhtml 1.2.5 | 4,812 | 0.2078 | 0.2101 | 3,929 | 565 |
-| React 19.2.8 (static) | 1,996 | 0.5010 | 0.7013 | 3,927 | 557 |
+| Raw string baseline | 34,992 | 0.0286 | 0.0288 | 3,927 | 557 |
+| Preact 10.29.8 (string) | 30,093 | 0.0332 | 0.0336 | 3,927 | 557 |
+| buildhtml 2.0.0 | 4,814 | 0.2077 | 0.2091 | 3,929 | 565 |
+| React 19.2.8 (static) | 2,256 | 0.4432 | 0.6388 | 3,927 | 557 |
 
-All four produce the same page within two bytes. Install `react react-dom preact preact-render-to-string` to reproduce the comparison rows; the benchmark skips them when absent.
+All four produce the same page within two bytes.
 
 Reactive compilation, which has no static-renderer equivalent to compare against:
 
 | Renderer | median ops/s | median ms | p95 ms | HTML bytes | gzip |
 |---|---:|---:|---:|---:|---:|
-| buildhtml 1.2.5 reactive | 7,153 | 0.1398 | 0.1519 | 16,872 | 4,147 |
+| buildhtml 2.0.0 reactive | 6,416 | 0.1559 | 0.1597 | 16,863 | 4,142 |
+
+That page also emits 12,305 bytes of compiled inline JavaScript (3,499 gzip) — the browser code for the bindings it uses.
 
 Read it this way:
 
-- **About 2.4x faster than React** server rendering, for byte-identical output.
-- **About 8x slower than Preact's string renderer**, which is a specialist at exactly this and does not build a mutable element tree, validate attribute keys, sanitize URLs, or collect scoped CSS.
-- **About 11x slower than raw string concatenation.** That baseline escapes text but is otherwise a hardcoded template with no API — a lower bound on what JavaScript can do, not something you would ship.
+- **About 2.1x faster than React** server rendering, for byte-identical output.
+- **About 6x slower than Preact's string renderer**, which is a specialist at exactly this and does not build a mutable element tree, validate attribute keys, sanitize URLs, or collect scoped CSS.
+- **About 7x slower than raw string concatenation.** **The baseline is not feature-equivalent**: it escapes text, but is otherwise a hardcoded template with no API, no element tree, no attribute validation, no URL sanitization, and no scoped CSS. It marks a lower bound on what JavaScript can do, not something you would ship.
 
 At ~0.21 ms per page a single core renders roughly 4,800 pages per second, so for most applications rendering sits well below database and network time. If you are serving a very high volume of static pages and nothing else, Preact's string renderer or hand-written concatenation will beat it.
+
+Absolute numbers depend on CPU, Node version, power state, and background load; only compare rows from the same run. Two consecutive runs on this machine agreed within ~1% for buildhtml and ~5% for Preact. The ratios are the portable part — earlier figures taken on an Intel i7-11800H showed the same ordering with a faster raw-string baseline, which widened the gap to ~11x.
 
 ### Client runtime size by feature
 
@@ -1428,27 +1444,27 @@ buildhtml ships no runtime library — every byte of browser JavaScript is gener
 | Feature | bytes | gzip | vs core | gzip Δ |
 |---|---:|---:|---:|---:|
 | Static page (no reactivity) | 0 | 0 | — | — |
-| Core runtime (state only) | 2,847 | 1,062 | — | — |
-| + text binding | 3,662 | 1,269 | +815 | +207 |
-| + event handler | 3,520 | 1,241 | +673 | +180 |
-| + two-way input | 4,276 | 1,379 | +1,429 | +318 |
-| + show/hide binding | 3,625 | 1,270 | +778 | +209 |
-| + class binding | 3,676 | 1,285 | +829 | +224 |
-| + attribute binding | 4,033 | 1,411 | +1,186 | +350 |
-| + style binding | 3,742 | 1,302 | +895 | +241 |
-| + element state | 3,071 | 1,127 | +224 | +66 |
-| + computed | 3,149 | 1,186 | +302 | +125 |
-| + lifecycle hooks | 4,140 | 1,395 | +1,293 | +334 |
-| + portal | 3,006 | 1,118 | +159 | +57 |
-| + oncreate | 3,204 | 1,158 | +357 | +97 |
-| + liveList | 5,893 | 2,279 | +3,046 | +1,218 |
-| + hash router | 2,988 | 1,123 | +141 | +62 |
-| + history router | 4,443 | 1,757 | +1,596 | +696 |
-| + views | 3,759 | 1,377 | +912 | +316 |
+| Core runtime (state only) | 2,847 | 1,059 | — | — |
+| + text binding | 3,662 | 1,268 | +815 | +209 |
+| + event handler | 3,520 | 1,239 | +673 | +180 |
+| + two-way input | 4,276 | 1,376 | +1,429 | +317 |
+| + show/hide binding | 3,625 | 1,269 | +778 | +210 |
+| + class binding | 3,676 | 1,285 | +829 | +226 |
+| + attribute binding | 4,033 | 1,410 | +1,186 | +351 |
+| + style binding | 3,742 | 1,301 | +895 | +242 |
+| + element state | 3,071 | 1,127 | +224 | +68 |
+| + computed | 3,149 | 1,183 | +302 | +124 |
+| + lifecycle hooks | 4,140 | 1,395 | +1,293 | +336 |
+| + portal | 3,006 | 1,117 | +159 | +58 |
+| + oncreate | 3,204 | 1,157 | +357 | +98 |
+| + liveList | 5,893 | 2,276 | +3,046 | +1,217 |
+| + hash router | 2,988 | 1,121 | +141 | +62 |
+| + history router | 4,443 | 1,757 | +1,596 | +698 |
+| + views | 3,759 | 1,376 | +912 | +317 |
 
 A fully static page ships **zero** JavaScript. The first reactive feature costs ~1 KB gzipped for the state proxy and cleanup observer; each additional facility is a few hundred bytes. `liveList` is the most expensive because it emits the `_mkEl` DOM builder.
 
-`debug: true` in development adds the inspector and serialized callback sources — a text-binding page grows from 3,825 to 5,081 bytes (1,339 → 1,619 gzip). Production pages never include it.
+`debug: true` in development adds the inspector and serialized callback sources — a text-binding page grows from 3,825 to 5,081 bytes (1,335 → 1,618 gzip). Production pages never include it.
 
 ## Requirements
 
@@ -1463,7 +1479,7 @@ A fully static page ships **zero** JavaScript. The first reactive feature costs 
 - [Security policy](SECURITY.md) — how to report a vulnerability privately, and what is in scope
 - [Report a bug](https://github.com/0trebor0/buildhtml/issues/new/choose)
 
-Releases from 1.2.5 are published with npm provenance. Verify with `npm audit signatures`.
+1.2.5 was published with npm provenance; 2.0.0 was published manually and has no attestation. See [Verifying a release](SECURITY.md#verifying-a-release).
 
 ## License
 

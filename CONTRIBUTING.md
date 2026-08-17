@@ -103,8 +103,11 @@ after those blocks, or update the test.
 
 1. Move `## [Unreleased]` notes into a new version heading in `CHANGELOG.md`.
 2. Bump `version` in `package.json`.
-3. Commit, then tag: `git tag v1.2.5 && git push origin main --tags`.
+3. Commit, then tag: `git tag v<version> && git push origin main --tags`.
 4. The `release` workflow runs the full suite, publishes to npm with provenance,
    and creates the GitHub Release from the changelog section.
 
-The workflow needs an `NPM_TOKEN` repository secret with publish rights.
+The workflow needs an `NPM_TOKEN` repository secret with publish rights, or a
+trusted publisher configured on npm. **Neither is set up yet**, so the workflow
+currently fails at its publish step and 2.0.0 was published by hand — which is
+why it has no provenance attestation. Configure one before the next release.

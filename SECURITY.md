@@ -4,8 +4,8 @@
 
 | Version | Supported |
 | ------- | --------- |
-| 1.2.5   | Yes       |
-| < 1.2.5 | No        |
+| 2.0.0   | Yes       |
+| < 2.0.0 | No        |
 
 Fixes land on the latest minor release. Please upgrade before reporting an issue
 against an older version.
@@ -72,8 +72,12 @@ A report that shows any of these failing is a vulnerability.
 
 ## Verifying a release
 
-Releases from 1.2.5 are published to npm with provenance from the `release`
-workflow. Check the attestation with:
+1.2.5 was published to npm with provenance from the `release` workflow. **2.0.0
+was published manually and carries no provenance attestation**, so
+`npm audit signatures` reports no attestation for it. Restoring provenance
+requires a release published by the workflow.
+
+Where an attestation exists, check it with:
 
 ```bash
 npm audit signatures

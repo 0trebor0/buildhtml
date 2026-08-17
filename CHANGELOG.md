@@ -13,6 +13,23 @@ rather than complete records.
 
 ## [Unreleased]
 
+### Fixed
+
+- **TypeScript: `dataTable()` rejected object rows.** `rows` was declared
+  `any[][]`, so the object-row form — the one the README documents with
+  `autoHeaders` — failed to compile with "Object literal may only specify known
+  properties", despite working at runtime since the helper was added. It now
+  takes `Array<any[] | Record<string, any>>`, covering both documented shapes.
+  Runtime behaviour is unchanged; this is a declaration-only fix.
+
+### Changed
+
+- Benchmarks re-measured against 2.0.0 and the methodology recorded (version,
+  command, Node build, hardware, sampling, comparison library versions). The
+  published figures previously came from 1.2.5 on different hardware.
+- Documentation now states that 2.0.0 was published without a provenance
+  attestation, rather than claiming provenance for every release from 1.2.5 on.
+
 ## [2.0.0] - 2026-08-17
 
 > **The form and layout helpers no longer add anything you did not pass.**
