@@ -589,6 +589,42 @@ test('sanitizeUrl still blocks javascript: with control char prefix', () => {
   assert(html.includes('href="#"'), 'replaced with #');
 });
 
+test('sanitizeUrl blocks a scheme split by tab, LF, or CR', () => {
+  // The URL parser removes \t, \n and \r from an attribute value, so a scheme
+  // split across them used to pass the protocol check and be reassembled into a
+  // working javascript: URL by the browser.
+  const { sanitizeUrl } = require('../lib/utils');
+  const browserNormalize = (s) => String(s).replace(/[\t\n\r]/g, '');
+  const vectors = [
+    'java\tscript:alert(1)',
+    'java\nscript:alert(1)',
+    'java\rscript:alert(1)',
+    'java\t\n\rscript:alert(1)',
+    'j\ta\tv\ta\ts\tc\tr\ti\tp\tt:alert(1)',
+    'vbs\tcript:msgbox(1)',
+    'da\tta:text/html;base64,PHNjcmlwdD4=',
+  ];
+  for (const vector of vectors) {
+    assert(sanitizeUrl(vector) === '#', `sanitizeUrl blocks ${JSON.stringify(vector)}`);
+
+    const doc = new Document();
+    doc.a(vector, 'link');
+    const match = /<a href="([^"]*)"/.exec(doc.render());
+    assert(!!match, `href rendered for ${JSON.stringify(vector)}`);
+    assert(
+      !!match && !/^[\x00-\x20]*(?:javascript|vbscript|data)\s*:/i.test(browserNormalize(match[1])),
+      `rendered href is inert for ${JSON.stringify(vector)}`
+    );
+  }
+});
+
+test('sanitizeUrl keeps ordinary URLs intact', () => {
+  const { sanitizeUrl } = require('../lib/utils');
+  for (const url of ['/path', 'https://example.test/a?b=1#c', 'mailto:a@example.test', '#frag', '/a b/c']) {
+    assert(sanitizeUrl(url) === url, `${url} preserved`);
+  }
+});
+
 test('hashRouter uses JSON.stringify for stateKey — no JS injection', () => {
   const { compileHashRouter } = require('../lib/live');
   const doc = new Document();
