@@ -355,6 +355,29 @@ test('el.remove()', () => {
   assert(html.includes('keep'), 'kept');
 });
 
+test('el.remove() on a top-level element', () => {
+  // Document.create() appends to document.body without setting _parent, so this
+  // used to hit the no-parent guard and silently do nothing.
+  const doc = new Document();
+  doc.create('div').id('keep-first');
+  const toRemove = doc.create('div').id('drop-me');
+  doc.create('div').id('keep-last');
+
+  assert(toRemove.remove() === toRemove, 'remove() stays chainable');
+  const html = doc.render();
+  assert(!html.includes('drop-me'), 'top-level element removed');
+  assert(html.includes('keep-first'), 'earlier sibling kept');
+  assert(html.includes('keep-last'), 'later sibling kept');
+});
+
+test('el.remove() twice is harmless', () => {
+  const doc = new Document();
+  const el = doc.create('div').id('gone');
+  el.remove();
+  el.remove();
+  assert(!doc.render().includes('gone'), 'still removed, no error');
+});
+
 test('el.wrap()', () => {
   const doc = new Document();
   const div = doc.create('div');
@@ -362,6 +385,39 @@ test('el.wrap()', () => {
   p.wrap('section');
   const html = doc.render();
   assert(html.includes('<section><p>wrapped</p></section>'), 'wrapped in section');
+});
+
+test('el.wrap() on a top-level element', () => {
+  // Top-level elements live in document.body with no _parent, so this used to
+  // hit the no-parent guard and return the element unwrapped.
+  const doc = new Document();
+  doc.create('div').id('keep-first');
+  const target = doc.create('div').id('wrapme');
+  doc.create('div').id('keep-last');
+
+  const wrapper = target.wrap('section');
+  assert(wrapper !== target && wrapper.tag === 'section', 'returns the new wrapper');
+  assert(target._parent === wrapper, 'wrapped element is reparented');
+
+  const html = doc.render();
+  assert(html.includes('<section><div id="wrapme"></div></section>'), 'wrapped in place');
+  assert((html.match(/id="wrapme"/g) || []).length === 1, 'element not duplicated');
+  assert(
+    html.indexOf('keep-first') < html.indexOf('wrapme') && html.indexOf('wrapme') < html.indexOf('keep-last'),
+    'position among siblings preserved'
+  );
+});
+
+test('el.wrap() returns a usable wrapper at top level', () => {
+  const doc = new Document();
+  const target = doc.create('div').id('c');
+  const wrapper = target.wrap('section');
+  wrapper.addClass('box');
+  wrapper.child('em').text('added');
+
+  const html = doc.render();
+  assert(html.includes('<section class="box">'), 'wrapper accepts further configuration');
+  assert(html.includes('<em>added</em>'), 'wrapper accepts new children');
 });
 
 test('el.before() and el.after()', () => {
@@ -380,6 +436,33 @@ test('el.before() and el.after()', () => {
   const afterIdx = html.indexOf('after');
   assert(beforeIdx < middleIdx, 'before is before middle');
   assert(afterIdx > middleIdx, 'after is after middle');
+});
+
+test('el.before() and el.after() on a top-level element', () => {
+  // Top-level elements live in document.body with no _parent, so these used to
+  // hit the no-parent guard and silently insert nothing.
+  const doc = new Document();
+  const anchor = doc.create('div').id('anchor');
+  anchor.before('BEFORE_MARK');
+  anchor.after('AFTER_MARK');
+
+  const html = doc.render();
+  const beforeIdx = html.indexOf('BEFORE_MARK');
+  const anchorIdx = html.indexOf('id="anchor"');
+  const afterIdx = html.indexOf('AFTER_MARK');
+  assert(beforeIdx !== -1, 'before() inserted at top level');
+  assert(afterIdx !== -1, 'after() inserted at top level');
+  assert(beforeIdx < anchorIdx, 'before() lands ahead of the anchor');
+  assert(afterIdx > anchorIdx, 'after() lands behind the anchor');
+});
+
+test('el.before() escapes a string sibling at top level', () => {
+  const doc = new Document();
+  const anchor = doc.create('div').id('a');
+  anchor.before('<script>alert(1)</script>');
+  const html = doc.render();
+  assert(!html.includes('<script>alert(1)</script>'), 'string sibling is escaped, not injected');
+  assert(html.includes('&lt;script&gt;'), 'escaped form present');
 });
 
 test('el.html() preview', () => {
