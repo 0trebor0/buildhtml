@@ -83,6 +83,7 @@
       text-decoration: none;
     }
     nav a:hover { background: var(--panel); color: var(--text); }
+    .nav-label { margin: .9rem .5rem .25rem; font-size: .72rem; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); opacity: .7; }
     main { width: min(100%, 1120px); padding: 3.5rem clamp(1.2rem, 5vw, 5rem) 7rem; }
     .hero { padding-bottom: 2rem; border-bottom: 1px solid var(--line); }
     .eyebrow { color: var(--brand); font-weight: 750; letter-spacing: .09em; text-transform: uppercase; }
@@ -132,6 +133,29 @@
       </label>
       <nav aria-label="Documentation">
         <a href="#start">Quick start</a>
+        <div class="nav-label">Tutorial</div>
+        <a href="#tut-the-mental-model">1. The mental model</a>
+        <a href="#tut-documents-and-elements">2. Documents and elements</a>
+        <a href="#tut-tag-shortcuts">3. Tag shortcuts</a>
+        <a href="#tut-text-escaping-and-raw-html">4. Text, escaping, and raw HTML</a>
+        <a href="#tut-attributes">5. Attributes</a>
+        <a href="#tut-classes-and-css">6. Classes and CSS</a>
+        <a href="#tut-layout-helpers">7. Layout helpers</a>
+        <a href="#tut-data-helpers-lists-and-tables">8. Data helpers: lists and tables</a>
+        <a href="#tut-forms">9. Forms</a>
+        <a href="#tut-the-document-head">10. The document head</a>
+        <a href="#tut-tree-operations">11. Tree operations</a>
+        <a href="#tut-reactivity-state-and-bindings">12. Reactivity: state and bindings</a>
+        <a href="#tut-events">13. Events</a>
+        <a href="#tut-computed-values-and-lifecycle">14. Computed values and lifecycle</a>
+        <a href="#tut-reactive-lists">15. Reactive lists</a>
+        <a href="#tut-views-and-routing">16. Views and routing</a>
+        <a href="#tut-components">17. Components</a>
+        <a href="#tut-serving-pages">18. Serving pages</a>
+        <a href="#tut-validation">19. Validation</a>
+        <a href="#tut-security-notes">20. Security notes</a>
+        <a href="#tut-common-mistakes">21. Common mistakes</a>
+        <div class="nav-label">Reference</div>
         <a href="#concepts">How it works</a>
         <a href="#server">Server & static HTML</a>
         <a href="#document">Document</a>
@@ -156,6 +180,7 @@
         <p class="lead">A practical guide to every major feature, its parameters, return values, defaults, and the browser/server boundary.</p>
         <div class="actions">
           <a class="button primary" href="#start">Start building</a>
+          <a class="button" href="#tut-the-mental-model">Tutorial</a>
           <a class="button" href="#reference">Browse API</a>
           <a class="button" href="https://www.npmjs.com/package/@trebor/buildhtml">npm package</a>
         </div>
@@ -220,6 +245,678 @@ input.placeholder('you@example.com');</code></pre>
           </tbody>
         </table></div>
         <p>The form and layout helpers build structure only. They add no class, style, or attribute you did not pass, so nothing collides with your stylesheet. The one exception is the generated ID pairing each <code>&lt;label for&gt;</code> with its input.</p>
+      </section>
+
+      <section id="tut-the-mental-model" data-search="tutorial the mental model buildhtml compiler framework describe page with javascript server finished html string your complete optional generated browser three things follow from that they explain most">
+        <h2>1. The mental model</h2>
+        <p>buildhtml is a compiler, not a framework. You describe a page with JavaScript on the server, and you get a finished HTML string.</p>
+        <pre><code>your server JS  →  buildhtml  →  complete HTML  +  optional generated browser JS</code></pre>
+        <p>Three things follow from that, and they explain most of the API:</p>
+        <ul><li><strong>A page that uses no reactive API ships no JavaScript.</strong> Not a small runtime — none.</li><li><strong>A page that does use reactivity carries only the code for the bindings it used</strong>, generated for that page. There is no shared bundle.</li><li><strong>Callbacks are serialized as source text</strong>, so they cannot capture anything from your server file. Section 12 covers what that means in practice.</li></ul>
+        <p>Install it:</p>
+        <pre><code>npm install @trebor/buildhtml</code></pre>
+        <p>Node 18+. Works from both CommonJS and ESM.</p>
+      </section>
+
+      <section id="tut-documents-and-elements" data-search="tutorial documents and elements there ways start page title options gives document with sensible defaults charset viewport meta small reset const require trebor buildhtml first hello rendered server">
+        <h2>2. Documents and elements</h2>
+        <p>There are two ways to start a page.</p>
+        <p><code>page(title, options?)</code> gives you a document with sensible defaults — a charset, a viewport meta tag, and a small CSS reset:</p>
+        <pre><code>const { page } = require('@trebor/buildhtml');
+
+const doc = page('My first page');
+doc.h1('Hello');
+doc.p('Rendered on the server.');
+
+const html = doc.render();</code></pre>
+        <p><code>new Document(options?)</code> gives you a bare document you configure yourself:</p>
+        <pre><code>const { Document } = require('@trebor/buildhtml');
+
+const doc = new Document();
+doc.title('Manual setup').lang('en').viewport().resetCss();
+doc.h1('Hello');
+
+const html = doc.render();</code></pre>
+        <div class="callout warning"><p><strong><code>title</code> is a method, not a constructor option.</strong> <code>new Document({ title: 'X' })</code> is silently ignored — the option does not exist. Use <code>doc.title('X')</code>. The TypeScript declarations reject the object form; plain JavaScript will not warn you.</p></div>
+        <p>Every call that creates an element returns that <code>Element</code>, so you can keep working on it:</p>
+        <pre><code>const { page } = require('@trebor/buildhtml');
+
+const doc = page('Elements');
+const box = doc.div();          // returns the &lt;div&gt; Element
+box.addClass('card');
+box.child('h2').text('Title');  // child() creates and returns a nested element
+box.child('p').text('Body');
+
+const html = doc.render();</code></pre>
+        <p><code>doc.div()</code> creates a top-level element in the document body. <code>element.child()</code> creates one inside that element. Both return the new element.</p>
+      </section>
+
+      <section id="tut-tag-shortcuts" data-search="tutorial tag shortcuts rather than child everywhere common tags have shortcut they exist both document element span section header footer main article aside form table thead tbody">
+        <h2>3. Tag shortcuts</h2>
+        <p>Rather than <code>child('h1')</code> everywhere, 41 common tags have a shortcut. They exist on <strong>both</strong> <code>Document</code> and <code>Element</code>:</p>
+        <pre><code>div span section header footer main nav article aside form
+ul ol table thead tbody tfoot tr li th td caption
+details summary dialog pre code blockquote
+h1 h2 h3 h4 h5 h6
+p strong small label legend em b i</code></pre>
+        <p>Each takes either text or a setup function:</p>
+        <pre><code>const { page } = require('@trebor/buildhtml');
+
+const doc = page('Shortcuts');
+
+doc.h1('Text form');                       // &lt;h1&gt;Text form&lt;/h1&gt;
+
+doc.section((s) =&gt; {                       // setup-function form
+  s.h2('Nested');
+  s.p('The callback receives the new element.');
+});
+
+const html = doc.render();</code></pre>
+        <p>The setup-function form is how you build depth without a pile of intermediate variables.</p>
+        <p>A few tags take arguments instead of text, because they need them:</p>
+        <pre><code>const { page } = require('@trebor/buildhtml');
+
+const doc = page('Special shortcuts');
+doc.a('/about', 'About us');               // a(href, text)
+doc.img('/logo.png', 'Company logo');      // img(src, alt)
+doc.button('Save');                        // button(text)
+doc.input('email', { name: 'email' });     // input(type, attrs)
+doc.textarea({ name: 'bio', rows: 4 });    // textarea(attrs)
+doc.select([                               // select(options, attrs)
+  { value: 'uk', text: 'United Kingdom' },
+  { value: 'fr', text: 'France', selected: true },
+]);
+doc.hr();
+doc.br();
+
+const html = doc.render();</code></pre>
+        <p><code>select()</code> options are objects with <code>value</code>, and optionally <code>text</code>, <code>selected</code>, and <code>disabled</code>. A nullish entry is skipped.</p>
+      </section>
+
+      <section id="tut-text-escaping-and-raw-html" data-search="tutorial text, escaping, and raw html text escapes this default because safe thing const page require trebor buildhtml escaping script alert html render contains never live append also appendunsafe does">
+        <h2>4. Text, escaping, and raw HTML</h2>
+        <p><code>text()</code> escapes. This is the default because it is the safe thing:</p>
+        <pre><code>const { page } = require('@trebor/buildhtml');
+
+const doc = page('Escaping');
+doc.p().text('&lt;script&gt;alert(1)&lt;/script&gt;');
+
+const html = doc.render();
+// contains &amp;lt;script&amp;gt;, never a live &lt;script&gt; tag</code></pre>
+        <p><code>append()</code> also escapes. <code>appendUnsafe()</code> does not — use it only for markup you produced yourself:</p>
+        <pre><code>const { page } = require('@trebor/buildhtml');
+
+const doc = page('Raw');
+const box = doc.div();
+box.append('&lt;em&gt;escaped&lt;/em&gt;');        // shows the tags as text
+box.appendUnsafe('&lt;em&gt;trusted&lt;/em&gt;');  // renders as emphasis
+
+const html = doc.render();</code></pre>
+        <p>The name is deliberately unpleasant. If the string came from a user, a database, or an API, use <code>text()</code> or <code>append()</code>.</p>
+      </section>
+
+      <section id="tut-attributes" data-search="tutorial attributes attr name value sets anything there shortcuts common ones const page require trebor buildhtml attributes main data role container setattrs several once user aria">
+        <h2>5. Attributes</h2>
+        <p><code>attr(name, value)</code> sets anything, and there are shortcuts for the common ones:</p>
+        <pre><code>const { page } = require('@trebor/buildhtml');
+
+const doc = page('Attributes');
+
+doc.div()
+  .id('main')
+  .attr('data-role', 'container')
+  .setAttrs({ 'data-a': '1', 'data-b': '2' })   // several at once
+  .data('user', '42')                            // data-user="42"
+  .aria('label', 'Main content');                // aria-label
+
+doc.input('text')
+  .name('email')
+  .placeholder('you@example.com')
+  .autocomplete('email')
+  .required()                                    // boolean attributes take no argument
+  .maxLength(120);
+
+const html = doc.render();</code></pre>
+        <p>Boolean attributes — <code>required</code>, <code>readonly</code>, <code>autofocus</code>, <code>multiple</code>, <code>checked</code>, <code>selected</code>, <code>disabled</code>, <code>hidden</code> — are called with no arguments.</p>
+        <p>Event handler attributes are rejected. <code>attr('onclick', ...)</code> never reaches the output; use <code>.onClick()</code> from section 13 instead.</p>
+        <p>URL-bearing attributes (<code>href</code>, <code>src</code>, <code>action</code>, <code>formaction</code>, <code>cite</code>, <code>poster</code>, <code>xlink:href</code>) are sanitized, so a <code>javascript:</code> URL becomes <code>#</code>.</p>
+      </section>
+
+      <section id="tut-classes-and-css" data-search="tutorial classes and css classes have several helpers argument order them catches people const page require trebor buildhtml isactive true addclass card toggleclass active condition name first classif">
+        <h2>6. Classes and CSS</h2>
+        <p>Classes have several helpers, and the argument order of two of them catches people out:</p>
+        <pre><code>const { page } = require('@trebor/buildhtml');
+
+const doc = page('Classes');
+const isActive = true;
+
+doc.div()
+  .addClass('card')
+  .toggleClass(isActive, 'is-active')      // (condition, name) — condition FIRST
+  .classIf(isActive, 'on', 'off')          // (condition, trueClass, falseClass)
+  .classMap({ wide: true, tall: false });  // { className: condition }
+
+const html = doc.render();</code></pre>
+        <div class="callout warning"><p><strong><code>toggleClass(condition, name)</code> takes the condition first.</strong> Calling <code>toggleClass('is-active', true)</code> applies nothing at all, silently.</p></div>
+        <p><code>css()</code> takes a style object and produces a <strong>scoped class</strong>, not an inline style. Identical rules are emitted once and shared:</p>
+        <pre><code>const { page } = require('@trebor/buildhtml');
+
+const doc = page('Scoped CSS');
+doc.div().css({ color: 'crimson', padding: '16px' });
+doc.div().css({ color: 'crimson', padding: '16px' });  // same rules, same class
+
+const html = doc.render();
+// one generated class, one rule in &lt;style&gt;, both divs share it</code></pre>
+        <p>For an actual inline style, use <code>style(property, value)</code>. For document-wide CSS, use the head methods in section 10.</p>
+        <p>State-dependent styling has its own helpers:</p>
+        <pre><code>const { page } = require('@trebor/buildhtml');
+
+const doc = page('Pseudo states');
+doc.button('Hover me')
+  .css({ background: '#eee' })
+  .hover({ background: '#ddd' })
+  .focusCss({ outline: '2px solid #09f' })
+  .active({ transform: 'scale(0.98)' })
+  .media('(min-width: 600px)', { padding: '12px 24px' });
+
+const html = doc.render();</code></pre>
+      </section>
+
+      <section id="tut-layout-helpers" data-search="tutorial layout helpers these emit display mode they named plus whatever pass nothing else const page require trebor buildhtml layout grid cell three columns items flex left">
+        <h2>7. Layout helpers</h2>
+        <p>These emit the display mode they are named for, plus whatever you pass — and nothing else.</p>
+        <pre><code>const { page } = require('@trebor/buildhtml');
+
+const doc = page('Layout');
+
+doc.grid(3, [
+  (cell) =&gt; cell.p('One'),
+  (cell) =&gt; cell.p('Two'),
+  (cell) =&gt; cell.p('Three'),
+], '16px');                                  // grid(columns, items, gap)
+
+doc.flex([
+  (col) =&gt; col.p('Left'),
+  (col) =&gt; col.p('Right'),
+], { gap: '8px', align: 'center', justify: 'space-between' });
+
+doc.stack([(el) =&gt; el.p('Top'), (el) =&gt; el.p('Bottom')], '8px');  // column flex
+doc.row([(el) =&gt; el.p('A'), (el) =&gt; el.p('B')], '8px');           // row flex
+doc.center((el) =&gt; el.p('Centred'));
+doc.container((el) =&gt; el.p('Constrained'), '960px');
+doc.spacer('32px');
+doc.divider({ color: '#e0e0e0', margin: '16px 0' });
+doc.columns(2, [(c) =&gt; c.p('Col 1'), (c) =&gt; c.p('Col 2')], '16px');
+
+const html = doc.render();</code></pre>
+        <div class="callout warning"><p><strong>Since 2.0.0 these inject no design values.</strong> <code>grid()</code> has no default gap, <code>container()</code> no default width, <code>divider()</code> no default colour. If you call <code>divider()</code> with no options you get a plain <code>&lt;hr&gt;</code>. Pass what you want.</p></div>
+      </section>
+
+      <section id="tut-data-helpers-lists-and-tables" data-search="tutorial data helpers: lists and tables list items renderer builds item const page require trebor buildhtml lists alpha beta gamma with three null ordered instead name role engineer index strong">
+        <h2>8. Data helpers: lists and tables</h2>
+        <p><code>list(items, renderer?, tag?)</code> builds a list, one <code>&lt;li&gt;</code> per item:</p>
+        <pre><code>const { page } = require('@trebor/buildhtml');
+
+const doc = page('Lists');
+
+doc.list(['Alpha', 'Beta', 'Gamma']);              // &lt;ul&gt; with three &lt;li&gt;
+doc.list(['One', 'Two'], null, 'ol');              // ordered instead
+
+doc.list(
+  [{ name: 'Ada', role: 'Engineer' }],
+  (li, item) =&gt; {                                   // (li, item, index)
+    li.strong(item.name);
+    li.span(` — ${item.role}`);
+  }
+);
+
+const html = doc.render();</code></pre>
+        <div class="callout warning"><p><code>ol()</code> is a <em>tag shortcut</em> and takes text, not an array. <code>ol(['a','b'])</code> renders <code>&lt;ol&gt;a,b&lt;/ol&gt;</code>. To get list items from an array, use <code>list(items, null, 'ol')</code>.</p></div>
+        <p><code>dataTable(headers, rows, options?)</code> accepts two row shapes:</p>
+        <pre><code>const { page } = require('@trebor/buildhtml');
+
+const doc = page('Tables');
+
+doc.dataTable(['Name', 'Role'], [           // array rows: positional cells
+  ['Ada', 'Engineer'],
+  ['Grace', 'Admiral'],
+]);
+
+doc.dataTable(['name', 'role'], [           // object rows: headers select keys
+  { name: 'Ada', role: 'Engineer' },
+]);
+
+doc.dataTable(null, [                       // autoHeaders: keys of the first row
+  { name: 'Ada', role: 'Engineer' },
+], { autoHeaders: true, class: 'data-table' });
+
+const html = doc.render();</code></pre>
+        <p>A <code>null</code> row renders an empty <code>&lt;tr&gt;</code>. A non-array <code>headers</code> value is ignored.</p>
+        <p><code>each()</code> and <code>when()</code> help you stay in one chain:</p>
+        <pre><code>const { page } = require('@trebor/buildhtml');
+
+const doc = page('Control flow');
+const items = ['a', 'b'];
+const showFooter = true;
+
+doc.each(items, (self, item, index) =&gt; self.p(`${index}: ${item}`));
+doc.when(showFooter, (self) =&gt; self.footer((f) =&gt; f.small('Footer')));
+
+const html = doc.render();</code></pre>
+      </section>
+
+      <section id="tut-forms" data-search="tutorial forms field most complete helper wires label input with generated hands back three elements const page require trebor buildhtml forms form email address type name">
+        <h2>9. Forms</h2>
+        <p><code>field()</code> is the most complete helper. It wires the label to the input with a generated id and hands back all three elements:</p>
+        <pre><code>const { page } = require('@trebor/buildhtml');
+
+const doc = page('Forms');
+
+doc.form((form) =&gt; {
+  const email = field(form, 'Email address', { type: 'email', name: 'email' });
+  email.input.required().placeholder('you@example.com');
+
+  const bio = field(form, 'Short bio', { type: 'text', name: 'bio' });
+  bio.group.addClass('form-row');
+
+  form.button('Save').attr('type', 'submit');
+});
+
+function field(parent, label, options) {
+  return parent.field(label, options);   // { group, label, input }
+}
+
+const html = doc.render();</code></pre>
+        <p>The other form helpers, each returning the wrapper element:</p>
+        <pre><code>const { page } = require('@trebor/buildhtml');
+
+const doc = page('Form helpers');
+
+doc.formGroup('Username', 'text', { name: 'username' });
+doc.checkbox('terms', 'I accept the terms', false);   // (name, label, checked)
+doc.radio('plan', [                                    // (name, options)
+  { value: 'free', label: 'Free' },
+  { value: 'pro', label: 'Pro', checked: true },
+]);
+doc.fieldset('Address', (fs) =&gt; {
+  fs.formGroup('Street', 'text', { name: 'street' });
+});
+doc.hiddenInput('csrf', 'token-value');
+
+const html = doc.render();</code></pre>
+        <div class="callout warning"><p><strong>These add no class names.</strong> Since 2.0.0 the form helpers emit structure and the generated <code>label[for]</code>/<code>id</code> pairing only. Style them via <code>groupClass</code> on <code>field()</code>, or <code>addClass()</code> on the returned element.</p></div>
+      </section>
+
+      <section id="tut-the-document-head" data-search="tutorial the document head const page require trebor buildhtml head title lang charset favicon canonical https example test meta description what this about noindex ogtags share text twittercard">
+        <h2>10. The document head</h2>
+        <pre><code>const { page } = require('@trebor/buildhtml');
+
+const doc = page('Head');
+
+doc.title('Page title')
+  .lang('en')
+  .charset('UTF-8')
+  .favicon('/favicon.ico')
+  .canonical('https://example.test/page')
+  .meta('description', 'What this page is about')
+  .noindex();
+
+doc.ogTags({ title: 'Share title', description: 'Share text' });
+doc.twitterCard({ card: 'summary' });
+doc.jsonLd({ '@type': 'Article', headline: 'Example' });
+
+doc.preconnect('https://fonts.example.test');
+doc.preload('/fonts/body.woff2', 'font');
+doc.prefetch('/next-page.js');
+
+doc.h1('Body content');
+const html = doc.render();</code></pre>
+        <p>Document-wide styling also lives here:</p>
+        <pre><code>const { page } = require('@trebor/buildhtml');
+
+const doc = page('Document styling');
+
+doc.cssVars({ brand: '#0099ff', text: '#111' });
+doc.globalStyle('body', { margin: 0, color: 'var(--text)' });
+doc.defineClass('.badge', { padding: '2px 6px', borderRadius: '4px' });
+doc.sharedClass('pill', { display: 'inline-block' });
+doc.keyframes('fade', { from: { opacity: 0 }, to: { opacity: 1 } });
+doc.mediaQuery('(min-width: 768px)', { body: { fontSize: '18px' } });
+doc.darkMode({ body: { background: '#111', color: '#eee' } });
+doc.print({ nav: { display: 'none' } });
+
+doc.h1('Styled');
+const html = doc.render();</code></pre>
+      </section>
+
+      <section id="tut-tree-operations" data-search="tutorial tree operations every element moved wrapped removed level nested const page require trebor buildhtml tree anchor before text string sibling escaped after wrapper wrap section returns">
+        <h2>11. Tree operations</h2>
+        <p>Every element can be moved, wrapped, or removed — at the top level or nested:</p>
+        <pre><code>const { page } = require('@trebor/buildhtml');
+
+const doc = page('Tree');
+
+const anchor = doc.div().id('anchor');
+anchor.before('before text');       // a string sibling is escaped
+anchor.after('after text');
+
+const wrapper = anchor.wrap('section');   // returns the NEW wrapper
+wrapper.addClass('wrapped');
+
+const temp = doc.div().id('temp');
+temp.remove();                       // gone from the output
+
+const box = doc.div();
+box.child('p').text('one');
+box.child('p').text('two');
+box.findAll('p').length;             // 2
+box.find('p');                       // first match
+box.findById('anchor');              // by id, within this subtree
+
+const html = doc.render();</code></pre>
+        <p><code>clone()</code> copies a subtree, <code>empty()</code> clears children, <code>replaceWith()</code> swaps a tag in place, and <code>prependChild()</code>/<code>insertAt()</code> control position.</p>
+      </section>
+
+      <section id="tut-reactivity-state-and-bindings" data-search="tutorial reactivity: state and bindings this part worth understanding properly declare state document then bind elements const page require trebor buildhtml counter states count button onclick function html render">
+        <h2>12. Reactivity: state and bindings</h2>
+        <p>This is the part worth understanding properly.</p>
+        <p>Declare state on the document, then bind elements to it:</p>
+        <pre><code>const { page } = require('@trebor/buildhtml');
+
+const doc = page('Counter');
+doc.states({ count: 0 });
+
+doc.h1().bind('count', (count) =&gt; `Count: ${count}`);
+doc.button('+1').onClick(function () {
+  State.count++;
+});
+
+const html = doc.render();</code></pre>
+        <p><code>doc.states({ ... })</code> declares the browser-side state and its initial values. <code>bind(key, fn)</code> re-renders the element's text whenever that key changes.</p>
+        <h3>How callbacks actually work</h3>
+        <p>buildhtml calls <code>Function.prototype.toString()</code> on your callback and embeds the <strong>source text</strong> in the page. The closure is never sent. Three consequences:</p>
+        <p><strong>Callbacks capture nothing from your server file.</strong></p>
+        <pre><code>const { page } = require('@trebor/buildhtml');
+
+const doc = page('Capture');
+doc.states({ count: 0 });
+
+const serverValue = 42;
+doc.button('Broken').onClick(function () {
+  State.count = serverValue;      // ReferenceError in the browser
+});
+
+const report = doc.validate();
+// report.warnings includes W_CALLBACK_CAPTURE naming "serverValue"</code></pre>
+        <p>Run <code>doc.validate()</code> before shipping and it tells you exactly which variable is unavailable. Inside a callback you may use <code>State</code>, the callback's own parameters and locals, and standard browser globals.</p>
+        <p><strong>Server secrets cannot leak through a callback.</strong> Closing over <code>const apiKey</code> embeds the <em>identifier</em>, never the value. The channel that <em>does</em> serialize server values is <code>doc.states({ ... })</code> — those values are written into the page as data, so treat state as public.</p>
+        <p><strong>There is no <code>eval</code>.</strong> A callback whose source contains <code>eval(</code>, <code>Function(</code>, <code>document.cookie</code>, <code>.innerHTML =</code>, or a <code>&lt;/script&gt;</code> sequence is refused: the handler is dropped and an error logged rather than emitted.</p>
+        <h3>The binding family</h3>
+        <pre><code>const { page } = require('@trebor/buildhtml');
+
+const doc = page('Bindings');
+doc.states({ name: 'Ada', visible: true, colour: 'crimson', count: 2 });
+
+doc.p().bind('count', (n) =&gt; `Items: ${n}`);          // text
+doc.div().bindShow('visible');                         // display on/off
+doc.div().bindClass('visible', (v) =&gt; (v ? 'on' : 'off'));
+doc.div().classWhen('name', 'Ada', 'is-ada');          // (key, expected, class)
+doc.div().bindAttr('name', 'data-name');               // attribute
+doc.div().bindStyle('colour', (c) =&gt; ({ color: c }));  // style object
+doc.div().bindProp('name', 'title');                   // DOM property
+doc.input('text').bindInput('name');                   // two-way
+
+const html = doc.render();</code></pre>
+        <p><code>bindInput</code> is the two-way one: typing updates the state, and a state change updates the field.</p>
+      </section>
+
+      <section id="tut-events" data-search="tutorial events event handles anything shortcuts cover common events const page require trebor buildhtml states count text button click onclick function state input oninput target value">
+        <h2>13. Events</h2>
+        <p><code>on(event, fn)</code> handles anything; the <code>on*</code> shortcuts cover the common events:</p>
+        <pre><code>const { page } = require('@trebor/buildhtml');
+
+const doc = page('Events');
+doc.states({ count: 0, text: '' });
+
+doc.button('Click').onClick(function () { State.count++; });
+doc.input('text').onInput(function (event) { State.text = event.target.value; });
+doc.form((f) =&gt; f.button('Submit')).onSubmit(function (event) {
+  event.preventDefault();
+});
+doc.div().on('mouseenter', function () { State.count = 0; });
+
+const html = doc.render();</code></pre>
+        <p>Shortcuts include <code>onClick</code>, <code>onInput</code>, <code>onChange</code>, <code>onSubmit</code>, <code>onKeydown</code>, <code>onKeyup</code>, <code>onFocus</code>, <code>onBlur</code>, <code>onMouseenter</code>, <code>onMouseleave</code>, <code>onScroll</code>, <code>onDblclick</code>, and the drag and touch events.</p>
+        <p>Handlers are attached with <code>addEventListener</code> in the generated script. No inline <code>on*</code> attribute is ever written into the HTML, which is what lets a strict CSP work.</p>
+        <p><code>setStateOnClick(key, value)</code> is shorthand for the common case:</p>
+        <pre><code>const { page } = require('@trebor/buildhtml');
+
+const doc = page('Set state');
+doc.states({ view: 'list' });
+doc.button('Grid view').setStateOnClick('view', 'grid');
+
+const html = doc.render();</code></pre>
+      </section>
+
+      <section id="tut-computed-values-and-lifecycle" data-search="tutorial computed values and lifecycle const page require trebor buildhtml computed states price quantity span function return state onmount this dataset ready true onupdate value string ondestroy false oncreate">
+        <h2>14. Computed values and lifecycle</h2>
+        <pre><code>const { page } = require('@trebor/buildhtml');
+
+const doc = page('Computed');
+doc.states({ price: 10, quantity: 3 });
+
+doc.span().computed(function () {
+  return State.price * State.quantity;
+});
+
+doc.div()
+  .onMount(function () { this.dataset.ready = 'true'; })
+  .onUpdate('price', function (value) { this.dataset.price = String(value); })
+  .onDestroy(function () { this.dataset.ready = 'false'; });
+
+doc.oncreate(function () {
+  State.price = 12;      // runs once, on page load
+});
+
+const html = doc.render();</code></pre>
+        <p><code>onMount</code> runs when the element enters the DOM and may return a cleanup function. <code>onUpdate(stateKey, fn)</code> runs when that key changes. Inside all of them <code>this</code> is the element.</p>
+      </section>
+
+      <section id="tut-reactive-lists" data-search="tutorial reactive lists livelist statekey itemfn options renders array keeps sync returns node definition object element const page require trebor buildhtml live list states tasks title write">
+        <h2>15. Reactive lists</h2>
+        <p><code>liveList(stateKey, itemFn, options?)</code> renders an array and keeps it in sync. <code>itemFn</code> returns a <strong>node definition object</strong>, not an element:</p>
+        <pre><code>const { page } = require('@trebor/buildhtml');
+
+const doc = page('Live list');
+doc.states({
+  tasks: [
+    { id: 1, title: 'Write docs', done: false },
+    { id: 2, title: 'Ship it', done: true },
+  ],
+  query: '',
+});
+
+doc.input('search').bindInput('query');
+
+doc.div().liveList('tasks', function (task) {
+  return {
+    tag: 'li',
+    text: task.title,
+    class: task.done ? 'done' : 'pending',
+  };
+}, {
+  filter: function (task, state) {
+    return !state.query || task.title.toLowerCase().includes(state.query.toLowerCase());
+  },
+  filterKeys: ['query'],
+  sort: function (a, b) { return a.title.localeCompare(b.title); },
+});
+
+const html = doc.render();</code></pre>
+        <p>The list renders server-side too, so the first paint is complete HTML. <code>filter</code> and <code>sort</code> run on both sides; <code>filterKeys</code> lists the extra state keys that should trigger a re-render.</p>
+        <p>A node definition supports <code>tag</code>, <code>text</code>, <code>html</code>, <code>id</code>, <code>class</code>, <code>style</code>, <code>attrs</code>, <code>data</code>, <code>aria</code>, <code>css</code>, <code>on</code>, <code>onMount</code>, and <code>children</code>.</p>
+      </section>
+
+      <section id="tut-views-and-routing" data-search="tutorial views and routing like pages where should change views const page require trebor buildhtml states activepage overview button attr data view reports section statekey default activeclass active">
+        <h2>16. Views and routing</h2>
+        <p>For tab-like pages where the URL should not change, use <code>views()</code>:</p>
+        <pre><code>const { page } = require('@trebor/buildhtml');
+
+const doc = page('Views');
+doc.states({ activePage: 'overview' });
+
+doc.nav((nav) =&gt; {
+  nav.button('Overview').attr('data-view-nav', 'overview');
+  nav.button('Reports').attr('data-view-nav', 'reports');
+});
+
+doc.section((s) =&gt; s.h2('Overview')).attr('data-view', 'overview');
+doc.section((s) =&gt; s.h2('Reports')).attr('data-view', 'reports');
+
+doc.views({ stateKey: 'activePage', default: 'overview', activeClass: 'active' });
+
+const html = doc.render();</code></pre>
+        <p>For real URLs, <code>hashRouter()</code> maps hash patterns to a state value:</p>
+        <pre><code>const { page } = require('@trebor/buildhtml');
+
+const doc = page('Hash routing');
+doc.states({ view: 'home', routeParams: {} });
+
+doc.nav((nav) =&gt; {
+  nav.a('#home', 'Home');
+  nav.a('#users/7', 'User 7');
+});
+
+doc.hashRouter({
+  stateKey: 'view',
+  default: 'home',
+  routes: { 'home': 'home', 'users/:id': 'user', '*': 'not-found' },
+  navSelector: 'nav a',
+  activeStyle: { fontWeight: 'bold' },
+});
+
+const html = doc.render();</code></pre>
+        <p><code>routes</code> maps a pattern to a <strong>state value string</strong>, not a function. Named parameters land in the <code>routeParams</code> state key.</p>
+        <p><code>historyRouter()</code> takes the same options plus <code>base</code> and <code>linkSelector</code>, and uses the History API instead of the hash:</p>
+        <pre><code>const { page } = require('@trebor/buildhtml');
+
+const doc = page('History routing');
+doc.states({ view: 'home', routeParams: {} });
+
+doc.nav((nav) =&gt; nav.a('/app/users/7', 'User 7').attr('data-route', ''));
+
+doc.historyRouter({
+  base: '/app',
+  stateKey: 'view',
+  default: '/',
+  routes: { '/': 'home', '/users/:id': 'user', '*': 'not-found' },
+});
+
+const html = doc.render();</code></pre>
+        <p>Your server must serve the same document for every path under <code>base</code>.</p>
+      </section>
+
+      <section id="tut-components" data-search="tutorial components component function that receives element props const page components require trebor buildhtml register card addclass title body registered looked name inline registration strong label">
+        <h2>17. Components</h2>
+        <p>A component is a function that receives an element and props:</p>
+        <pre><code>const { page, components } = require('@trebor/buildhtml');
+
+components.register('Card', function (el, props) {
+  el.addClass('card');
+  el.h3(props.title);
+  el.p(props.body);
+});
+
+const doc = page('Components');
+doc.component('Card', { title: 'Registered', body: 'Looked up by name.' });
+
+doc.use(function (el, props) {          // inline, no registration
+  el.strong(props.label);
+}, { label: 'Inline component' });
+
+const html = doc.render();</code></pre>
+        <p><code>components</code> also offers <code>has</code>, <code>list</code>, <code>unregister</code>, <code>extend</code>, and <code>clear</code>.</p>
+      </section>
+
+      <section id="tut-serving-pages" data-search="tutorial serving pages render returns string server works native node http const createserver require page trebor buildhtml served hello from html writehead content type text charset length">
+        <h2>18. Serving pages</h2>
+        <p><code>render()</code> returns a string, so any server works. Native <code>node:http</code>:</p>
+        <pre><code>const { createServer } = require('node:http');
+const { page } = require('@trebor/buildhtml');
+
+const server = createServer((req, res) =&gt; {
+  const doc = page('Served');
+  doc.h1('Hello from node:http');
+  const html = doc.render();
+  res.writeHead(200, {
+    'Content-Type': 'text/html; charset=utf-8',
+    'Content-Length': Buffer.byteLength(html),
+  });
+  res.end(html);
+});</code></pre>
+        <p>Express is the same idea:</p>
+        <pre><code>const { page } = require('@trebor/buildhtml');
+
+function handler(req, res) {
+  const doc = page('Express');
+  doc.h1('Hello from Express');
+  doc.p(`You asked for ${req.path}`);
+  res.type('html').send(doc.render());
+}</code></pre>
+        <p>Other outputs:</p>
+        <pre><code>const { page } = require('@trebor/buildhtml');
+
+const doc = page('Outputs');
+doc.h1('Static file');
+
+const html = doc.render();          // string
+const json = doc.toJSON();          // serialisable definition</code></pre>
+        <p><code>doc.renderStream()</code> returns a Node <code>Readable</code> for streaming, and <code>doc.save(path)</code> writes the page to disk — useful for static site generation.</p>
+        <div class="callout warning"><p><strong><code>render()</code> consumes the document.</strong> It clears the body and releases pooled elements, so call it once. Build a fresh document per request; that is also what makes concurrent requests safe.</p></div>
+        <p>For caching, <code>createCachedRenderer</code> from the <code>middleware</code> subpath returns an Express-style <code>(req, res, next)</code> middleware that caches rendered HTML by key.</p>
+      </section>
+
+      <section id="tut-validation" data-search="tutorial validation validate inspects document before send returns valid errors warnings const page require trebor buildhtml validation states count meaningful text button labelled report true empty">
+        <h2>19. Validation</h2>
+        <p><code>validate()</code> inspects a document before you send it and returns <code>{ valid, errors, warnings }</code>:</p>
+        <pre><code>const { page } = require('@trebor/buildhtml');
+
+const doc = page('Validation');
+doc.states({ count: 0 });
+doc.img('/a.png', 'Meaningful alt text');
+doc.button('Labelled button');
+
+const report = doc.validate();
+// report.valid === true, report.errors is empty
+
+const html = doc.render();</code></pre>
+        <p>It catches duplicate ids, unlabelled controls, images without <code>alt</code>, empty buttons, bindings against undeclared state keys, and — most valuably — <code>W_CALLBACK_CAPTURE</code> for callbacks referencing variables the browser will not have.</p>
+        <p>Call it <strong>before</strong> <code>render()</code>, since rendering clears the body.</p>
+      </section>
+
+      <section id="tut-security-notes" data-search="tutorial security notes what library does text attributes values serialised json escaped sanitized javascript vbscript data html become including schemes split newline carriage return inline never emitted">
+        <h2>20. Security notes</h2>
+        <p>What the library does for you:</p>
+        <ul><li>Text, attributes, CSS values, and serialised JSON are escaped.</li><li>URL attributes are sanitized; <code>javascript:</code>, <code>vbscript:</code> and <code>data:text/html</code> become <code>#</code>, including schemes split by tab, newline, or carriage return.</li><li>Inline <code>on*</code> attributes are never emitted, and <code>attr('onclick', …)</code> is rejected.</li><li>Callback sources are screened and parsed before they can reach a page.</li><li>Pass <code>nonce</code> and it is applied to generated <code>&lt;script&gt;</code> and <code>&lt;style&gt;</code> tags, so a strict CSP works without <code>unsafe-inline</code>:</li></ul>
+        <pre><code>const { page } = require('@trebor/buildhtml');
+
+const doc = page('CSP', { nonce: 'per-request-nonce' });
+doc.states({ n: 0 });
+doc.button('+1').onClick(function () { State.n++; });
+
+const html = doc.render();</code></pre>
+        <p>What remains yours: choosing and sending the CSP header, authentication, authorization, input validation, and keeping secrets out of <code>states()</code>.</p>
+      </section>
+
+      <section id="tut-common-mistakes" data-search="tutorial common mistakes calling render twice clears body second call returns different emptier document once toggleclass name true condition comes first wrong order applies nothing reports title">
+        <h2>21. Common mistakes</h2>
+        <p><strong>Calling <code>render()</code> twice.</strong> It clears the body; the second call returns a different, emptier document. Render once.</p>
+        <p><strong><code>toggleClass('name', true)</code>.</strong> The condition comes first: <code>toggleClass(true, 'name')</code>. The wrong order applies nothing and reports nothing.</p>
+        <p><strong><code>new Document({ title: 'X' })</code>.</strong> Not an option. Use <code>doc.title('X')</code>.</p>
+        <p><strong>Capturing a server variable in a callback.</strong> It becomes a <code>ReferenceError</code> in the browser. Pass the value through <code>states()</code> instead, and run <code>validate()</code>.</p>
+        <p><strong>Putting a secret in <code>states()</code>.</strong> State is serialised into the page. It is public.</p>
+        <p><strong><code>ol(['a', 'b'])</code> expecting list items.</strong> Tag shortcuts take text. Use <code>list(items, null, 'ol')</code>.</p>
+        <p><strong>Expecting <code>appendUnsafe()</code> to escape.</strong> It does not. That is its entire purpose.</p>
       </section>
 
       <section id="concepts" data-search="how works compiled runtime browser state server">

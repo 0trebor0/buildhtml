@@ -3,7 +3,8 @@
 ## Objective
 
 Exercise every exported function, class, and public method of the library and
-report what passes, what fails, and what is not covered.
+report what passes, what fails, and what is not covered. Fix what failed, then
+write an in-depth tutorial covering the API and shortcuts.
 
 ## Status
 
@@ -61,6 +62,12 @@ All are recorded under "Findings" below, with reproductions.
   body via a private `_siblingList()` helper (finding 4), and `wrap()` uses the
   same helper (finding 5)
 - Modified: `CHANGELOG.md` — `Security` entry under `[Unreleased]`
+- Modified: `docs/index.html` — 21 tutorial sections, a labelled sidebar nav
+  group, a hero link, and styling for the nav group labels
+- Created: `test/test-tutorial.js` — executes every tutorial code block and
+  asserts the behavioural claims the prose makes
+- Modified: `test/run-all.js` — registers the tutorial suite
+- Modified: `README.md` — links to the tutorial
 - Modified: `TASK_PROGRESS.md` (this file)
 - Test harnesses were written to the session scratchpad, deliberately outside the
   repo, since the rules forbid adding files that are not necessary.
@@ -122,7 +129,7 @@ resolve on disk, checks every `files[]` entry exists, cross-checks
 `index.d.ts` and that no declared method is missing at runtime, runs every
 example, runs the size benchmark, and resolves every internal README anchor.
 
-Harness C covers, per method group: all 43 `TEXT_TAGS` on both `Document` and
+Harness C covers, per method group: all 41 `TEXT_TAGS` on both `Document` and
 `Element` in text and setup-function form plus escaping (4 assertions each);
 every `on*` event shortcut compiles a real `addEventListener` and emits no
 inline `on*` attribute; all three lifecycle hooks; all ten binding kinds emit
@@ -362,6 +369,28 @@ Fixed / Changed all present), and `npm pack --dry-run` reports 38 files,
 verified: the URL fix blocks tab- and newline-split schemes, all four tree
 operations work at the top level, a static page still emits no script, and both
 entry points plus all six subpaths resolve.
+
+## Tutorial
+
+Written as markdown, verified, then converted into the guide's markup with a
+throwaway script so the code blocks stayed byte-identical to the ones already
+being executed. It lives in `docs/index.html` rather than as a separate
+`.md`, because GitHub Pages serves `index.html` as the site and a loose markdown
+file beside it would not be part of it.
+
+`test/test-tutorial.js` extracts the `tut-` sections from the guide, executes
+each runnable block, and then asserts the prose: that `css()` dedupes, that
+`text()` escapes while `appendUnsafe()` does not, that `validate()` names a
+captured server variable, that a static page emits no script, that the nonce
+reaches the generated script, that `list(items, null, 'ol')` and `ol()` differ,
+that `new Document({ title })` is ignored, and that `toggleClass` applies
+nothing in the reversed order. The tag list and its stated count are checked
+against `TEXT_TAGS`, which caught a wrong count (43 claimed, 41 actual) while
+writing it.
+
+Verified in a browser: 36/36 sections balanced, no duplicate ids, all 22 nav
+links resolve, callouts and code blocks render, and the guide's search filters
+tutorial sections correctly.
 
 ## Open items
 

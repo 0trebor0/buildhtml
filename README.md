@@ -4,7 +4,7 @@
 
 You write JavaScript on the server; you get a complete HTML page. If the page needs browser behavior, you attach state and event callbacks to it, and buildhtml compiles them into the page as generated JavaScript. Pages that don't use those APIs ship no JavaScript at all.
 
-[Complete guide and API reference](https://0trebor0.github.io/buildhtml/docs/) · [Examples](https://github.com/0trebor0/buildhtml/tree/main/example) · [Report an issue](https://github.com/0trebor0/buildhtml/issues)
+[Tutorial](https://0trebor0.github.io/buildhtml/docs/#tut-the-mental-model) · [Complete guide and API reference](https://0trebor0.github.io/buildhtml/docs/) · [Examples](https://github.com/0trebor0/buildhtml/tree/main/example) · [Report an issue](https://github.com/0trebor0/buildhtml/issues)
 
 ## Install
 
@@ -1360,6 +1360,13 @@ configure({ mode: 'dev', debug: true });
 After hydration, run `BuildHTMLDebug.inspect()` in the browser console. It returns a defensive snapshot containing registered state keys, element bindings, event listeners, callback counts, serialized callback sources, rejected registration diagnostics, and hydration time. A page containing only a rejected callback still receives the inspector, making missing behavior visible even if `validate()` was skipped. Production pages and pages without `debug: true` do not expose it. Callback source is already present in development HTML, but may contain application logic, so do not enable debug output in production.
 
 ## Full documentation
+
+**[Tutorial](https://0trebor0.github.io/buildhtml/docs/#tut-the-mental-model)** — a
+step-by-step walkthrough of the whole API in 21 sections, inside the guide: elements and tag shortcuts, attributes, scoped CSS, layout, forms,
+tables, the head, tree operations, state and every binding kind, events,
+lifecycle, reactive lists, routing, components, serving, validation, and the
+mistakes that catch people out. Every code block in it is executed by the test
+suite. Start here if you are new.
 
 The complete searchable guide contains detailed parameters, examples, and the compact API reference:
 

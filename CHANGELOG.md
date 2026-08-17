@@ -13,6 +13,18 @@ rather than complete records.
 
 ## [Unreleased]
 
+### Added
+
+- **A 21-section tutorial in the guide.** A step-by-step walkthrough of the whole
+  API — elements and tag shortcuts, attributes, scoped CSS, layout, forms,
+  tables, the head, tree operations, state and every binding kind, events,
+  lifecycle, reactive lists, views and routing, components, serving, validation,
+  security, and the mistakes that catch people out. It sits in
+  `docs/index.html` alongside the reference, so it shares the site's navigation
+  and search. Every code block in it is executed by the test suite, and the
+  behavioural claims in the prose are asserted, so the documentation cannot
+  drift from the library.
+
 ## [2.0.1] - 2026-08-17
 
 > **Security release.** A `javascript:` URL could bypass URL sanitization when
