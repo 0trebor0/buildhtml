@@ -15,6 +15,13 @@ rather than complete records.
 
 ### Fixed
 
+- **`dataTable()` mishandled a non-array `headers` value.** Only truthiness was
+  checked, so the value reached the row loop intact: a number, object, or
+  boolean threw `TypeError: keys is not iterable`, and — worse — a string spread
+  into one column per character, emitting a silently wrong table rather than
+  failing. Only an array names columns now; anything else is ignored, and
+  `autoHeaders` still applies.
+
 - **TypeScript: `dataTable()` rejected object rows.** `rows` was declared
   `any[][]`, so the object-row form — the one the README documents with
   `autoHeaders` — failed to compile with "Object literal may only specify known
