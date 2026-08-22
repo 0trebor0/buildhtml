@@ -782,3 +782,252 @@ new tests vs unfixed HEAD      -> 113 assertions fail; all four new regression
 
 - `docs/index.html` still lacks the `bindProp` allowlist note (carried over).
 - Still no version bump or release; everything remains under `Unreleased`.
+
+## Regression run and adversarial probe (2026-08-22)
+
+### Method
+
+Ran every automated suite the repository ships, then probed the public surface
+with inputs the suites do not cover: cyclic and deeply nested `fromJSON()`
+definitions, recursion depth binary-searched to the exact failing value,
+attribute-position template interpolation, malformed template tag names, and
+non-string template sources. Escaping claims were re-checked against the raw
+rendered bytes rather than a loose regex.
+
+### Tests run and results
+
+```
+node test/run-all.js                        -> All 22 automated suites passed
+                                               (test-security.js: 376 passed, 0 failed)
+node test/test-browser.js                   -> passed
+node test/test-dashboard-browser.js         -> passed
+node test/test-routing-browser.js           -> passed
+node test/test-auth-interface-browser.js    -> passed
+node test/test-server.js                    -> passed (starts, serves, shuts down)
+node test/test-xss-debug.js                 -> passed
+node test/example.js                        -> passed
+BUILDHTML_FUZZ_ITERATIONS=20000 test-fuzz.js -> 17 passed, 0 failed
+tsc --project typescript/tsconfig.json      -> exit 0, no diagnostics
+node benchmark/render.js                    -> completed, 4698 ops/s static
+node benchmark/runtime-size.js              -> completed
+example/*.js (5 files, required)            -> all load without error
+```
+
+No shipped test fails. Everything below was found outside the suite.
+
+### Findings — not yet fixed
+
+None of these are fixed; they are recorded here for a decision on scope.
+
+#### 7. Recursion depth: deep trees abort with `RangeError`, not a clear error
+
+Four recursive descents have no depth guard. Binary-searched thresholds on
+Node v22.23.2 (default stack):
+
+| Path | Deepest nesting that works | Fails at |
+|------|---------------------------|----------|
+| `fromJSON()` / `renderFromJSON()` | 1717 | 1718 |
+| `renderTemplate()` (indentation) | 2499 | 2500 |
+| `Document.render()` | 4374 | 4375 |
+| `Element.clone()` | 4999 | 5000 |
+
+Reproduction:
+
+```javascript
+const { Document } = require('@trebor/buildhtml');
+const doc = new Document();
+let cur = doc;
+for (let i = 0; i < 4375; i++) cur = cur.div();
+doc.render(); // RangeError: Maximum call stack size exceeded
+```
+
+The failure is a catchable `RangeError`, not a crash, and the thresholds are far
+above any realistic page. The defect is the diagnostic: a caller sees a stack
+overflow from library internals rather than a stated limit. Severity: low.
+
+#### 8. `fromJSON()` has no cycle detection
+
+A definition object whose `children` reach back to an ancestor recurses until
+the stack is exhausted:
+
+```javascript
+const { renderFromJSON } = require('@trebor/buildhtml');
+const node = { tag: 'div', children: [] };
+node.children.push(node);
+renderFromJSON({ body: [node] }); // RangeError: Maximum call stack size exceeded
+```
+
+Only reachable when the definition is an in-memory object graph — a cycle cannot
+survive `JSON.parse`, so a genuine JSON payload cannot trigger it. Severity: low.
+
+Checked and **not** a defect: a shared (acyclic) node referenced twice per level
+expands exponentially and can exhaust the heap, but its serialized form grows at
+the same rate, so there is no small-input amplification. `__proto__` and
+`constructor.prototype` keys in a JSON definition do **not** pollute
+`Object.prototype` — verified clean.
+
+#### 9. `#{}` interpolation is inert outside quoted text
+
+Interpolation resolves in a quoted text body and nowhere else. In an attribute
+value it emits the literal placeholder; in a class or id selector it drops the
+selector entirely. All four cases are silent — no warning in dev mode.
+
+```javascript
+renderTemplate('p "#{v}"',            { v: 'hello' }); // <p>hello</p>          correct
+renderTemplate('a(href="#{u}") "go"', { u: '/about' }); // <a href="#{u}">go</a>  literal
+renderTemplate('p(title="#{v}") "t"', { v: 'hello' }); // <p title="#{v}">t</p>  literal
+renderTemplate('div.#{c}',            { c: 'card' });  // <div></div>            class lost
+renderTemplate('div##{i}',            { i: 'app' });   // <div></div>            id lost
+```
+
+The `href` case is the damaging one: the template reads correctly and ships a
+broken link. README documents `#{}` only in text position, so this is a gap
+rather than a contract violation, but the silence makes it hard to diagnose.
+Severity: medium.
+
+#### 10. A malformed tag name aborts the whole template instead of recovering
+
+README states: "The parser recovers from a malformed line rather than throwing,
+so a mistake still produces output. In development it reports what it dropped as
+`W_TEMPLATE_SYNTAX`." Neither half holds for a malformed tag name.
+
+An uppercase tag — a plausible typo — throws out of `renderTemplate()` and the
+rest of the template is lost:
+
+```javascript
+renderTemplate('div\n  SPAN "y"\n  p "kept"');
+// TypeError: Invalid element tag: SPAN  — the p line never renders
+```
+
+Other malformed names do not throw but are truncated at the first invalid
+character, inventing an element the author never wrote and discarding the
+quoted text with it. No `W_TEMPLATE_SYNTAX` warning is emitted for any of them
+(verified by capturing `console.warn` in dev mode):
+
+| Source | Rendered |
+|--------|----------|
+| `scr<ipt "x"` | `<scr></scr>` |
+| `my tag "x"` | `<my></my>` |
+| `di$v "x"` | `<di></di>` |
+| `1div "x"` | `<div></div>` (leading digit stripped) |
+
+Severity: medium — the throw contradicts a documented guarantee, and the
+truncation silently changes the author's markup.
+
+#### 11. Non-string template source throws an internal `TypeError`
+
+`renderTemplate`, `compileTemplate` and `parseTemplate` reach `source.split`
+before validating the argument:
+
+```javascript
+renderTemplate(null);      // TypeError: Cannot read properties of null (reading 'split')
+renderTemplate(12345);     // TypeError: source.split is not a function
+parseTemplate(['div']);    // TypeError: source.split is not a function
+```
+
+Elsewhere the library rejects a bad argument with a named message
+(`normalizeTagName` throws `Element tag must be a non-empty string`). Severity:
+low, API hygiene only.
+
+### Checked and confirmed correct
+
+- Attribute-name injection via `attr()`, `data()`, `aria()` and `setAttrs()` —
+  escaped, no attribute or tag break.
+- `id()` and `addClass()` with quote payloads — escaped.
+- State keys carrying JS (`x;alert(1);var y`, `a";alert(1);var z="`) — embedded
+  through `JSON.parse` of an escaped string literal; generated script parses and
+  the payload stays data.
+- `on()` / `onClick()` reject `eval(` and `document.cookie` sources.
+- `toJSON()` → `fromJSON()` round trip is byte-identical (ids normalized) for
+  static, reactive-binding and event-handler documents.
+- `render()` clearing the document is intended and documented in
+  `typescript/index.d.ts` and in `docs/index.html` in four places.
+- `configure()` rejects an unknown `mode` with a warning and keeps the old value.
+
+### Open items
+
+- Findings 7-11 are unfixed and unscoped. 9 and 10 are the two worth fixing;
+  7, 8 and 11 are diagnostic quality.
+- Carried over from earlier sessions: `docs/index.html` still lacks the
+  `bindProp` allowlist note; no version bump, everything remains `Unreleased`.
+
+## Coverage gap closed: event shorthands and h4-h6 (2026-08-22)
+
+### How the gap was identified
+
+Enumerated every public prototype method by reflection (`Document`, `Element`,
+`Head`, skipping `_`-prefixed internals) and searched the whole `test/` corpus
+for a call site of each. An earlier in-process instrumentation attempt was
+abandoned: loading the suites into one process shares module-level cache and
+pool state between them, which produced two false failures in `test-middleware.js`
+that do not occur when each suite runs in its own process.
+
+Result — every one of the 28 module exports is referenced by the corpus, and
+`Head` is fully covered. Two groups were never referenced anywhere:
+
+- **24 of the 26 `on<Event>()` shorthands.** Only `onClick` and `onSubmit` were
+  used. Each shorthand hard-codes a DOM event name, so a typo there compiles a
+  listener for an event that never fires — silent at render time and invisible to
+  every other assertion in the corpus.
+- **`h4`, `h5`, `h6`** on both `Document` and `Element`.
+
+### Tests added
+
+`test/test-event-shortcuts.js` — new file, 153 assertions, registered in
+`test/run-all.js` after `test-security.js`.
+
+Per shorthand (all 26, table-driven, so a new shorthand is one line):
+
+- compiles to `addEventListener("<event>")` with the correct event name
+- registers *only* that event — the set of registered listeners in the compiled
+  script must be exactly `["<event>"]`, which catches a copy-paste that leaves
+  two shorthands sharing one event name
+- returns the element, so chaining is unbroken
+- serializes its `context` argument into the generated `fn.call(...)`
+- routes through the same source sanitizer as `on()`: a handler reading
+  `document.cookie` is dropped rather than compiled
+
+Plus: a rejected handler leaves the element renderable and emits no source;
+three shorthands stack on one element without clobbering each other.
+
+For `h4`/`h5`/`h6`: correct tag from `Document` and nested under an element,
+text escaping, and chainability.
+
+### Verifying the tests are not vacuous
+
+Mutation-tested against `lib/element.js`, restored after each run:
+
+```
+onDblclick -> this.on('doubleclick', ...)   -> 2 assertions fail (151 passed, 2 failed)
+onChange   -> context argument dropped      -> 1 assertion fails  (152 passed, 1 failed)
+git diff --stat lib/element.js              -> empty, source restored
+```
+
+### Results
+
+```
+node test/test-event-shortcuts.js  -> 153 passed, 0 failed
+node test/run-all.js               -> All 23 automated suites passed
+tsc --project typescript/...       -> exit 0
+node --check test/test-event-shortcuts.js, test/run-all.js -> both parse
+```
+
+**No new test failed.** The previously untested surface is correct as written;
+the gap was in the corpus, not the library.
+
+### Files changed
+
+- Added: `test/test-event-shortcuts.js`
+- Modified: `test/run-all.js` — registers the new suite
+
+### Remaining coverage gaps
+
+- Findings 9 and 10 (template attribute interpolation, malformed tag recovery)
+  have **no regression tests**, because they are unfixed — a test asserting the
+  correct behaviour would fail today. They should be written together with the
+  fix, not before it.
+- `TemplateParser`'s 25 private methods are still reached only indirectly
+  through `compile`/`parse`; no line-coverage tool is configured, so
+  "referenced by the corpus" remains a proxy for coverage, not proof.
+- `test/example.js` writes `test/output.html` on every run and the path is not
+  in `.gitignore`, so a test run leaves the working tree dirty.

@@ -19,6 +19,7 @@ const suites = [
   'test-internal-functions.js',
   'test-fuzz.js',
   'test-security.js',
+  'test-event-shortcuts.js',
   'test-readme-examples.js',
   'test-tutorial.js',
   'test-dashboard-example.js',
