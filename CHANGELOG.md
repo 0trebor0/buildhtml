@@ -13,6 +13,176 @@ rather than complete records.
 
 ## [Unreleased]
 
+### Security
+
+- **An element id could inject executable JavaScript.** `escapeJsString()`
+  escaped `"`, `\`, newlines and the exact sequence `</script`, but not `'` — and
+  `bindState()` substitutes an escaped id into the *caller's* function source at
+  `__STATE_ID__`, where the surrounding literal is conventionally single-quoted:
+  `document.getElementById('__STATE_ID__')`. An id of `x');alert(1);//` closed
+  that literal and appended statements that the compiled script then ran. Every
+  id reaching the client came through this path, and `id()` accepts any string.
+
+- **An element id could corrupt document parsing.** The same function left `<`
+  unescaped, so a value containing `<!--<script>` put the HTML tokenizer into its
+  script-data-double-escaped state, in which `</script>` no longer ends the
+  element — swallowing the rest of the document as script text. Ids, state keys,
+  event names, attribute names and property names all reach the generated script
+  through this function.
+
+  Both are fixed together: `escapeJsString()` now escapes `'`, `<`, `>` and the
+  U+2028/U+2029 line separators as `\uXXXX`, which is inert inside single-quoted,
+  double-quoted and template literals alike and still evaluates to the original
+  character.
+
+- **`jsonLd()` could corrupt document parsing.** It escaped only `</`, so
+  `<!--<script>` in any schema value survived into its
+  `<script type="application/ld+json">` block and triggered the same
+  double-escape state. It now uses `safeJsonStringify()`, which escapes every
+  `<`; a unicode escape is legal in JSON, so consumers still read the original
+  value.
+
+- **`replaceWith()` injected a raw string unescaped.** `append()`, `text()`,
+  `before()`, `after()`, `insertAt()` and `prependChild()` all escape a non-Element
+  argument, and the renderer emits a non-Element child verbatim — but
+  `replaceWith()` stored the string as-is, making it an unannounced
+  `appendUnsafe()`. It now escapes, matching every other insertion point.
+
+- **Reactive URL updates re-admitted schemes the server already blocked.** The
+  server-side `sanitizeUrl()` was widened to strip the whole C0 range, because
+  the URL parser removes tab, LF and CR from an attribute value and then
+  reassembles `java\tscript:` into a working `javascript:` URL. The two generated
+  client copies — the `bindAttr()` guard and the `_mkEl` list runtime — were
+  hand-written regex literals and never got that fix, so any reactive update or
+  list rebuild put the bypass straight back. All three are now generated from one
+  shared pattern in `utils.js` and cannot drift apart again. Verified through
+  Playwright against the resolved `element.href`, not just the page source.
+
+- **`bindProp()` would assign state into an HTML parsing sink.** `bindProp(key,
+  'innerHTML')` compiled `el.innerHTML = fn(value)`, turning a state value into
+  live markup on every update — the one thing every other binding kind avoids.
+  `innerHTML`, `outerHTML` and `srcdoc` are now refused; `href`, `src`, `action`,
+  `formAction`, `poster` and `cite` compile behind the same scheme guard a
+  rendered `href` gets; and everything else must be one of `value`, `checked`,
+  `selected`, `disabled`, `open`, `hidden`, `readOnly`, `required` or
+  `textContent`. An unlisted property is refused rather than guessed at, because a
+  property that turns out to be a sink is a silent XSS while an unsupported one is
+  a visible error. Refusals emit no client code and are reported by `validate()`.
+  The compiler enforces this too, so a binding restored from JSON cannot bypass
+  it. `bindInput()` is unaffected.
+
+- **A CSP nonce could be served from the response cache.** With both `nonce` and
+  `cacheKey` set, `render()` stored the finished page — nonce included — and
+  handed it to every later request on that key. The second request's CSP header
+  carried a fresh nonce while its markup carried the first one, so either every
+  script was blocked or a nonce an attacker had already observed stayed live.
+  `render()` now bypasses cache reads and writes whenever a nonce is present, and
+  warns in development that the `cacheKey` was ignored. The nonce is deliberately
+  not part of the cache key: a unique nonce per response would mean a unique key
+  per response, storing one entry per request and never hitting. The middleware
+  already behaved this way; `Document.render()` was the inconsistent path.
+
+- **The `_mkEl` list runtime accepted an inline event handler SSR rejected.** Its
+  attribute check tested `/^on[a-z]/i` without the optional dash, so `on-click` —
+  which is what `attr('onClick')` kebab-cases to — passed on the client and was
+  set as a live handler, while the server refused the identical node. Both sides
+  now share one pattern.
+
+- **`fromJSON()` did not validate the callbacks it restored.** `toJSON()` emits
+  compiled *source strings* for events, computed values, state bindings and
+  lifecycle hooks, and `fromJSON()` handed them straight to the client compiler.
+  Live functions passed through `sanitizeFunctionSourceString()`; these did not,
+  so a JSON document from anywhere could close the generated `<script>` and open
+  its own. Every restored callback now clears the same bar as a live one:
+  `events[].fn`, `computed`, and each callback-bearing field of `stateBindings`
+  are validated, event names and element/target ids are checked, and an event
+  `context` (and a `classToggle` `expectedValue`) — both interpolated as bare
+  argument expressions rather than quoted strings — is re-parsed and re-serialised
+  so it can only be data. A rejected callback is dropped whole, never
+  half-registered, and is recorded through `_recordCallbackFailure()` so
+  `validate()` reports it. Legitimate round trips are unaffected.
+
+- **CSS property names, selectors and class names were never validated.**
+  `sanitizeCssValue()` only ever saw the value half of a declaration, so the
+  *name* half reached the stylesheet unfiltered:
+  `css({ 'color:red}</style><script>alert(1)</script><style>x': 'y' })` closed
+  the `<style>` element and ran script. The same hole existed in `style()` (a
+  name could smuggle a second declaration into the attribute),
+  `globalCss()`/`globalStyle()`, `sharedClass()`/`Head.addClass()`,
+  `defineClass()`, `keyframes()`, `mediaQuery()`, `bodyCss()`, `cssVar()`, and
+  the element-scoped `pseudo()`, `hover()`, `media()` and pseudo-class helpers.
+  Names, selectors and class names are now validated at every one of those entry
+  points. Invalid names are **dropped, never rewritten** — silently deleting the
+  `;` from `color;background:url(x)` would emit a declaration the caller never
+  wrote. Custom properties (`--brand-color`) and vendor prefixes
+  (`-webkit-font-smoothing`) are unaffected, and custom properties now keep their
+  exact case, since `--brandColor` and `--brandcolor` are different properties.
+
+- **Compiled CSS restored from JSON was injected verbatim.** An element's
+  `cssText` and the head's `globalStyles`, `classStyles` and `styles` are
+  already-compiled CSS written into the `<style>` block unescaped — the same
+  trust level as `appendUnsafe()`. They are needed for snapshot restoration, so
+  they are validated rather than dropped: nothing this library compiles contains
+  `<`, which makes the check invisible to a genuine round trip and fatal to a
+  tampered one. Pass `trustedCss: true` to `fromJSON()` to restore a snapshot you
+  produced yourself without the check. The decision is made once at the top
+  level, so an untrusted payload cannot grant itself the exemption per node.
+
+### Fixed
+
+- **The production minifier could duplicate or relocate a protected block.** It
+  swapped each `<pre>`, `<code>`, `<script>`, `<style>` and `<textarea>` for a
+  `"\x00PRESERVE<n>\x00"` token and substituted them back at the end. The token
+  was caller-forgeable: page text containing a literal `\x00PRESERVE0\x00` was not
+  a placeholder the minifier had created, but the restore pass could not tell and
+  expanded it anyway — so `<p>\x00PRESERVE0\x00</p><pre>x</pre>` emitted the
+  `<pre>` twice, once inside the paragraph. Minification now scans the input into
+  alternating plain and protected segments and rewrites only the plain ones.
+  Nothing is inserted into the string, so there is no token to collide with.
+
+- **The client list runtime stripped quotes CSS needs.** `_mkEl`'s CSS value
+  sanitiser was a hand-copied variant that also removed `"` and `'`, so
+  `font-family: "Fira Code"` rendered correctly from the server and silently lost
+  its quotes the moment a reactive list rebuilt the same node. Both sides now
+  share one pattern.
+
+- **A failed `render()` leaked its pooled arrays.** Rendering acquired six pooled
+  arrays and recycled them only on the success path, so any throw — a bad node, a
+  failing head render, a callback the client compiler choked on — took them out
+  of circulation permanently. A handler that failed on every request drained the
+  pool and it never refilled. Rendering now runs under `try/finally` and recycles
+  each array exactly once on every path. A failed render is also explicitly
+  non-destructive: nothing is cached, `_lastRendered` keeps its previous value,
+  and the document is left intact so the caller can inspect the tree and render
+  again. Only a completed render consumes the document, which is the line
+  `renderStream()` already drew.
+
+- **An `Element` could occupy two places in the tree at once.** Inserting an
+  element that already had a home only repointed `_parent`; the old slot still
+  held it. The render then walked it twice and emitted the same subtree — same
+  ids and all — twice over, so `b.append(a.child('span'))` produced two spans.
+  `append()`, `before()`, `after()`, `prependChild()`, `insertAt()` and
+  `replaceWith()` now detach the element from its previous location first, making
+  a move a move rather than a copy. Inserting an element into itself or into its
+  own descendant used to recurse until the stack overflowed; both are now
+  rejected. Cross-document insertion is rejected rather than silently adopted,
+  because the element's id generator, state store and pool belong to its original
+  document.
+
+- **`render()` and `renderStream()` kept separate copies of their setup and
+  cleanup.** Each assembled the compilation context by hand and each had its own
+  recycle sequence, so the two could fall out of step over which arrays were
+  pooled. Both now use one context factory and one release helper. The helper is
+  idempotent, which the stream path needs: completion, error and abandonment can
+  all reach it, and `recycle()` is not idempotent — releasing twice would put one
+  array into the pool twice and hand two later renders the same buffer.
+
+- **A build-time lifecycle rejection crashed instead of being recorded.** The
+  `catch` for an invalid lifecycle hook in `build()` referenced a `doc` binding
+  that only existed inside an unrelated branch, so it threw a `ReferenceError`
+  over the original error.
+
+
 ### Added
 
 - **TypeScript now knows about the `State` global.** Callbacks reference `State`

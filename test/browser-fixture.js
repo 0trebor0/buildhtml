@@ -14,6 +14,7 @@ function buildPage() {
     theme: 'light',
     link: '/safe',
     items: [{ id: 1, label: 'One' }],
+    linkItems: [{ id: 1, url: '/safe' }],
     profile: { name: 'Ada', tags: ['first'] },
     view: 'all',
     page: 'home',
@@ -77,6 +78,12 @@ function buildPage() {
   doc.button('Add item').id('add-item').onClick(function () {
     State.items.push({ id: 2, label: 'Two' });
   });
+
+  // A reactive list whose items carry hrefs, so the _mkEl client rebuild is
+  // exercised on the same URL payloads the bindAttr path is.
+  doc.div().id('link-list').liveList('linkItems', item => ({
+    tag: 'a', text: 'link', attrs: { href: item.url, 'data-link': item.id },
+  }));
 
   doc.span().id('profile-output').bind('profile', value => value.name + ':' + value.tags.join(','));
   doc.button('Mutate nested state').id('mutate-profile').onClick(function () {

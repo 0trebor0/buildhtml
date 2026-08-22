@@ -152,6 +152,19 @@ export interface RadioOption {
 
 export type StateShape = Record<string, any>;
 export type StateKey<S extends StateShape> = Extract<keyof S, string>;
+
+/**
+ * DOM properties `bindProp()` will compile a binding for.
+ *
+ * The markup sinks (`innerHTML`, `outerHTML`, `srcdoc`) are deliberately absent:
+ * assigning state to them parses it as HTML. The URL properties are included but
+ * compiled behind a scheme guard. Anything not listed is refused at runtime, so
+ * the type mirrors what the implementation actually accepts.
+ */
+export type BindableProp =
+  | 'value' | 'checked' | 'selected' | 'disabled' | 'open' | 'hidden'
+  | 'readOnly' | 'required' | 'textContent'
+  | 'href' | 'src' | 'action' | 'formAction' | 'poster' | 'cite';
 export type StateValue<S extends StateShape, K extends StateKey<S>> = S[K];
 export type ArrayItem<T> = T extends readonly (infer Item)[] ? Item : never;
 export type ElementContent<S extends StateShape = StateShape> = string | number | ((element: Element<S>) => void);
@@ -490,7 +503,17 @@ export declare class Element<S extends StateShape = StateShape> implements Share
   classWhen<K extends StateKey<S>>(stateKey: K, expectedValue: StateValue<S, K>, className: string): Element<S>;
   bindAttr<K extends StateKey<S>, C = any>(stateKey: K, attrName: string, fn?: (val: StateValue<S, K>, state: S, context: C) => string | null | false, context?: C): Element<S>;
   bindStyle<K extends StateKey<S>, C = any>(stateKey: K, fn: (val: StateValue<S, K>, state: S, context: C) => Record<string, string>, context?: C): Element<S>;
-  bindProp<K extends StateKey<S>, C = any>(stateKey: K, prop: string, fn?: (val: StateValue<S, K>, state: S, context: C) => any, context?: C): Element<S>;
+  /**
+   * Reactively assign a DOM property.
+   *
+   * Only the properties in `BindableProp` are accepted. `innerHTML`, `outerHTML`
+   * and `srcdoc` parse their value as HTML and are refused outright; anything
+   * outside the list is refused too, rather than guessed at. The six URL
+   * properties are compiled with the same scheme guard a rendered `href` gets.
+   * A refused binding is recorded and reported by `validate()`, and emits no
+   * client code.
+   */
+  bindProp<K extends StateKey<S>, C = any>(stateKey: K, prop: BindableProp, fn?: (val: StateValue<S, K>, state: S, context: C) => any, context?: C): Element<S>;
   bindInput<K extends StateKey<S>>(stateKey: K): Element<S>;
   state(value: any): this;
   /**

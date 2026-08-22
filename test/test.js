@@ -888,7 +888,18 @@ test('liveList filters unsafe attrs and URLs in SSR and client runtime', () => {
   });
   assert(!ssrHtml.includes('onclick'), 'SSR event attribute blocked');
   assert(ssrHtml.includes('href="#"'), 'SSR executable URL sanitized');
-  assert(MK_EL_SRC.includes('!/^on[a-z]/i.test(k)'), 'client runtime blocks event attributes');
+  // Asserted by executing the generated predicate rather than matching its text.
+  // The old assertion matched the literal `!/^on[a-z]/i.test(k)`, which passed
+  // for a check that missed "on-click" — the kebab form attr('onClick') produces,
+  // and one the server already rejected.
+  const akBody = MK_EL_SRC.slice(
+    MK_EL_SRC.indexOf('function ak(k){') + 'function ak(k){'.length,
+    MK_EL_SRC.indexOf('}function uv(')
+  );
+  const ak = new Function('k', akBody);
+  assert(!ak('onclick'), 'client runtime blocks event attributes');
+  assert(!ak('on-click'), 'client runtime blocks the kebab-cased event attribute too');
+  assert(ak('data-item') && ak('href'), 'client runtime still allows ordinary attributes');
   assert(MK_EL_SRC.includes('javascript|vbscript|data'), 'client runtime sanitizes URL protocols');
 });
 

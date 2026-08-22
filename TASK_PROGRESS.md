@@ -370,6 +370,12 @@ verified: the URL fix blocks tab- and newline-split schemes, all four tree
 operations work at the top level, a static page still emits no script, and both
 entry points plus all six subpaths resolve.
 
+Decision (2026-08-11): 2.0.0 stands. The version is correct semver — the helper
+changes alter existing callers' rendered output, so a major is required, and
+2.0.0 is the next major after 1.2.5. The alternative considered and declined was
+shipping the new behaviour opt-in as 1.3.0 with a deprecation window. Release is
+deliberately on hold; nothing tagged or published.
+
 ## Tutorial
 
 Written as markdown, verified, then converted into the guide's markup with a
@@ -474,3 +480,305 @@ setup — which is not true of this one by design.
   is wanted.
 - No `NPM_TOKEN` or trusted publisher is configured, so the tagged release
   workflow still fails at its publish step.
+
+## Injection, resource and tree-ownership audit (2026-08-22)
+
+A six-phase remediation brief was checked claim by claim against the code before
+anything was changed. Every claim in phases 1-5 reproduced. Two were narrower
+than stated and are recorded as such below.
+
+### Verification method
+
+Each claim was reproduced with a script that asserts on the **rendered page**,
+not on an internal field — what matters is whether the byte sequence reaches the
+browser. After the fixes, the new suite was run against a pristine checkout of
+`HEAD` (`git archive HEAD` into a scratch tree): **59 assertions fail on the
+unfixed library and 0 on the fixed one**, which is what distinguishes a
+regression test from a tautology.
+
+### Confirmed and fixed
+
+- **Phase 1 - JSON callback restoration.** All five sinks reproduced:
+  `events[].fn`, `computed`, `stateBindings[].templateFn`, event `context`, and
+  element `cssText` each rendered `</script><script>alert(1)</script>` into the
+  page. A sixth, not in the brief, was found while reading `lib/renderer.js:217`:
+  a `classToggle` binding's `expectedValue` is interpolated into
+  `Object.is(val,${expectedValue})` as a bare expression. Fixed in
+  `lib/builder.js`.
+- **Phase 2 - CSS injection.** `css()`, `globalCss()` and `Head.addClass()`
+  reproduced a full `</style><script>` breakout. `style()` was **narrower than
+  claimed**: the style attribute is HTML-escaped at render, so a property name
+  cannot introduce markup there — but it could smuggle a second declaration
+  (`{'color:red;pointer-events': 'none'}`), which is still a real defect and is
+  fixed. Validators live in `lib/utils.js`; call sites in `lib/element.js`,
+  `lib/head.js`, `lib/document.js`.
+- **Phase 3 - render() cleanup.** Reproduced: 10 failed renders drained the array
+  pool from 6 to 0. Two sub-claims were **already true before the change** and
+  needed no fix — `_lastRendered` was already untouched on failure, and the cache
+  write already happened after the render, so no partial entry was possible. The
+  leak was the real defect. Fixed with `try/finally` in `lib/document.js`.
+- **Phase 4 - tree ownership.** Reproduced in full: a moved element rendered
+  twice, and both self-insertion and an ancestor cycle overflowed the stack.
+  Fixed in `lib/element.js` with `_detach()`, `_adopt()` and
+  `_containsSelfOrAncestor()`.
+- **Phase 5 - stream test.** Confirmed: `html.length > afterOne * 5` asserted a
+  ratio between two document sizes and only held because the fixture happened to
+  be 5000 paragraphs. Replaced with behavioural assertions. `renderStream()`
+  itself was not changed.
+
+### Sub-claims that were already mitigated
+
+- "Reject malformed event names, IDs, and target IDs." These are interpolated
+  into the client script through `escapeJsString()`, which already neutralises
+  `</script`, so no breakout was possible. Validation was added anyway — it is
+  cheap and turns a typo into a recorded failure instead of a dead `getById()` —
+  but it closed no hole.
+
+### Deviation from the brief
+
+The brief said the default JSON import "must reject `cssText`, compiled
+`globalStyles`, and compiled `classStyles`", with a trusted option only "if
+round-trip restoration requires them". Round-trip restoration **does** require
+them — scoped `css()` output exists nowhere else — so rejecting them by default
+would have broken `toJSON()` -> `fromJSON()` for every document using scoped CSS.
+They are instead **validated** by default (`isSafeRawCss`: no `<`, no control
+characters), which blocks every breakout while leaving all legitimate round trips
+untouched, plus an explicit `trustedCss: true` opt-out. This satisfies the stated
+completion criterion ("raw snapshot restoration is explicitly trusted or
+removed") without the compatibility break.
+
+### Files changed
+
+`lib/utils.js` (validators `isValidCssProperty`, `isValidCssCustomProperty`,
+`isSafeCssSelector`, `isValidClassName`, `isSafeRawCss`, plus
+`compileCssDeclarations` and `warnInvalidCss`), `lib/builder.js`,
+`lib/element.js`, `lib/head.js`, `lib/document.js`, `test/test-security.js`
+(new, 95 assertions), `test/test-fuzz.js` (two CSS structural invariants),
+`test/test-stream.js`, `test/run-all.js`.
+
+### Commands run and results
+
+```
+node --check lib/utils.js lib/builder.js lib/element.js lib/head.js lib/document.js
+                              -> all OK (run individually)
+node test/run-all.js          -> All 22 automated suites passed
+                                 (test-security.js: 95 passed, 0 failed;
+                                  test-fuzz.js: 17 passed, 0 failed)
+npm run test:types            -> tsc --noEmit, no output, exit 0
+npm run test:browser          -> 4 Playwright suites passed
+npm pack --dry-run            -> 38 files, 139.9 kB packed, 515.6 kB unpacked
+new suite vs unfixed HEAD     -> 59 assertions fail (fixed tree: 0)
+```
+
+### Open items
+
+- The public API surface is unchanged except for the additive `trustedCss` flag
+  on `fromJSON()`, so `typescript/index.d.ts` was not touched. If `trustedCss` is
+  to be a supported option rather than an escape hatch, it needs a declaration
+  and a README entry.
+- No version bump or release was made; the changes sit under `Unreleased`.
+
+## Reactive sanitiser, nonce, minifier and parity audit (2026-08-22)
+
+A second seven-phase brief, checked the same way: reproduce first, fix only what
+reproduces. All six substantive claims reproduced. Two further defects were found
+while inventorying phase 5 and are fixed alongside them.
+
+### Confirmed and fixed
+
+- **Phase 1 - reactive URL sanitisation.** Reproduced. `lib/renderer.js` (the
+  `bindAttr` guard) and `lib/live.js` (`_mkEl`'s `uv()`) both used
+  `[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]`, which omits tab, LF and CR. The server-side
+  `sanitizeUrl()` had already been widened to the full C0 range in `55dc0b6`; the
+  two generated copies never got that fix, so every reactive update re-admitted
+  `java\tscript:`. Both are now generated from `clientUrlSanitizerBody()` in
+  `utils.js`. Verified in Playwright against the resolved `element.href` after
+  hydration, on both the `bindAttr` and `liveList` paths - and confirmed the new
+  Playwright assertions **fail against unfixed `HEAD`**, at exactly the
+  tab-split payload.
+- **Phase 2 - `bindProp()`.** Reproduced: `bindProp('k','innerHTML')` compiled
+  `el["innerHTML"]=...`, and URL properties compiled with no guard. Now an
+  allowlist with three classes (refused / URL-guarded / inert), enforced in
+  `Element.bindProp()` *and* in `compileClient()` so a JSON-restored binding
+  cannot bypass it.
+- **Phase 3 - CSP nonce caching.** Reproduced, and the worst of the batch: with
+  `cache: true`, `cacheKey` and `nonce`, the second request received a
+  byte-identical cached page carrying the *first* request's nonce. `render()` now
+  bypasses the cache entirely when a nonce is present. Note the middleware
+  already did this and the README already documented it for the middleware -
+  `Document.render()` was the inconsistent path.
+- **Phase 4 - minifier placeholders.** Reproduced dramatically: the input
+  `<p>\x00PRESERVE0\x00</p><pre>  keep  me  </pre>` minified to
+  `<p><pre>  keep  me  </pre></p><pre>  keep  me  </pre>` - the protected block
+  both duplicated and relocated. Replaced the placeholder substitution with a
+  segment scanner that inserts nothing into the string.
+- **Phase 5 - sanitiser parity.** The URL drift was the claimed one; a direct
+  comparison of the two implementations found **two more**:
+  - `_mkEl`'s attribute check tested `/^on[a-z]/i` without the optional dash, so
+    it **accepted `on-click`** - the kebab form of `attr('onClick')` - which the
+    server rejects. That is a live inline handler appearing on hydration, not
+    just cosmetic drift.
+  - `_mkEl`'s CSS value sanitiser also stripped quotes, so
+    `font-family: "Fira Code"` lost them on client rebuild.
+  All three checks are now generated from shared sources, and a parity harness
+  extracts the real generated functions from a rendered page and compares them
+  against the server helpers across 30+ payloads.
+- **Phase 6 - render lifecycle.** Extracted `_createRenderContext()` and an
+  idempotent `_releaseRenderContext()`, used by both `render()` and
+  `renderStream()`. The `try/finally` was already added in the previous audit.
+
+### Test-quality changes made along the way
+
+Three existing assertions matched the *source text* of generated code and were
+replaced with assertions that **execute** it. Each had been passing while the
+code it checked was wrong:
+
+- `test-bindings.js` asserted the literal `?'#':_u`, which held for a guard that
+  missed tab/LF/CR.
+- `test.js` asserted the literal `!/^on[a-z]/i.test(k)`, which held for a check
+  that accepted `on-click`.
+- `test-stream.js` (previous audit) asserted a document-size ratio.
+
+This is the brief's own point - "source-string assertions alone are
+insufficient" - and it is why these bugs survived a green suite.
+
+### Files changed
+
+`lib/utils.js` (shared sources `URL_CONTROL_STRIP_SOURCE`,
+`DANGEROUS_URL_SOURCE`, `CSS_VALUE_STRIP_SOURCE`, `ATTR_KEY_SOURCE`,
+`EVENT_ATTR_SOURCE`; generators `clientUrlSanitizerBody`,
+`clientCssValueSanitizerBody`, `clientAttrKeyValidatorBody`;
+`classifyBindableProp`; rewritten `minHTML`), `lib/renderer.js`, `lib/live.js`,
+`lib/element.js`, `lib/document.js`, `typescript/index.d.ts` (new `BindableProp`
+type), `README.md`, `test/test-security.js`, `test/test-bindings.js`,
+`test/test.js`, `test/test-browser.js`, `test/browser-fixture.js`.
+
+### Commands run and results
+
+```
+node --check lib/{utils,element,renderer,live,document,builder,head}.js
+                              -> all OK (run individually)
+node test/run-all.js          -> All 22 automated suites passed
+                                 (test-security.js: 294 passed, 0 failed)
+npm run test:types            -> tsc --noEmit, no output, exit 0
+npm run test:browser          -> 4 Playwright suites passed
+npm run benchmark             -> static 4586 ops/s vs 4437 on unfixed HEAD,
+                                 3929 HTML bytes on both (no regression;
+                                 the raw-string baseline moved the same way)
+npm run benchmark:size        -> unchanged
+npm pack --dry-run            -> 38 files, 529.9 kB unpacked
+CJS + ESM entry load          -> 28 exports each
+packed artifact reproductions -> 10/10 blocked (extracted tarball, run directly)
+new Playwright assertions vs unfixed HEAD -> fail at "java\tscript:"
+```
+
+### Incident during verification
+
+`npm install <tarball>` was run from a scratch directory that had no
+`package.json` of its own. npm walked up to the repository root and installed
+there: it added a `dependencies` entry to `package.json`, created a
+`package-lock.json`, and pruned the eight `--no-save` dev packages. Recovered
+with `git checkout -- package.json`, deleting the lockfile, and one combined
+`npm install --no-save --package-lock=false react react-dom preact
+preact-render-to-string typescript@5 playwright` - combined because, as this file
+already notes, a later `--no-save` install prunes earlier unsaved packages. Note
+`typescript@5` specifically: an unpinned reinstall pulled TypeScript 7, which has
+removed `moduleResolution: node10` and fails `test:types`; `CONTRIBUTING.md`
+already documents the `typescript@5` pin. `package.json` and the absent lockfile
+were verified back to their committed state, and the full suite, type check and
+browser suites were re-run green afterwards. The packed-artifact check was then
+redone by extracting the tarball outside the repository, with no `npm install`.
+
+### Open items
+
+- The `docs/index.html` guide still describes `bindProp` as "Assigns a DOM
+  property" with no mention of the allowlist. `README.md` and the TypeScript
+  declarations were updated; the guide was not.
+- No version bump or release. Everything sits under `Unreleased`. The security
+  entries warrant a patch release through the provenance workflow when you are
+  ready.
+
+## Whole-surface method audit (2026-08-22)
+
+Brief: debug every method, test every method, confirm security.
+
+### Method
+
+Enumerated the real API surface by reflection rather than from the docs: 28 module
+exports, 140 `Document` methods, 231 `Element` methods and 1 accessor, 12 `Head`
+methods - **411 entry points**.
+
+Two passes:
+
+1. **Coverage.** Wrapped every prototype method, loaded the 13 pure-node suites
+   in-process, and recorded which were never invoked. 310/383 prototype methods
+   were exercised; the 73 untouched ones were all tag shortcuts and layout
+   helpers (`article`, `td`, `grid`, `stack`, ...), no security-relevant logic.
+2. **Hostile sweep.** Called every method with 24 argument shapes carrying
+   attribute-breakout, script-breakout, style-breakout and control-character-split
+   URL payloads, rendered the resulting page each time, and asserted security
+   invariants on the output. **8,794 calls, 8,794 pages checked.**
+
+Invariants asserted per page: no executable `alert()` inside a script element, no
+injected inline `<script>`, no `on*=` attribute in the body, no executable scheme
+in any URL attribute (compared after removing tab/LF/CR the way a URL parser
+does), no `<style>` closed early, no attribute-breakout sequence.
+
+### Four genuine bugs found and fixed
+
+All four were live in `HEAD`, all four reachable through the ordinary public API,
+and none were caught by the existing suite.
+
+1. **`escapeJsString()` did not escape `'` - arbitrary JS execution.** The most
+   serious of the four. `renderer.js` substitutes an escaped id into the caller's
+   own function source at `__STATE_ID__`, and that placeholder conventionally sits
+   in a single-quoted literal. Reproduced: an id of `x');alert(1);//` compiled to
+   `getElementById('x');alert(1);//');` - the `alert(1)` is a real statement and
+   the surrounding script still parsed as valid JS, so it would have run.
+2. **`escapeJsString()` did not escape `<` - script-data parsing corruption.** An
+   id of `<!--<script>` put four raw copies of that sequence inside the generated
+   `<script>`. Per the HTML tokenizer this enters script-data-double-escaped
+   state, where `</script>` stops closing the element.
+3. **`jsonLd()` escaped only `</`.** Same double-escape hazard, through a plain
+   data API rather than a raw one.
+4. **`replaceWith(string)` skipped escaping.** Verified by comparing all seven
+   insertion points side by side: `append`, `text`, `before`, `after`, `insertAt`
+   and `prependChild` escaped; `replaceWith` alone emitted raw HTML.
+
+Fixes: `escapeJsString()` now escapes `'`, `<`, `>`, U+2028 and U+2029 as
+`\uXXXX` - inert in single-quoted, double-quoted and template literals alike, and
+still round-tripping to the original character (asserted in all three literal
+forms). `jsonLd()` uses `safeJsonStringify()`. `replaceWith()` escapes a
+non-Element argument.
+
+### Not bugs
+
+- **8 methods still flagged by the sweep** are documented raw-content APIs, the
+  equivalent of `dangerouslySetInnerHTML`: `appendUnsafe`, `raw`, `rawHead`,
+  `inlineScript`, `inlineStyle`, `Document.addStyle`, `Head.addStyle`,
+  `Head.addRawLink`. README already says "Reserve `appendUnsafe()`, `rawHead()`,
+  and inline scripts for trusted content."
+- **`component()` threw for every argument shape** - correct behaviour, it
+  reports that the component is not registered.
+
+### Commands run and results
+
+```
+reflection surface scan        -> 411 entry points
+in-process coverage pass       -> 310/383 prototype methods exercised by suites
+hostile sweep                  -> 8794 calls, 8794 pages checked,
+                                  0 violations outside documented raw APIs
+node --check lib/*.js          -> all parse
+node test/run-all.js           -> All 22 automated suites passed
+                                  (test-security.js: 376 passed, 0 failed)
+BUILDHTML_FUZZ_ITERATIONS=20000 node test/test-fuzz.js -> 17 passed, 0 failed
+npm run test:types             -> tsc --noEmit, exit 0
+npm run test:browser           -> 4 Playwright suites passed
+new tests vs unfixed HEAD      -> 113 assertions fail; all four new regression
+                                  tests fail there and pass here
+```
+
+### Open items
+
+- `docs/index.html` still lacks the `bindProp` allowlist note (carried over).
+- Still no version bump or release; everything remains under `Unreleased`.

@@ -207,7 +207,15 @@ function bigDocument(count) {
 }
 
 const p13 = testAsync('renderStream renders lazily and honours backpressure', async () => {
+  // The old assertion here was `html.length > afterOne * 5` — a ratio between two
+  // document sizes, which says nothing about laziness and only held because the
+  // fixture happened to be 5000 paragraphs. What actually matters is that the
+  // first read stops short of the end and later reads carry on from there, so
+  // that is what is asserted: the buffered prefix must be a genuine prefix of an
+  // incomplete document, and the finished stream must equal a plain render().
   const doc = bigDocument(5000);
+  const reference = bigDocument(5000).render();
+
   const stream = doc.renderStream();
   assert(stream.readableLength === 0, 'nothing is rendered before the consumer reads');
 
@@ -216,11 +224,17 @@ const p13 = testAsync('renderStream renders lazily and honours backpressure', as
   assert(afterOne > 0, 'a read cycle produces data');
   assert(afterOne < stream.readableHighWaterMark * 2,
     `a read cycle stops near the high-water mark (buffered ${afterOne}, hwm ${stream.readableHighWaterMark})`);
+  assert(afterOne < reference.length, 'the first read does not finish the document');
+  assert(doc.body.length > 0, 'the document is still held mid-stream');
 
   const html = await collectStream(stream);
-  assert(html.length > afterOne * 5, 'the rest is produced on later reads');
-  assert(html.endsWith('</html>'), 'document completes');
+  assert(html.length > afterOne, 'later reads produce bytes the first read had not');
+  assert(html.startsWith(reference.slice(0, afterOne)),
+    'what the first read buffered is a prefix of the finished document');
+  assert(html === reference, 'streamed output equals an equivalent non-streamed render');
+  assert(html.endsWith('</body></html>'), 'output ends with the closing tags');
   assert(doc.body.length === 0, 'document cleared once the stream finished');
+  assert(doc.output() === html, 'the completed stream is recorded as the rendered output');
 });
 
 /* ---- abandoning the stream still releases the document ---- */

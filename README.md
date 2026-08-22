@@ -172,6 +172,15 @@ doc.title('Custom setup').viewport().resetCss().lang('en');
 | `cache` | boolean | `false` | Enables document render caching |
 | `cacheKey` | string | none | Required stable key when document caching is enabled |
 
+A nonce and the response cache are mutually exclusive: when `nonce` is set,
+`render()` neither reads nor writes the cache, and development mode warns that
+the `cacheKey` was ignored. A nonce is single-use — serving a cached page would
+hand a later request the earlier request's nonce, which no longer matches the CSP
+header sent with it. The nonce is deliberately **not** folded into the cache key:
+a fresh nonce per response would mean a fresh key per response, storing one entry
+per request and never hitting. This matches what the middleware already does when
+you pass `options.nonce`.
+
 ### Document and Element capabilities
 
 Both objects expose tag shortcuts, but they have different jobs:
@@ -402,9 +411,24 @@ doc.button('Add task').onClick(function () {
 | `bindClass(key, fn)` | `(value, State)` callback | Sets a computed class |
 | `bindAttr(key, name, fn)` | `(value, State)` callback | Sets or removes an attribute |
 | `bindStyle(key, fn)` | `(value, State)` callback | Applies returned CSS rules |
-| `bindProp(key, name, fn?)` | `(value, State)` callback | Assigns a DOM property |
+| `bindProp(key, name, fn?)` | `(value, State)` callback | Assigns a DOM property (restricted list, see below) |
 | `bindInput(key)` | state key | Two-way input value binding |
 | `on(event, fn)` | browser event callback | Adds an event listener |
+
+`bindProp()` accepts a fixed list of properties:
+
+| Group | Properties | Behaviour |
+| --- | --- | --- |
+| Inert | `value`, `checked`, `selected`, `disabled`, `open`, `hidden`, `readOnly`, `required`, `textContent` | Assigned directly |
+| URL | `href`, `src`, `action`, `formAction`, `poster`, `cite` | Assigned behind the same scheme guard a rendered `href` gets |
+| Refused | `innerHTML`, `outerHTML`, `srcdoc`, and anything not listed above | No binding is compiled |
+
+`innerHTML`, `outerHTML` and `srcdoc` parse their value as HTML, which would turn
+a state value into live markup — so they are refused rather than guarded. Any
+property outside the list is refused too, because a property that turns out to be
+a sink is a silent XSS while an unsupported one is a visible error. A refused
+binding emits no client code and is reported by `validate()`. To render markup
+you control, use `appendUnsafe()` at build time.
 
 For common navigation comparisons, use declarative helpers so no server closure is required:
 

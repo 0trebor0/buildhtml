@@ -129,6 +129,66 @@ async function run() {
     await page.locator('#unsafe-link').click();
     assert.equal(await page.locator('#link-output').getAttribute('href'), '#');
 
+    // Reactive URL sanitisation, checked against the DOM the browser actually
+    // built rather than against the generated source. A scheme split by tab, LF
+    // or CR reads as inert text in the page source, but the URL parser removes
+    // those characters and reassembles a working javascript: URL — which is why
+    // `element.href` (the RESOLVED value) is asserted alongside the attribute.
+    const hostileUrls = [
+      'javascript:alert(1)',
+      'JaVaScRiPt:alert(1)',
+      'java\tscript:alert(1)',
+      'java\nscript:alert(1)',
+      'java\rscript:alert(1)',
+      'java\t\n\rscript:alert(1)',
+      'v\tbscript:alert(1)',
+      'da\nta:text/html,<script>alert(1)</script>',
+    ];
+    for (const url of hostileUrls) {
+      await page.evaluate((value) => { window.State.link = value; }, url);
+      assert.equal(
+        await page.locator('#link-output').getAttribute('href'), '#',
+        `bindAttr neutralised ${JSON.stringify(url)}`
+      );
+      const resolved = await page.locator('#link-output').evaluate(el => el.href);
+      assert.ok(
+        !/^\s*(?:javascript|vbscript|data):/i.test(resolved),
+        `resolved href is not executable for ${JSON.stringify(url)} (got ${resolved})`
+      );
+    }
+
+    const safeUrls = ['/relative/path', 'https://example.test/a?b=c', '#fragment', 'mailto:a@b.test'];
+    for (const url of safeUrls) {
+      await page.evaluate((value) => { window.State.link = value; }, url);
+      assert.equal(
+        await page.locator('#link-output').getAttribute('href'), url,
+        `bindAttr preserved ${JSON.stringify(url)}`
+      );
+    }
+
+    // The same payloads through the liveList client rebuild (_mkEl), which had
+    // its own hand-copied copy of the URL check.
+    for (const url of hostileUrls) {
+      await page.evaluate((value) => { window.State.linkItems = [{ id: 1, url: value }]; }, url);
+      assert.equal(
+        await page.locator('#link-list [data-link]').getAttribute('href'), '#',
+        `liveList neutralised ${JSON.stringify(url)}`
+      );
+      const resolved = await page.locator('#link-list [data-link]').evaluate(el => el.href);
+      assert.ok(
+        !/^\s*(?:javascript|vbscript|data):/i.test(resolved),
+        `resolved liveList href is not executable for ${JSON.stringify(url)} (got ${resolved})`
+      );
+    }
+    for (const url of safeUrls) {
+      await page.evaluate((value) => { window.State.linkItems = [{ id: 1, url: value }]; }, url);
+      assert.equal(
+        await page.locator('#link-list [data-link]').getAttribute('href'), url,
+        `liveList preserved ${JSON.stringify(url)}`
+      );
+    }
+    await page.evaluate(() => { window.State.link = '/safe'; });
+
     await page.locator('#add-item').click();
     assert.deepEqual(await page.locator('#list [data-item]').allTextContents(), ['One', 'Two']);
 

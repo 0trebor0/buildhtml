@@ -783,7 +783,54 @@ test('bindAttr sanitizes reactive URL values', () => {
   doc.a('/safe', 'link').bindAttr('link', 'href', value => value);
   const html = doc.render();
   assert(html.includes('javascript|vbscript|data'), 'URL protocol guard compiled');
-  assert(html.includes("?'#':_u"), 'unsafe reactive URL replaced with #');
+
+  // The guard is asserted by RUNNING it, not by matching its source text. The
+  // previous version of this test compared against the literal `?'#':_u`, which
+  // passed for a guard that stripped only part of the C0 range — so it went on
+  // passing while "java\tscript:" sailed through, because the browser's URL
+  // parser removes the tab that the guard had left in place.
+  const guard = /_v=\(function\(v\)\{([\s\S]*?)\}\)\(_v\);/.exec(html);
+  assert(guard, 'reactive URL guard compiled as a callable body');
+  const sanitize = new Function('v', guard[1]);
+
+  const hostile = [
+    'javascript:alert(1)', 'JaVaScRiPt:alert(1)',
+    'java\tscript:alert(1)', 'java\nscript:alert(1)', 'java\rscript:alert(1)',
+    'java\t\n\rscript:alert(1)', 'v\tbscript:alert(1)', 'da\nta:text/html,<b>',
+    '\x00javascript:alert(1)', '  javascript:alert(1)',
+  ];
+  for (const url of hostile) {
+    assert(sanitize(url) === '#', `reactive guard blocks ${JSON.stringify(url)}`);
+  }
+
+  const legitimate = ['/relative/path', 'https://example.test/a?b=c', '#fragment', 'mailto:a@b.test', '?q=javascript:x'];
+  for (const url of legitimate) {
+    assert(sanitize(url) === url, `reactive guard preserves ${JSON.stringify(url)}`);
+  }
+});
+
+test('the liveList client runtime sanitizes URLs the same way the server does', () => {
+  const { sanitizeUrl } = require('../lib/utils');
+  const doc = new Document();
+  doc.states({ items: [{ u: '/ok' }] });
+  doc.liveList('items', (item) => ({ tag: 'a', attrs: { href: item.u }, text: 'x' }));
+  const html = doc.render();
+
+  const uv = /function uv\(v\)\{([\s\S]*?)\}function /.exec(html);
+  assert(uv, '_mkEl URL sanitizer compiled');
+  const clientSanitize = new Function('v', uv[1]);
+
+  // Parity is the point: the two implementations used to be separate hand-copied
+  // regex literals and drifted, so they are compared directly here.
+  const cases = [
+    'javascript:alert(1)', 'java\tscript:alert(1)', 'java\nscript:alert(1)',
+    'java\rscript:alert(1)', 'v\tbscript:alert(1)', 'da\nta:text/html,<b>',
+    '/relative', 'https://example.test', '#frag', 'mailto:a@b.test',
+  ];
+  for (const url of cases) {
+    assert(clientSanitize(url) === sanitizeUrl(url),
+      `client and server agree on ${JSON.stringify(url)} (client ${JSON.stringify(clientSanitize(url))}, server ${JSON.stringify(sanitizeUrl(url))})`);
+  }
 });
 
 test('bindInput safely embeds a hostile state key', () => {

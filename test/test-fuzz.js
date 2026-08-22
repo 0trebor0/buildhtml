@@ -299,5 +299,54 @@ function roundTripProperty(name, iterations) {
 
 roundTripProperty('toJSON -> fromJSON reproduces the rendered document', Math.min(ITERATIONS, 300));
 
+/* ---- CSS names never introduce markup ----
+ * Property names, selectors and class names are written into the <style> block
+ * without escaping, so the invariant is structural rather than textual: whatever
+ * a fuzzed name contains, the page must never gain an element because of it.
+ * The comparison is against the same document built with a known-good name — a
+ * rejected name legitimately produces FEWER elements (no rule, so no <style>),
+ * but never more.
+ */
+const countTags = (html) => (html.match(/<[a-zA-Z][^>]*>/g) || []).length;
+const countEl = (html, tag) => (html.match(new RegExp('<' + tag + '\b', 'gi')) || []).length;
+
+property('a fuzzed CSS property name adds no element to the page', Math.min(ITERATIONS, 500), (input) => {
+  const controlDoc = new Document();
+  controlDoc.create('div').css({ color: 'red' });
+  controlDoc.create('div').style({ color: 'red' });
+  const control = controlDoc.render();
+
+  const doc = new Document();
+  doc.create('div').css({ [input]: 'red' });
+  doc.create('div').style({ [input]: 'red' });
+  const html = doc.render();
+
+  assert.ok(countTags(html) <= countTags(control),
+    `property name introduced elements: ${JSON.stringify(html.slice(0, 300))}`);
+  assert.strictEqual(countEl(html, 'script'), 0, 'a property name produced a script element');
+  assert.ok(countEl(html, 'style') <= countEl(control, 'style'), 'a property name produced a style element');
+});
+
+property('a fuzzed CSS selector or class name adds no element to the page', Math.min(ITERATIONS, 500), (input) => {
+  const controlDoc = new Document();
+  controlDoc.head.globalCss('body', { color: 'red' });
+  controlDoc.sharedClass('ok', { color: 'red' });
+  controlDoc.keyframes('ok', { from: { opacity: '0' } });
+  controlDoc.mediaQuery('(min-width: 0px)', { body: { color: 'red' } });
+  const control = controlDoc.render();
+
+  const doc = new Document();
+  doc.head.globalCss(input, { color: 'red' });
+  doc.sharedClass(input, { color: 'red' });
+  doc.keyframes(input, { from: { opacity: '0' } });
+  doc.mediaQuery(input, { body: { color: 'red' } });
+  const html = doc.render();
+
+  assert.ok(countTags(html) <= countTags(control),
+    `selector or class name introduced elements: ${JSON.stringify(html.slice(0, 300))}`);
+  assert.strictEqual(countEl(html, 'script'), 0, 'a selector produced a script element');
+  assert.ok(countEl(html, 'style') <= countEl(control, 'style'), 'a selector produced a style element');
+});
+
 console.log(`\nResults: ${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);
