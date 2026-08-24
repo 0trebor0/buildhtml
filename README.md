@@ -356,6 +356,26 @@ input.placeholder('you@example.com');
 | `groupClass` | string | Wrapper class; no class is added when not given |
 | `attrs` | object | Additional input attributes |
 
+`attrs` takes any attribute, including ones that also have a chained setter. Both routes work, so pick whichever reads better:
+
+```javascript
+// Everything up front, in the options object.
+form.field('Email address', {
+  type: 'email',
+  name: 'email',
+  attrs: { placeholder: 'Type Email', autocomplete: 'email' }
+});
+
+// Or set them on the returned input.
+const email = form.field('Email address', { type: 'email', name: 'email' });
+email.input.placeholder('Type Email').autocomplete('email');
+```
+
+The two are equivalent in the browser but not byte-identical, which matters only if you diff rendered HTML against a fixture:
+
+- Attributes from `attrs` are applied before `name`, so they appear earlier in the tag.
+- Boolean attributes serialize differently. `attrs: { required: true }` emits `required="true"`, while `.required()` emits `required="required"`. Both are true for a browser.
+
 Multiple fields may bind to the same state key without sharing an HTML ID. Run `doc.validate()` before rendering to catch any explicitly duplicated IDs.
 
 The form and layout helpers build structure only. They add no class, style, or attribute you did not pass — no `form-group` wrapper class, no default `gap`, container width, or divider colour — so nothing collides with your stylesheet. The one exception is the generated ID pairing each `<label for>` with its input, which the markup cannot express without it. Style the elements these helpers return with `addClass()` or `css()`.
@@ -615,6 +635,8 @@ const html = renderJSON({
 ```
 
 Use `doc.toJSON()` and `doc.fromJSON()` for document serialization and restoration.
+
+The docs site carries the complete reference: every [node definition key](https://0trebor0.github.io/buildhtml/docs/#builder), every document-level key, which keys `toJSON()` emits versus the ones you author, and the `trustedCss` rule for restoring JSON you did not produce.
 
 ## `.bhtml` templates
 
@@ -1246,7 +1268,7 @@ These compose the tag shortcuts into common structures. Like the shortcuts, they
 
 `field()` is the one to reach for: its [options table](#accessible-form-fields) covers `type`, `id`, `name`, `bind`, `groupClass`, and `attrs`, and it hands back all three elements. `radio()` options are `{ value, label, checked }`, falling back to `text` then `value` for the visible label.
 
-Each of these generates the ID pairing `<label for>` with its input unless you supply one — `field({ id })`, or `attrs.id` on `formGroup()`.
+Each of these generates the ID pairing `<label for>` with its input unless you supply one. `field()` takes it from `id`, falling back to `attrs.id`; `formGroup()` takes it from `attrs.id`.
 
 #### Layout helpers
 

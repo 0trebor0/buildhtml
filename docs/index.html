@@ -1033,6 +1033,25 @@ card.create('custom-status').attr('role', 'status').text('Ready');</code></pre>
             <tr><td><code>jsonLd</code></td><td><code>schemaObject</code></td><td>Adds JSON-LD structured data.</td></tr>
           </tbody>
         </table></div>
+        <h4>The <code>Head</code> object</h4>
+        <p>The methods above cover everything most pages need. <code>doc.head</code> exposes the underlying <code>Head</code> object for the rest — it is the same head those methods write to, so the two can be mixed freely. Every method returns the <code>Head</code> for chaining except <code>hasStyles()</code> and <code>render()</code>.</p>
+        <pre><code>doc.head.setNonce(res.locals.cspNonce);
+doc.head.globalCss('.card', { padding: '16px' });
+
+if (!doc.head.hasStyles()) doc.head.addStyle('body{margin:0}');</code></pre>
+        <div class="table-wrap"><table>
+          <thead><tr><th>Method</th><th>Parameters</th><th>Purpose</th></tr></thead>
+          <tbody>
+            <tr><td><code>setTitle</code></td><td><code>text</code></td><td>Sets the title. Unlike <code>doc.title()</code> this writes the head directly and does not escape a second time on a <code>fromJSON()</code> round trip.</td></tr>
+            <tr><td><code>setCharset</code></td><td><code>charset</code></td><td>Sets the character encoding.</td></tr>
+            <tr><td><code>setNonce</code></td><td><code>nonce</code></td><td>Sets the CSP nonce applied to generated style and script tags. <code>createCachedRenderer</code>'s <code>nonce</code> option calls this per response.</td></tr>
+            <tr><td><code>addRawLink</code></td><td><code>html</code></td><td><strong>Raw HTML</strong> inserted into the head verbatim, for link tags the typed helpers cannot express. Trusted content only.</td></tr>
+            <tr><td><code>globalCss</code></td><td><code>selector, rules</code></td><td>Adds a global rule. The <code>Head</code>-level equivalent of <code>doc.globalStyle()</code>.</td></tr>
+            <tr><td><code>hasStyles</code></td><td>none</td><td>Returns <code>true</code> when the head holds any style content. Useful before adding a fallback stylesheet.</td></tr>
+            <tr><td><code>addMeta</code>, <code>addLink</code>, <code>addStyle</code>, <code>addScript</code>, <code>addClass</code></td><td>see above</td><td>Same as the matching <code>doc.*</code> methods.</td></tr>
+            <tr><td><code>render</code></td><td>none</td><td>Renders the head contents. Unlike <code>doc.render()</code>, this does <strong>not</strong> consume the document.</td></tr>
+          </tbody>
+        </table></div>
         <h3>CSS and document attributes</h3>
         <pre><code>doc.lang('en')
   .bodyClass('app')
@@ -1113,7 +1132,88 @@ card.build([
   { tag: 'h2', text: 'Nested definition' },
   { tag: 'p', text: 'Added inside the card.' }
 ]);</code></pre>
-        <p>Common node fields are <code>tag</code>, <code>text</code>, <code>html</code>, <code>id</code>, <code>class</code>, <code>attrs</code>, <code>data</code>, <code>aria</code>, <code>css</code>, <code>on</code>, <code>bind</code>, <code>children</code>, <code>component</code>, <code>props</code>, <code>if</code>, <code>each</code>, and lifecycle hooks.</p>
+        <h3>Node definition keys</h3>
+        <p>Every node passed to <code>build()</code>, <code>fromJSON()</code>, or a <code>body</code> array accepts these keys. A node with no <code>tag</code> renders a <code>div</code>, and a plain string or number inside <code>children</code> becomes a text node.</p>
+        <div class="table-wrap"><table>
+          <thead><tr><th>Key</th><th>Type</th><th>Purpose</th></tr></thead>
+          <tbody>
+            <tr><td><code>tag</code></td><td>string</td><td>HTML tag; defaults to <code>div</code>.</td></tr>
+            <tr><td><code>text</code></td><td>string</td><td>Text content, escaped.</td></tr>
+            <tr><td><code>html</code></td><td>string</td><td><strong>Raw HTML, not escaped.</strong> Trusted content only.</td></tr>
+            <tr><td><code>class</code></td><td>string or array</td><td>Class names; a string may be space-separated.</td></tr>
+            <tr><td><code>classes</code></td><td>array</td><td>Class names as an array.</td></tr>
+            <tr><td><code>id</code></td><td>string</td><td>Element id.</td></tr>
+            <tr><td><code>css</code></td><td>object</td><td>Scoped CSS, compiled into a generated class.</td></tr>
+            <tr><td><code>style</code></td><td>object</td><td>Inline <code>style</code> attribute.</td></tr>
+            <tr><td><code>attrs</code></td><td>object</td><td>Attribute map, e.g. <code>{ role: 'button', tabindex: 0 }</code>.</td></tr>
+            <tr><td><code>data</code></td><td>object</td><td><code>data-*</code> attributes, e.g. <code>{ userId: 42 }</code>.</td></tr>
+            <tr><td><code>aria</code></td><td>object</td><td><code>aria-*</code> attributes, e.g. <code>{ label: 'Close' }</code>.</td></tr>
+            <tr><td><code>on</code></td><td>object</td><td>Event map, e.g. <code>{ click: fn, input: fn }</code>.</td></tr>
+            <tr><td><code>children</code></td><td>array</td><td>Child node definitions.</td></tr>
+            <tr><td><code>component</code></td><td>string</td><td>Registered component name, used instead of <code>tag</code>.</td></tr>
+            <tr><td><code>use</code></td><td>function</td><td>Component function reference, used instead of <code>tag</code>.</td></tr>
+            <tr><td><code>props</code></td><td>object</td><td>Props passed to the component.</td></tr>
+            <tr><td><code>if</code></td><td>any</td><td>Falsy skips the node entirely.</td></tr>
+            <tr><td><code>each</code></td><td>array</td><td>Iterate; <code>children</code> becomes the per-item template.</td></tr>
+            <tr><td><code>itemTemplate</code></td><td><code>(item, index) =&gt; NodeDef</code></td><td>Per-item template used with <code>each</code>.</td></tr>
+            <tr><td><code>bind</code></td><td>object</td><td>State binding, <code>{ key: 'counter', fn: (val) =&gt; ... }</code>.</td></tr>
+            <tr><td><code>state</code></td><td>any</td><td>Element-local state value.</td></tr>
+            <tr><td><code>liveList</code></td><td>object</td><td><code>{ stateKey, itemFn, filter?, filterKeys?, sort?, sortKeys?, empty? }</code>.</td></tr>
+            <tr><td><code>onMount</code></td><td>function</td><td>Client mount hook.</td></tr>
+            <tr><td><code>onUpdate</code></td><td>object or array</td><td>State update hook, <code>{ key, fn }</code>.</td></tr>
+            <tr><td><code>onDestroy</code></td><td>function</td><td>Client destroy hook.</td></tr>
+            <tr><td><code>setup</code></td><td><code>(el) =&gt; void</code></td><td>Escape hatch for anything not covered above.</td></tr>
+          </tbody>
+        </table></div>
+        <p>These are what <code>toJSON()</code> emits rather than shapes you would normally author, but <code>fromJSON()</code> accepts them so a snapshot round-trips:</p>
+        <div class="table-wrap"><table>
+          <thead><tr><th>Key</th><th>Type</th><th>Purpose</th></tr></thead>
+          <tbody>
+            <tr><td><code>type</code> + <code>content</code></td><td><code>'text'</code>, string</td><td>Serialized text node. Valid inside <code>children</code>, where <code>toJSON()</code> emits it — not as a top-level node, which has no parent to receive the text.</td></tr>
+            <tr><td><code>cssText</code></td><td>string</td><td>Already-compiled CSS declarations — see the trust note below.</td></tr>
+            <tr><td><code>events</code></td><td>array</td><td>Serialized event handlers as source strings.</td></tr>
+            <tr><td><code>stateBindings</code></td><td>array</td><td>Serialized state bindings.</td></tr>
+            <tr><td><code>computed</code></td><td>string</td><td>Serialized computed-value function source.</td></tr>
+            <tr><td><code>lifecycle</code></td><td>array</td><td>Serialized lifecycle hooks.</td></tr>
+          </tbody>
+        </table></div>
+        <h3>Document definition keys</h3>
+        <p>The top level of <code>renderJSON()</code> and <code>fromJSON()</code>:</p>
+        <div class="table-wrap"><table>
+          <thead><tr><th>Key</th><th>Type</th><th>Purpose</th></tr></thead>
+          <tbody>
+            <tr><td><code>title</code></td><td>string</td><td>Document title.</td></tr>
+            <tr><td><code>lang</code></td><td>string</td><td><code>&lt;html lang&gt;</code>.</td></tr>
+            <tr><td><code>charset</code></td><td>string</td><td>Character set.</td></tr>
+            <tr><td><code>viewport</code></td><td>boolean or string</td><td><code>false</code> omits it; a string sets the content.</td></tr>
+            <tr><td><code>resetCss</code></td><td>boolean</td><td>Adds the reset stylesheet.</td></tr>
+            <tr><td><code>favicon</code></td><td>string</td><td>Favicon href.</td></tr>
+            <tr><td><code>canonical</code></td><td>string</td><td>Canonical URL.</td></tr>
+            <tr><td><code>noindex</code></td><td>boolean or <code>'nofollow'</code></td><td>Robots meta.</td></tr>
+            <tr><td><code>htmlAttrs</code></td><td>object</td><td>Extra attributes on <code>&lt;html&gt;</code>.</td></tr>
+            <tr><td><code>bodyAttrs</code></td><td>object</td><td>Extra attributes on <code>&lt;body&gt;</code>.</td></tr>
+            <tr><td><code>bodyClass</code></td><td>string or array</td><td>Body class names.</td></tr>
+            <tr><td><code>bodyCss</code></td><td>object</td><td>Body CSS.</td></tr>
+            <tr><td><code>meta</code></td><td>array</td><td>Meta tag definitions.</td></tr>
+            <tr><td><code>links</code></td><td>array</td><td>Link tag definitions.</td></tr>
+            <tr><td><code>scripts</code></td><td>array</td><td>Script sources.</td></tr>
+            <tr><td><code>cssVars</code></td><td>object</td><td>CSS custom properties.</td></tr>
+            <tr><td><code>globalStyles</code></td><td>object</td><td><code>{ selector: rules }</code>.</td></tr>
+            <tr><td><code>sharedClasses</code></td><td>object</td><td><code>{ name: rules }</code>.</td></tr>
+            <tr><td><code>keyframes</code></td><td>object</td><td><code>{ name: frames }</code>.</td></tr>
+            <tr><td><code>darkMode</code></td><td>object</td><td>Dark-mode rules.</td></tr>
+            <tr><td><code>print</code></td><td>object</td><td>Print rules.</td></tr>
+            <tr><td><code>ogTags</code></td><td>object</td><td>Open Graph tags.</td></tr>
+            <tr><td><code>twitterCard</code></td><td>object</td><td>Twitter card tags.</td></tr>
+            <tr><td><code>state</code></td><td>object</td><td>Global reactive state.</td></tr>
+            <tr><td><code>body</code></td><td>object or array</td><td>Node definitions for the body.</td></tr>
+          </tbody>
+        </table></div>
+        <p><code>toJSON()</code> additionally emits <code>metas</code>, <code>bodyClasses</code>, <code>globalState</code>, <code>styles</code>, <code>classStyles</code>, and <code>oncreateCallbacks</code>. <code>fromJSON()</code> reads both spellings, so <code>meta</code>/<code>metas</code>, <code>bodyClass</code>/<code>bodyClasses</code>, and <code>state</code>/<code>globalState</code> are interchangeable on input. <code>globalStyles</code> accepts the authored <code>{ selector: rules }</code> object <strong>and</strong> the array of compiled rule strings that <code>toJSON()</code> produces.</p>
+        <h3>Restoring untrusted JSON</h3>
+        <div class="callout warning"><p><code>styles</code>, <code>globalStyles</code> (array form), <code>classStyles</code>, and a node's <code>cssText</code> are <strong>already-compiled CSS</strong> written into the <code>&lt;style&gt;</code> block verbatim — the same trust level as <code>appendUnsafe()</code>.</p></div>
+        <p>Because a JSON payload may come from anywhere, <code>fromJSON()</code> rejects any of them containing markup, and re-validates serialized <code>events</code>, <code>computed</code>, <code>lifecycle</code>, and <code>oncreateCallbacks</code> sources against the same rules a live function passes through. Rejected entries are dropped and recorded; they never reach the page.</p>
+        <p>Set <code>trustedCss: true</code> to skip the CSS markup check when restoring your own snapshot. The decision is made once at the top level and applies to every nested node, so a payload cannot grant itself the exemption. Leave it off for anything you did not produce.</p>
         <div class="table-wrap"><table>
           <thead><tr><th>Function</th><th>Parameters</th><th>Returns</th></tr></thead>
           <tbody>

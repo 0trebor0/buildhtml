@@ -1031,3 +1031,152 @@ the gap was in the corpus, not the library.
   "referenced by the corpus" remains a proxy for coverage, not proof.
 - `test/example.js` writes `test/output.html` on every run and the path is not
   in `.gitignore`, so a test run leaves the working tree dirty.
+
+## Documentation accuracy audit (2026-08-22)
+
+Brief: the guide and API reference must carry enough information to use the
+library without reading `lib/`. README stays a small guide — everything else
+belongs on the docs site, because an oversized README may not render on npm.
+
+### Method
+
+Enumerated the real surface by reflection and compared it against `README.md`,
+`docs/index.html`, and `typescript/*.d.ts`:
+
+1. **Method coverage** — every public prototype method name checked against each
+   document.
+2. **Option-key coverage** — every `options.*` / `def.*` key read anywhere in
+   `lib/` extracted and checked the same way.
+
+A first run reported every key missing. That was a harness bug, not a docs
+result: this shell strips one backslash level inside heredocs, so the `\b`
+word-boundary regex became a backspace character and matched nothing. Rewritten
+with an index-based word match, which is what the numbers below come from.
+
+### What was already correct
+
+- Every public method appears in `typescript/*.d.ts`.
+- `docs/index.html` covered every `Document` and `Element` method.
+- `live.js` (18 keys), `shortcuts.js` (8), render options (5) and `page()`
+  options (3) were fully documented.
+- `radio()`'s `label` -> `text` -> `value` fallback and `field()`'s six option
+  keys already matched the implementation.
+
+The 46 method names absent from README are covered on the docs site; README is a
+guide, not a reference, so that is by design and was left alone.
+
+### Gaps found and fixed
+
+1. **The JSON schema was undocumented.** 12 keys appeared in no document:
+   node-level `cssText`, `stateBindings`; document-level `bodyAttrs`,
+   `bodyClasses`, `classStyles`, `globalState`, `globalStyles`, `htmlAttrs`,
+   `metas`, `oncreateCallbacks`, `sharedClasses`, `trustedCss`. All are genuine
+   hand-authorable `fromJSON()` inputs, not internal artifacts. Anyone
+   hand-writing a JSON page had to read `lib/builder.js` and `lib/document.js`.
+   Added to `docs/index.html`: a full node-key table, a separate table for the
+   shapes `toJSON()` emits, a document-key table, and a "Restoring untrusted
+   JSON" section covering the compiled-CSS trust boundary and `trustedCss`.
+   Also documented the authored/round-trip key pairs (`meta`/`metas`,
+   `bodyClass`/`bodyClasses`, `state`/`globalState`) and that `globalStyles`
+   accepts both the authored object and the compiled array.
+2. **Half of `Head` was undocumented.** `setNonce`, `setTitle`, `setCharset`,
+   `addRawLink`, `globalCss`, `hasStyles` appeared only in `.d.ts`. Added a
+   `Head` table to `docs/index.html`.
+3. **`attrs` versus chained setters was never shown.** Every documented
+   `placeholder` used the setter; no example passed a shortcut-named attribute
+   through `attrs`. Added both forms to the README form section with the two
+   ways their output differs.
+4. **`README.md` ID sentence was wrong.** It read "`field({ id })`, or
+   `attrs.id` on `formGroup()`", implying `attrs.id` was the `formGroup` route.
+   `lib/shortcuts.js:145` shows `field()` honours `attrs.id` as a fallback too.
+   Corrected.
+
+### README size
+
+The JSON reference was drafted into README first, taking it from 62,273 to
+69,869 bytes. That is the wrong place for it under the npm-rendering
+constraint, so it was moved to `docs/index.html` and replaced with a one-line
+pointer. Final: **63,487 bytes** (+1,214 over HEAD), the increase being the form
+`attrs` example and the corrected ID sentence.
+
+### Verification
+
+Every key documented in the new tables was executed against the library rather
+than transcribed from source comments — 48 cases, one per node key and per
+document key, each asserting on rendered output.
+
+```
+node key + document key execution check -> 47 passed, 1 failed
+node test/test-readme-examples.js       -> 51 README and 56 guide blocks parse,
+                                           2 quick starts execute, 14 links resolve
+node test/test-tutorial.js              -> 36 blocks execute, 23 behaviours hold
+node test/run-all.js                    -> All 23 automated suites passed
+docs/index.html tag balance             -> table 26/26, section 36/36, tbody 26/26
+```
+
+Two claims were caught wrong by that check and corrected before they shipped:
+
+- A draft README passage claimed `attrs: { required: true }` and `.required()`
+  produce identical markup. They do not: `required="true"` versus
+  `required="required"`, and `attrs` is applied before `name` so attribute order
+  differs. Reworded to state the difference.
+- `{ type: 'text', content }` was documented without position. It works inside
+  `children`, where `toJSON()` emits it, and throws at the top level. The table
+  now says so.
+
+### Files changed
+
+- Modified: `README.md` — form `attrs` example, corrected ID sentence, JSON
+  reference pointer
+- Modified: `docs/index.html` — `Head` table, node-key table, `toJSON()` shapes
+  table, document-key table, untrusted-JSON section
+
+### Finding 12 — a top-level text node throws an internal TypeError
+
+`doc.build({ type: 'text', content: 'x' })` throws
+`TypeError: parentEl.text is not a function`. Valid in child position; at the
+top level there is no parent to receive the text. Documented rather than fixed,
+consistent with findings 7-11. Severity: low, diagnostic quality only.
+
+### Re-check against the updated `AGENTS.md` (2026-08-22)
+
+`AGENTS.md` was revised mid-task. The pending documentation change was re-checked
+against every new rule; nothing in it needed to change.
+
+| New rule | Status for this change |
+|----------|------------------------|
+| Flag task/code discrepancies before proceeding | Done — the audit *is* the discrepancy report; the two wrong draft claims were corrected before shipping rather than assumed correct |
+| Check for overlapping branches, PRs, or in-progress work | Only the two local `backup/*` branches exist; no other branches. **`gh` is not installed here, so open GitHub PRs could not be checked** |
+| Run the project's formatter if one is configured | **None is configured** — no prettier/eslint/editorconfig/biome config, no lint or format script, no dev dependencies. Manual style matching stands |
+| Confirm runtime matches the declared version | No `.nvmrc`. `package.json` declares `node >=18.0.0`; ran Node v22.23.2, inside that range and one of the four CI versions (18, 20, 22, 24). **Only 22 was exercised locally; CI covers the rest** |
+| No public API signature or behavior change | Satisfied — the change is documentation only. `git diff` against `lib/`, `index.js`, `index.mjs` and `typescript/` is empty |
+| Update docs in the same change as behavior changes | Satisfied — `README.md`, `docs/index.html` and `CHANGELOG.md` were updated together; `CHANGELOG.md` is not the only record |
+| Note pre-existing test failures separately | **No test was failing before or after.** All 23 suites passed at the start of this task and still pass |
+| State what manual verification was or was not performed | See below |
+| Respect `CODEOWNERS` | **No `CODEOWNERS` file exists** in `.github/` or the repo root |
+| Do not rewrite git history | No history operation in this change. The earlier `filter-branch` was done on explicit instruction and confirmed first, per the new conflict rule |
+
+### Manual verification of `docs/index.html`
+
+The docs site is a rendered page, so tag-balance counting is not sufficient. It
+was opened in a browser and inspected:
+
+```
+#builder section present                -> yes
+new h3 headings rendered                -> "Node definition keys",
+                                           "Document definition keys",
+                                           "Restoring untrusted JSON"
+tables / rows in that section           -> 4 tables, 62 rows
+all six Head methods present in a table -> setTitle setCharset setNonce
+                                           addRawLink globalCss hasStyles
+horizontal overflow at 718px            -> none (scrollWidth == clientWidth)
+```
+
+The site's search concatenates `data-search` with `textContent`, so the new
+tables are indexed without touching the `data-search` attribute. Verified by
+driving the search box: `trustedcss`, `cssText`, `htmlAttrs` and
+`oncreateCallbacks` each resolve to the `builder` section, `setNonce` and
+`hasStyles` to the `document` section.
+
+Not verified manually: rendering on a real mobile viewport, and the published
+GitHub Pages build (only the local file was opened).

@@ -185,6 +185,39 @@ rather than complete records.
 
 ### Added
 
+- **The JSON definition format is now documented.** `build()`, `fromJSON()` and
+  `renderJSON()` accept far more keys than the docs listed, so hand-writing a
+  JSON page meant reading `lib/builder.js` and `lib/document.js`. The guide now
+  carries a complete node-key table, a document-key table, and a separate table
+  for the shapes `toJSON()` emits so a snapshot round-trips. It also records the
+  interchangeable authored/serialized key pairs — `meta`/`metas`,
+  `bodyClass`/`bodyClasses`, `state`/`globalState` — and that `globalStyles`
+  takes both the authored `{ selector: rules }` object and the compiled array.
+
+- **The trust boundary for restoring JSON is now stated.** `styles`,
+  `globalStyles` in array form, `classStyles` and a node's `cssText` are
+  already-compiled CSS written into the `<style>` block verbatim. The guide
+  explains that `fromJSON()` rejects any of them containing markup, re-validates
+  serialized callback sources, and that `trustedCss: true` opts out for callers
+  restoring their own snapshots.
+
+- **The `Head` object is now documented.** `setNonce`, `setTitle`, `setCharset`,
+  `addRawLink`, `globalCss` and `hasStyles` existed only in the type
+  declarations; `doc.head` and all twelve of its methods now appear in the API
+  reference.
+
+- **Form fields show both ways to set an attribute.** `attrs` accepts any
+  attribute, including ones with a chained setter such as `placeholder`. Both
+  forms are documented, along with the two ways their output differs: `attrs` is
+  applied before `name`, and a boolean passed through `attrs` serializes as
+  `required="true"` where `.required()` emits `required="required"`.
+
+### Fixed (documentation)
+
+- **The form-field ID sentence named the wrong helper.** It read "`field({ id })`,
+  or `attrs.id` on `formGroup()`", implying only `formGroup()` reads `attrs.id`.
+  `field()` honours `attrs.id` too, as a fallback when `id` is absent.
+
 - **TypeScript now knows about the `State` global.** Callbacks reference `State`
   by name, but it was never declared, so every reactive handler produced
   `TS2304: Cannot find name 'State'` in a `.ts` file or a `@ts-check` JavaScript

@@ -6,6 +6,8 @@
 * Inspect the existing implementation, tests, helpers, conventions, and surrounding code first.
 * Do not invent files, APIs, requirements, assumptions, or expected behavior.
 * Confirm that every proposed change directly supports the requested task.
+* If the task description conflicts with what the code actually does, flag the discrepancy before proceeding rather than assuming either is correct.
+* Check for related open branches, PRs, or in-progress work that might overlap before starting.
 
 ### Keep the Scope Strict
 
@@ -40,6 +42,8 @@
 
 * After every edit, the affected file(s) must be parsed, linted, or compiled before the change is considered complete — visual inspection of a diff is not sufficient.
 * Run the appropriate syntax/build check for the language and project (e.g. `node --check`, `python -m py_compile`, `tsc --noEmit`, `cargo check`, the project's configured lint/build command).
+* Run the project's formatter (e.g. `prettier`, `black`, `gofmt`) on changed files if one is configured, rather than relying on manual style matching.
+* Confirm the language/runtime version in use matches the project's declared version (e.g. `.nvmrc`, `pyproject.toml`) before running checks, since a mismatched local environment can mask or fabricate errors.
 * For any statement spanning or touched by an edit — string concatenation, template literals, multi-line strings — re-read the full statement afterward to confirm quotes, escapes, and delimiters are balanced.
 * For structured data (JSON, YAML, function argument lists, object/array literals), explicitly verify commas, matching brackets, and correct nesting before finishing.
 * Do not mark a task complete if a syntax/build check was skipped or failed. Either fix the error or state plainly in the final response and in `TASK_PROGRESS.md` that verification could not be completed and why.
@@ -50,6 +54,15 @@
 * Do not modify lockfiles unless dependencies were intentionally changed.
 * Do not edit secrets, `.env` files, tokens, keys, credentials, or generated sensitive values.
 * Preserve all existing authentication, authorization, validation, and security checks.
+
+### Public API and Compatibility
+
+* Do not change the signature, return type, or behavior of an existing public/exported function unless the task requires it.
+* If a change would break an existing caller, flag it explicitly rather than updating call sites silently.
+
+### Documentation Consistency
+
+* If a change alters documented behavior, update the relevant README, docstring, or inline API doc in the same change — don't let `CHANGELOG.md` be the only place behavior changes are recorded.
 
 ### Progress Tracking Is Required
 
@@ -87,6 +100,8 @@
 * Run regression tests scoped to the affected module and its direct dependents when the change could affect shared behavior; do not assume a full-suite run is required unless the change is broad or the project's norms call for it.
 * Do not weaken, remove, skip, or rewrite failing tests merely to make the suite pass.
 * If a test fails, investigate whether the implementation or the test is incorrect before changing either.
+* If a test was already failing before this change, note that it was pre-existing and do not attribute it to this change or silently fix unrelated failures.
+* For behavior not fully covered by automated tests (e.g. UI, integration flows), state what manual verification was or wasn't performed.
 * If tests cannot be run, clearly state what was not tested and why.
 * Do not claim that code works unless it was tested or the limitation is explicitly stated.
 
@@ -96,6 +111,8 @@
 * Do not rewrite, reset, rebase, or otherwise change git history.
 * Do not discard existing user changes.
 * Do not modify generated files unless the task specifically requires regeneration.
+* If the working tree has diverged from the target branch (merge conflicts likely), stop and flag rather than force-resolving.
+* Respect `CODEOWNERS` or existing review-assignment conventions if present; don't reassign or bypass them.
 * Never add Co-Authored-By or any AI attribution lines.
 * Never add Claude attribution to PR descriptions.
 * Commit message format: [type]: [description]
@@ -104,6 +121,7 @@
 
 * If a change breaks existing behavior or tests mid-task, stop and assess before proceeding further — do not layer additional changes on top of a known-broken state.
 * Prefer fixing forward when the cause is understood and the fix is within scope; revert the specific change when the cause is unclear or the fix would expand scope.
+* If the task's instructions and this rule set conflict (e.g. user explicitly asks to skip tests or commit directly), state the conflict and ask for confirmation rather than silently picking one side.
 * Record the failure, its cause (if known), and the resolution in `TASK_PROGRESS.md`.
 
 ### Pre-Completion Checklist
@@ -115,6 +133,8 @@ Before finalizing any change, confirm all of the following:
 * [ ] No method, function, class, or symbol was added that isn't directly used or explicitly requested
 * [ ] No unrelated files were touched
 * [ ] No new dependencies were added without flagging them first
+* [ ] No public API signature or behavior was changed without being required by the task
+* [ ] Relevant documentation was updated if documented behavior changed
 * [ ] Tests were run and results recorded, including actual command output
 * [ ] `TASK_PROGRESS.md` and `CHANGELOG.md` (if applicable) are up to date
 
