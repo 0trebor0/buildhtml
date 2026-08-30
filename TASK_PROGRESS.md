@@ -1359,3 +1359,207 @@ surfaced instead of producing a meaningless pass. This is the second time a
 silently-inapplicable mutation produced a false clean result in this task.
 
 Final counts: `test-event-shortcuts.js` **216 passed, 0 failed**.
+
+## Docs depth audit: tutorial and reference coverage (2026-08-22)
+
+Brief: the guide must have instructions and a tutorial covering the library, so
+nobody has to read `lib/`.
+
+### Measurement
+
+Split `docs/index.html` at the `concepts` section — everything before it is the
+tutorial, everything after is the reference — and checked all 285 public methods
+against each half.
+
+An initial run reported "285 of 285 missing from the reference" and "0 missing
+from the tutorial". That was a harness bug: the `start` section sits *before* the
+tutorial, so the boundary index collapsed and the two halves were mis-sliced.
+Corrected by anchoring on `concepts`, which is the first reference section after
+the tutorial.
+
+| | Before | After |
+|---|---|---|
+| Reference coverage | 282/285 | **285/285** |
+| Tutorial coverage | 203/285 | 211/285 |
+| Tutorial sections | 21 | 24 |
+| Runnable tutorial blocks | 36 | 41 |
+
+Tutorial coverage is deliberately not 100%: a tutorial should not walk through
+every attribute setter, event shorthand, or CSS helper. The 74 methods it does
+not mention are of that kind, and all of them are in the reference.
+
+### Bug found and fixed
+
+`docs/index.html` taught `defineClass('.badge', ...)` with a leading dot.
+`defineClass` and `sharedClass` take a **bare class name** — the selector form is
+rejected by `isValidClassName()`, emits no CSS at all, and logs
+`[defineClass] Ignored invalid CSS name: ".badge"`. That warning had been
+printing on every test run. The example is corrected and the prose now states
+that these two take a bare name while `globalStyle`/`mediaQuery` take selectors,
+and that an invalid name is dropped rather than rewritten.
+
+### Added
+
+Three tutorial sections, each with runnable code:
+
+- **12. Portals and slots** — `portal()` renders in place then relocates on load;
+  `slot()`/`fillSlot()` for filling a placeholder later.
+- **13. Reusable templates** — `template()`/`useTemplate()`, and when to prefer
+  `component()`.
+- **14. Serializing a document** — `toJSON()`/`fromJSON()`, what survives a round
+  trip, the call-before-render constraint, and a pointer to the JSON reference
+  for the `trustedCss` rule.
+
+`isEmpty()`/`elementCount()` added to the tree-operations section. Sections 12-21
+renumbered to 15-24, and the sidebar updated to match.
+
+Three reference gaps filled: `append`/`appendUnsafe` (a core tree method that
+existed only in tutorial prose), `defineClass`, and `Element.toString()`.
+
+### Verification
+
+```
+node test/test-tutorial.js   -> 41 javascript blocks execute (was 36),
+                                23 documented behaviours hold
+node test/run-all.js         -> All 23 automated suites passed
+defineClass warning in suite -> 0 occurrences (was 1 per run)
+reference coverage re-measured -> 285/285, none missing
+docs tag balance             -> table 27/27, section 39/39, tbody 27/27,
+                                div 51/51, tr 316/316, pre 74/74
+```
+
+Every code block added is executed by `test-tutorial.js`, so a library change
+that contradicts the new prose fails the suite.
+
+Rendered-page checks in a browser, which the static counts cannot cover:
+
+- all three sections render with their headings, code blocks and prose
+- sidebar link order matches document order (the one apparent mismatch is the
+  hero "Tutorial" button, not a sidebar entry)
+- the page does not scroll horizontally; `<pre>` carries `overflow-x: auto`
+- site search resolves `portal`, `fillslot`, `usetemplate`, `tojson` and
+  `defineclass` to the right sections
+- four over-long lines in the new blocks were shortened so every new `<pre>`
+  fits its container without internal scrolling, matching the existing sections
+
+### Not done
+
+`Element.toString()` is now documented but has no tutorial mention, and the six
+`Head` methods remain reference-only — both deliberate, they are lookup material
+rather than teaching material.
+
+## Findings 9 and 10 fixed (2026-08-22)
+
+Brief: fix the two open template-parser bugs before committing, then run a full
+in-depth debug.
+
+### Finding 10 — a malformed tag aborted the template
+
+The selector regex accepts names the element constructor rejects, so `SPAN`
+parsed fine and `normalizeTagName()` threw later, out of `renderTemplate()`,
+losing every line after it. That contradicted the README's stated guarantee.
+
+`_parseElement()` now validates the tag with the same `isValidTagName(toKebab())`
+pair the constructor uses. An invalid tag is flagged, the line's children are
+still consumed so the remaining template parses at the correct depth, and the
+line is returned as `{ type: 'error' }` — the recovery shape `?each` already
+used, which `_buildAstNode()` skips. A `W_TEMPLATE_SYNTAX` warning names the tag.
+
+The related sub-case was also closed: `scr<ipt "x"` rendered `<scr></scr>` and
+dropped the rest of the line silently. The element still renders, but the
+leftover is now reported. The unclosed-`(` path already warns, so it sets a
+`reported` flag to avoid warning twice about the same line — without that, the
+existing "each malformed line warned once" test went from 5 warnings to 6.
+
+### Finding 9 — attribute interpolation was inert
+
+`node.attrs[key] = parsed[key]` never ran the value through `_interpolate()`, so
+`a(href="#{url}")` shipped the literal token. Attribute values and data
+attributes now interpolate. Two properties keep this from being a breaking
+change: `_interpolate()` leaves a token in place when no variable matches, so a
+literal `#{...}` still passes through; and event values (`@click="handler"`) are
+deliberately left alone, since they name a function rather than carrying content.
+
+### Two defects the fix exposed, found by the suite
+
+- `_interpolate()` assumed a string. A valueless attribute — `button(disabled)` —
+  parses to boolean `true`, so the new call path threw
+  `str.replace is not a function`. It now returns a non-string unchanged.
+- A `?else` line warned twice: once as an unknown directive, once as leftover
+  content. The `reported` flag is seeded from `line.startsWith('?')`.
+
+### Security review of the new path
+
+Attribute interpolation is a new route for a variable to reach an attribute, so
+it was probed directly. Escaping and URL sanitisation happen at render time,
+below this change, and both still apply:
+
+```
+title="#{v}" with '" onload="alert(1)'   -> title="&quot; onload=&quot;alert(1)"
+                                            one attribute, no breakout
+href="#{v}" with 'javascript:alert(1)'   -> href="#"
+href="#{v}" with 'java\tscript:alert(1)' -> href="#"
+href="#{v}" with 'vbscript:' / 'data:'   -> href="#"
+'#{v}' -> '#{w}' -> 'PWNED'              -> not re-expanded
+inline onclick= / on-click= attributes   -> still refused
+```
+
+### Tests added
+
+`test/test-template.js`, 6 new groups: attribute and data interpolation;
+unresolved tokens preserved; valueless attributes survive; interpolated values
+still escaped and URL-sanitised; event values not interpolated; invalid tag
+recovers rather than throws, at nested and top level; dropped content reported
+once, silent in production.
+
+One assertion had to be rewritten twice. `!/ onload=/.test(html)` and then
+`!/\sonload\s*=/.test(tag)` both fail on a *correctly escaped* page, because the
+payload appears as escaped text inside the value. The check that actually
+distinguishes a breakout is the raw quote count in the tag — a safe render has
+exactly the two delimiting `title="..."`. This is the third time in this task a
+naive substring assertion mistook safe output for a vulnerability.
+
+### Verification
+
+```
+node test/test-template.js   -> 114 passed, 0 failed  (was 93)
+node test/run-all.js         -> All 23 automated suites passed
+npm run test:browser         -> 4 Playwright suites passed
+fuzz @ 20,000 iterations     -> 17 passed, 0 failed
+tsc --noEmit                 -> exit 0
+test-readme-examples.js      -> 52 README + 62 guide blocks parse
+test-tutorial.js             -> 41 blocks execute, 23 behaviours hold
+benchmark/render.js          -> 3929 HTML bytes, unchanged
+docs tag balance             -> section 39/39, pre 75/75, div 51/51
+```
+
+Mutation-tested, each reverted and the source confirmed restored:
+
+```
+attrs not interpolated (revert #9)     -> 6 failed
+data attrs not interpolated            -> 1 failed
+tag validation removed (revert #10)    -> 2 failed
+non-string guard removed               -> 2 failed
+leftover-content warning disabled      -> 2 failed
+```
+
+The last one first reported 0 failures, which was accurate: the warning had no
+test. One was added, and the mutation then failed as it should.
+
+### Findings 13 and 14 — NOT fixed, pre-existing, flagged
+
+Found while debugging attribute handling. Both reproduce identically on `HEAD`
+with `lib/template.js` stashed, so neither is caused by the change above. Both
+are in `_parseAttrString()`, which this task did not modify, so per
+"No Unrequested Additions" they are recorded rather than fixed.
+
+- **13. An escaped quote inside an attribute value breaks parsing.**
+  `a(title="say \"hi\"")` renders `<a title="say \" hi="true">` — the value is
+  truncated and a bogus `hi="true"` attribute is invented.
+- **14. A colon in an attribute name loses the attribute.**
+  `div(xlink:href="/x")` renders `<div xlink="true">`; the `href` half is
+  discarded. `xlink:href` is a name the library recognises elsewhere — it is in
+  `URL_ATTRS` in `utils.js`.
+
+Also observed, lower severity: `@click="#{h}"` resolves nothing and wires no
+listener silently, because event values are not interpolated by design.

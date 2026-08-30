@@ -223,6 +223,13 @@ rather than complete records.
   serialized callback sources, and that `trustedCss: true` opts out for callers
   restoring their own snapshots.
 
+- **The guide gained tutorial sections for portals, slots, reusable templates,
+  and document serialization.** `portal()`, `slot()`/`fillSlot()`,
+  `template()`/`useTemplate()`, and `toJSON()`/`fromJSON()` previously appeared
+  only in reference tables. `append()`/`appendUnsafe()`, `defineClass()` and
+  `Element.toString()` were missing from the reference and are now listed, so
+  every public method appears in both the docs and the API reference.
+
 - **The `Head` object is now documented.** `setNonce`, `setTitle`, `setCharset`,
   `addRawLink`, `globalCss` and `hasStyles` existed only in the type
   declarations; `doc.head` and all twelve of its methods now appear in the API
@@ -234,7 +241,41 @@ rather than complete records.
   applied before `name`, and a boolean passed through `attrs` serializes as
   `required="true"` where `.required()` emits `required="required"`.
 
+### Fixed
+
+- **A malformed tag name aborted the whole template.** `renderTemplate()`
+  promises in the README that the parser "recovers from a malformed line rather
+  than throwing", but an uppercase tag — `SPAN` instead of `span`, a plausible
+  typo — threw `TypeError: Invalid element tag` out of the call and lost every
+  line after it. The tag is now validated during parsing: the offending line
+  alone is dropped, its children are still consumed so the rest of the template
+  parses at the right depth, and the drop is reported as `W_TEMPLATE_SYNTAX` in
+  development.
+
+- **Content silently vanished after a tag.** The selector stops at the first
+  invalid character, so `scr<ipt "x"` rendered `<scr></scr>` and discarded the
+  rest of the line without a word. The element still renders — that is the
+  documented recovery — but the dropped remainder is now reported.
+
+- **`#{}` interpolation did nothing in attribute values.** `a(href="#{url}")`
+  emitted the literal string `#{url}` as the href, so the template read
+  correctly and shipped a broken link. Attribute values and data attributes now
+  interpolate like quoted text. A token with no matching variable is left in
+  place rather than emptied, so an unresolved `#{name}` stays visible instead of
+  becoming a blank attribute, and existing templates that contain a literal
+  `#{...}` with no matching variable are unaffected. Interpolated values are
+  escaped and URL-sanitised exactly like any other attribute value; event
+  attributes (`@click="handler"`) are deliberately not interpolated, since they
+  name a function rather than carrying content.
+
 ### Fixed (documentation)
+
+- **The `defineClass` example taught a form that does nothing.** The guide showed
+  `defineClass('.badge', ...)` with a leading dot. `defineClass()` and
+  `sharedClass()` take a bare class name; the selector form is rejected, emits no
+  CSS, and logs `Ignored invalid CSS name` in development. The example is fixed
+  and the guide now states which styling methods take a name and which take a
+  selector.
 
 - **The form-field ID sentence named the wrong helper.** It read "`field({ id })`,
   or `attrs.id` on `formGroup()`", implying only `formGroup()` reads `attrs.id`.

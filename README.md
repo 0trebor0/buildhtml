@@ -702,7 +702,9 @@ const html = renderTemplate(source, {
 
 The direct file helpers are synchronous.
 
-The parser recovers from a malformed line rather than throwing, so a mistake still produces output. In development it reports what it dropped as `W_TEMPLATE_SYNTAX` — an unclosed `(`, an invalid `?each`, an unrecognised `?` directive, or a `:global`/`:class` rule without braces. Production stays quiet.
+The parser recovers from a malformed line rather than throwing, so a mistake still produces output. In development it reports what it dropped as `W_TEMPLATE_SYNTAX` — an unclosed `(`, an invalid `?each`, an unrecognised `?` directive, a `:global`/`:class` rule without braces, an invalid tag name, or content it could not parse after a tag. Production stays quiet.
+
+`#{}` interpolation works in quoted text, attribute values, and data attributes. A token with no matching variable is left in place rather than emptied, so an unresolved `#{name}` is visible in the output instead of silently becoming a blank attribute.
 
 ## Reactive lists
 

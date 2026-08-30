@@ -145,16 +145,19 @@
         <a href="#tut-forms">9. Forms</a>
         <a href="#tut-the-document-head">10. The document head</a>
         <a href="#tut-tree-operations">11. Tree operations</a>
-        <a href="#tut-reactivity-state-and-bindings">12. Reactivity: state and bindings</a>
-        <a href="#tut-events">13. Events</a>
-        <a href="#tut-computed-values-and-lifecycle">14. Computed values and lifecycle</a>
-        <a href="#tut-reactive-lists">15. Reactive lists</a>
-        <a href="#tut-views-and-routing">16. Views and routing</a>
-        <a href="#tut-components">17. Components</a>
-        <a href="#tut-serving-pages">18. Serving pages</a>
-        <a href="#tut-validation">19. Validation</a>
-        <a href="#tut-security-notes">20. Security notes</a>
-        <a href="#tut-common-mistakes">21. Common mistakes</a>
+        <a href="#tut-portals-and-slots">12. Portals and slots</a>
+        <a href="#tut-reusable-templates">13. Reusable templates</a>
+        <a href="#tut-serializing-a-document">14. Serializing a document</a>
+        <a href="#tut-reactivity-state-and-bindings">15. Reactivity: state and bindings</a>
+        <a href="#tut-events">16. Events</a>
+        <a href="#tut-computed-values-and-lifecycle">17. Computed values and lifecycle</a>
+        <a href="#tut-reactive-lists">18. Reactive lists</a>
+        <a href="#tut-views-and-routing">19. Views and routing</a>
+        <a href="#tut-components">20. Components</a>
+        <a href="#tut-serving-pages">21. Serving pages</a>
+        <a href="#tut-validation">22. Validation</a>
+        <a href="#tut-security-notes">23. Security notes</a>
+        <a href="#tut-common-mistakes">24. Common mistakes</a>
         <div class="nav-label">Reference</div>
         <a href="#concepts">How it works</a>
         <a href="#server">Server & static HTML</a>
@@ -578,7 +581,7 @@ const doc = page('Document styling');
 
 doc.cssVars({ brand: '#0099ff', text: '#111' });
 doc.globalStyle('body', { margin: 0, color: 'var(--text)' });
-doc.defineClass('.badge', { padding: '2px 6px', borderRadius: '4px' });
+doc.defineClass('badge', { padding: '2px 6px', borderRadius: '4px' });
 doc.sharedClass('pill', { display: 'inline-block' });
 doc.keyframes('fade', { from: { opacity: 0 }, to: { opacity: 1 } });
 doc.mediaQuery('(min-width: 768px)', { body: { fontSize: '18px' } });
@@ -587,6 +590,7 @@ doc.print({ nav: { display: 'none' } });
 
 doc.h1('Styled');
 const html = doc.render();</code></pre>
+        <p><code>defineClass()</code> and <code>sharedClass()</code> take a <strong>bare class name</strong>, not a selector — they add the leading dot themselves. A name that is not a valid CSS identifier is dropped rather than rewritten, because silently turning <code>.badge</code> into <code>badge</code> would invent a rule you did not write. In development the rejection is reported as <code>[defineClass] Ignored invalid CSS name</code>; production stays quiet. <code>globalStyle()</code> and <code>mediaQuery()</code> do take full selectors.</p>
       </section>
 
       <section id="tut-tree-operations" data-search="tutorial tree operations every element moved wrapped removed level nested const page require trebor buildhtml tree anchor before text string sibling escaped after wrapper wrap section returns">
@@ -615,10 +619,92 @@ box.findById('anchor');              // by id, within this subtree
 
 const html = doc.render();</code></pre>
         <p><code>clone()</code> copies a subtree, <code>empty()</code> clears children, <code>replaceWith()</code> swaps a tag in place, and <code>prependChild()</code>/<code>insertAt()</code> control position.</p>
+        <p>Two read-only helpers answer questions about the tree before you render it: <code>isEmpty()</code> and <code>elementCount()</code>. Call them before <code>render()</code>, which clears the body.</p>
+        <pre><code>const { Document } = require('@trebor/buildhtml');
+
+const doc = new Document();
+doc.isEmpty();        // true
+doc.elementCount();   // 0
+
+doc.p('one');
+doc.p('two');
+doc.isEmpty();        // false
+doc.elementCount();   // 2</code></pre>
+      </section>
+
+      <section id="tut-portals-and-slots" data-search="tutorial portals slots portal fillSlot slot placeholder move element elsewhere reuse structure data-slot">
+        <h2>12. Portals and slots</h2>
+        <p>Two ways to put content somewhere other than where you wrote it.</p>
+        <p><strong><code>portal(targetId)</code></strong> renders the element in place, then moves it under another element in the browser once the page loads. Use it for dialogs, toasts, and dropdowns that must escape a clipping or stacking context but belong with their trigger in your source.</p>
+        <pre><code>const { page } = require('@trebor/buildhtml');
+
+const doc = page('Portal');
+
+doc.div().id('dialog').text('I move on load')
+   .portal('overlay-root');
+doc.div().id('overlay-root');
+
+const html = doc.render();</code></pre>
+        <p>The element is served inside its original parent, so the page is complete without JavaScript; the generated script then appends it to the target. If the target id does not exist at load time the element simply stays where it was rendered — no error, no missing content.</p>
+        <p><strong><code>slot(name)</code></strong> marks a placeholder, and <strong><code>fillSlot(name, fn)</code></strong> fills it later. This lets you build a structure once and populate it further down, without holding a reference to the inner element.</p>
+        <pre><code>const { Document } = require('@trebor/buildhtml');
+
+const doc = new Document();
+
+const card = doc.section().addClass('card');
+card.h2('Title');
+card.div().slot('content');
+
+// Later, without a reference to the div itself:
+card.fillSlot('content', (slot) =&gt; {
+  slot.p('Filled in afterwards');
+});
+
+const html = doc.render();</code></pre>
+        <p>A slot renders as an ordinary element carrying <code>data-slot="content"</code>, so it is styleable and inspectable. <code>fillSlot()</code> searches the subtree it is called on, which is why <code>card.fillSlot(...)</code> finds a slot nested inside <code>card</code>.</p>
+      </section>
+
+      <section id="tut-reusable-templates" data-search="tutorial reusable templates template useTemplate named builder function variables repeat structure">
+        <h2>13. Reusable templates</h2>
+        <p><code>template(name, fn)</code> registers a named builder on the document, and <code>useTemplate(name, vars)</code> runs it. It is the lightest way to repeat a structure without registering a component.</p>
+        <pre><code>const { Document } = require('@trebor/buildhtml');
+
+const doc = new Document();
+
+doc.template('greeting', (d, vars) =&gt; {
+  d.p('Hello ' + vars.name);
+});
+
+doc.useTemplate('greeting', { name: 'Ada' });
+doc.useTemplate('greeting', { name: 'Grace' });
+
+// &lt;p&gt;Hello Ada&lt;/p&gt;&lt;p&gt;Hello Grace&lt;/p&gt;
+const html = doc.render();</code></pre>
+        <p>The builder receives the document and the variables object. Templates are scoped to the document they were registered on, so they do not leak between requests. Reach for <code>component()</code> instead when you want something registered globally and reusable across documents.</p>
+      </section>
+
+      <section id="tut-serializing-a-document" data-search="tutorial serializing document toJSON fromJSON snapshot restore round trip persist cache definition">
+        <h2>14. Serializing a document</h2>
+        <p><code>toJSON()</code> turns a document into a plain, serializable definition, and <code>fromJSON()</code> rebuilds one from it. Use it to cache a built page, store a layout, or hand a page definition between processes.</p>
+        <pre><code>const { Document } = require('@trebor/buildhtml');
+
+const doc = new Document();
+doc.h1('Report');
+doc.p('Body');
+
+// A plain object, safe to JSON.stringify.
+const definition = doc.toJSON();
+
+const restored = new Document();
+restored.fromJSON(definition);
+// &lt;h1&gt;Report&lt;/h1&gt;&lt;p&gt;Body&lt;/p&gt;
+const html = restored.render();</code></pre>
+        <p>State, bindings, events, and lifecycle hooks all survive the round trip — the restored document compiles the same client script, apart from regenerated element ids. Call <code>toJSON()</code> <strong>before</strong> <code>render()</code>, which clears the body.</p>
+        <div class="callout warning"><p><code>fromJSON()</code> on input you did not produce is untrusted input. Serialized callbacks and compiled CSS are re-validated against the same rules a live function passes, and anything that fails is dropped and recorded. See <a href="#builder">the JSON reference</a> for the full key list and the <code>trustedCss</code> rule.</p></div>
       </section>
 
       <section id="tut-reactivity-state-and-bindings" data-search="tutorial reactivity: state and bindings this part worth understanding properly declare state document then bind elements const page require trebor buildhtml counter states count button onclick function html render">
-        <h2>12. Reactivity: state and bindings</h2>
+        <h2>15. Reactivity: state and bindings</h2>
         <p>This is the part worth understanding properly.</p>
         <p>Declare state on the document, then bind elements to it:</p>
         <pre><code>const { page } = require('@trebor/buildhtml');
@@ -671,7 +757,7 @@ const html = doc.render();</code></pre>
       </section>
 
       <section id="tut-events" data-search="tutorial events event handles anything shortcuts cover common events const page require trebor buildhtml states count text button click onclick function state input oninput target value">
-        <h2>13. Events</h2>
+        <h2>16. Events</h2>
         <p><code>on(event, fn)</code> handles anything; the <code>on*</code> shortcuts cover the common events:</p>
         <pre><code>const { page } = require('@trebor/buildhtml');
 
@@ -699,7 +785,7 @@ const html = doc.render();</code></pre>
       </section>
 
       <section id="tut-computed-values-and-lifecycle" data-search="tutorial computed values and lifecycle const page require trebor buildhtml computed states price quantity span function return state onmount this dataset ready true onupdate value string ondestroy false oncreate">
-        <h2>14. Computed values and lifecycle</h2>
+        <h2>17. Computed values and lifecycle</h2>
         <pre><code>const { page } = require('@trebor/buildhtml');
 
 const doc = page('Computed');
@@ -723,7 +809,7 @@ const html = doc.render();</code></pre>
       </section>
 
       <section id="tut-reactive-lists" data-search="tutorial reactive lists livelist statekey itemfn options renders array keeps sync returns node definition object element const page require trebor buildhtml live list states tasks title write">
-        <h2>15. Reactive lists</h2>
+        <h2>18. Reactive lists</h2>
         <p><code>liveList(stateKey, itemFn, options?)</code> renders an array and keeps it in sync. <code>itemFn</code> returns a <strong>node definition object</strong>, not an element:</p>
         <pre><code>const { page } = require('@trebor/buildhtml');
 
@@ -758,7 +844,7 @@ const html = doc.render();</code></pre>
       </section>
 
       <section id="tut-views-and-routing" data-search="tutorial views and routing like pages where should change views const page require trebor buildhtml states activepage overview button attr data view reports section statekey default activeclass active">
-        <h2>16. Views and routing</h2>
+        <h2>19. Views and routing</h2>
         <p>For tab-like pages where the URL should not change, use <code>views()</code>:</p>
         <pre><code>const { page } = require('@trebor/buildhtml');
 
@@ -817,7 +903,7 @@ const html = doc.render();</code></pre>
       </section>
 
       <section id="tut-components" data-search="tutorial components component function that receives element props const page components require trebor buildhtml register card addclass title body registered looked name inline registration strong label">
-        <h2>17. Components</h2>
+        <h2>20. Components</h2>
         <p>A component is a function that receives an element and props:</p>
         <pre><code>const { page, components } = require('@trebor/buildhtml');
 
@@ -839,7 +925,7 @@ const html = doc.render();</code></pre>
       </section>
 
       <section id="tut-serving-pages" data-search="tutorial serving pages render returns string server works native node http const createserver require page trebor buildhtml served hello from html writehead content type text charset length">
-        <h2>18. Serving pages</h2>
+        <h2>21. Serving pages</h2>
         <p><code>render()</code> returns a string, so any server works. Native <code>node:http</code>:</p>
         <pre><code>const { createServer } = require('node:http');
 const { page } = require('@trebor/buildhtml');
@@ -877,7 +963,7 @@ const json = doc.toJSON();          // serialisable definition</code></pre>
       </section>
 
       <section id="tut-validation" data-search="tutorial validation validate inspects document before send returns valid errors warnings const page require trebor buildhtml validation states count meaningful text button labelled report true empty">
-        <h2>19. Validation</h2>
+        <h2>22. Validation</h2>
         <p><code>validate()</code> inspects a document before you send it and returns <code>{ valid, errors, warnings }</code>:</p>
         <pre><code>const { page } = require('@trebor/buildhtml');
 
@@ -895,7 +981,7 @@ const html = doc.render();</code></pre>
       </section>
 
       <section id="tut-security-notes" data-search="tutorial security notes what library does text attributes values serialised json escaped sanitized javascript vbscript data html become including schemes split newline carriage return inline never emitted">
-        <h2>20. Security notes</h2>
+        <h2>23. Security notes</h2>
         <p>What the library does for you:</p>
         <ul><li>Text, attributes, CSS values, and serialised JSON are escaped.</li><li>URL attributes are sanitized; <code>javascript:</code>, <code>vbscript:</code> and <code>data:text/html</code> become <code>#</code>, including schemes split by tab, newline, or carriage return.</li><li>Inline <code>on*</code> attributes are never emitted, and <code>attr('onclick', …)</code> is rejected.</li><li>Callback sources are screened and parsed before they can reach a page.</li><li>Pass <code>nonce</code> and it is applied to generated <code>&lt;script&gt;</code> and <code>&lt;style&gt;</code> tags, so a strict CSP works without <code>unsafe-inline</code>:</li></ul>
         <pre><code>const { page } = require('@trebor/buildhtml');
@@ -909,7 +995,7 @@ const html = doc.render();</code></pre>
       </section>
 
       <section id="tut-common-mistakes" data-search="tutorial common mistakes calling render twice clears body second call returns different emptier document once toggleclass name true condition comes first wrong order applies nothing reports title">
-        <h2>21. Common mistakes</h2>
+        <h2>24. Common mistakes</h2>
         <p><strong>Calling <code>render()</code> twice.</strong> It clears the body; the second call returns a different, emptier document. Render once.</p>
         <p><strong><code>toggleClass('name', true)</code>.</strong> The condition comes first: <code>toggleClass(true, 'name')</code>. The wrong order applies nothing and reports nothing.</p>
         <p><strong><code>new Document({ title: 'X' })</code>.</strong> Not an option. Use <code>doc.title('X')</code>.</p>
@@ -1079,7 +1165,7 @@ card.a('/users/42', 'View profile');</code></pre>
         <div class="table-wrap"><table>
           <thead><tr><th>Category</th><th>Methods</th><th>Parameters</th></tr></thead>
           <tbody>
-            <tr><td>Content</td><td><code>text</code>, <code>html</code>, <code>empty</code></td><td>Text or trusted HTML; empty takes no parameters.</td></tr>
+            <tr><td>Content</td><td><code>text</code>, <code>append</code>, <code>appendUnsafe</code>, <code>html</code>, <code>empty</code></td><td>Text or trusted HTML; <code>append</code> escapes, <code>appendUnsafe</code> and <code>html</code> do not; <code>empty</code> takes no parameters.</td></tr>
             <tr><td>Attributes</td><td><code>attr</code>, <code>setAttrs</code>, <code>data</code>, <code>aria</code></td><td>Key/value or an attribute object.</td></tr>
             <tr><td>Classes</td><td><code>addClass</code>, <code>removeClass</code>, <code>toggleClass</code>, <code>classIf</code>, <code>classMap</code></td><td>Class names and optional conditions.</td></tr>
             <tr><td>CSS</td><td><code>css</code>, <code>style</code>, <code>hover</code>, <code>focusCss</code>, <code>pseudo</code>, <code>media</code></td><td>Rules object; pseudo selector or media query where needed.</td></tr>
@@ -1251,7 +1337,15 @@ div#app.container
             <tr><td><code>templateEngine</code></td><td><code>path, options, callback</code></td><td>Express view-engine callback result.</td></tr>
           </tbody>
         </table></div>
-      </section>
+              <h3>Interpolation and error recovery</h3>
+        <p><code>#{}</code> expands in quoted text, attribute values, and data attributes:</p>
+        <pre><code>a(href="#{url}") "Profile"
+p(title="#{user.name}") "Hover me"
+div[userId=#{user.id}]</code></pre>
+        <p>A token with no matching variable is <strong>left in place</strong> rather than emptied, so an unresolved <code>#{name}</code> is visible in the output instead of silently becoming a blank attribute. Interpolated values are escaped and URL-sanitised exactly like any other attribute — a variable cannot break out of the quotes or smuggle a <code>javascript:</code> scheme into an <code>href</code>. Event values (<code>@click="handler"</code>) are <em>not</em> interpolated: they name a function in the variables object.</p>
+        <p>The parser recovers from a malformed line rather than throwing, so a mistake still produces output, and in development it reports what it dropped as <code>W_TEMPLATE_SYNTAX</code>: an unclosed <code>(</code>, an invalid <code>?each</code>, an unrecognised <code>?</code> directive, a <code>:global</code>/<code>:class</code> rule without braces, an <strong>invalid tag name</strong>, or content it could not parse after a tag. Production stays quiet.</p>
+        <p>Tag names are lower-case. An uppercase or otherwise invalid tag drops that one line and leaves the rest of the template intact.</p>
+</section>
 
       <section id="state" data-search="state events binding bind show class attr style prop input lifecycle oncreate">
         <h2>Reactive state, bindings, and events</h2>
@@ -1505,7 +1599,8 @@ doc.historyRouter({
               <tr><td><code>title</code>, <code>charset</code>, <code>lang</code></td><td>String value.</td></tr>
               <tr><td><code>htmlAttr</code>, <code>bodyAttr</code></td><td><code>key, value</code>.</td></tr>
               <tr><td><code>bodyId</code>, <code>bodyClass</code>, <code>bodyCss</code></td><td>Id, class names, or rules.</td></tr>
-              <tr><td><code>globalStyle</code>, <code>sharedClass</code></td><td><code>selector/name, rules</code>.</td></tr>
+              <tr><td><code>globalStyle</code></td><td><code>selector, rules</code> — takes a full CSS selector.</td></tr>
+              <tr><td><code>defineClass</code>, <code>sharedClass</code></td><td><code>name, rules</code> — a <strong>bare class name</strong>, no leading dot. An invalid CSS identifier is dropped, not rewritten, and reported in development.</td></tr>
               <tr><td><code>keyframes</code></td><td><code>name, frames</code>.</td></tr>
               <tr><td><code>mediaQuery</code></td><td><code>query, selectorRules</code>.</td></tr>
               <tr><td><code>cssVar</code>, <code>cssVars</code></td><td><code>name, value</code> or variables object.</td></tr>
@@ -1556,6 +1651,8 @@ doc.historyRouter({
               <tr><td><code>replaceWith</code>, <code>prependChild</code>, <code>insertAt</code></td><td>Tag or element; <code>insertAt</code> takes <code>index, tag</code>.</td></tr>
               <tr><td><code>parent</code>, <code>siblings</code>, <code>nextSibling</code>, <code>prevSibling</code></td><td>No parameters → related element(s).</td></tr>
               <tr><td><code>childCount</code>, <code>index</code>, <code>isVoid</code>, <code>hasClass</code></td><td>Inspection. <code>index</code> is the position among siblings; <code>isVoid</code> is true for <code>&lt;br&gt;</code>, <code>&lt;img&gt;</code>, and similar.</td></tr>
+              <tr><td><code>append</code>, <code>appendUnsafe</code></td><td><code>content</code> — appends to this element. <code>append</code> escapes a string; <code>appendUnsafe</code> inserts it as markup, for trusted content only.</td></tr>
+              <tr><td><code>toString</code></td><td>No parameters &rarr; this element's HTML, without rendering or consuming the document. Useful for logging a subtree.</td></tr>
               <tr><td><code>renderFragment</code></td><td>No parameters → <code>{ html, css }</code>, <strong>not a string</strong>. Static markup and CSS only: events, state, bindings, and lifecycle hooks on the subtree are dropped.</td></tr>
               <tr><td><code>portal</code></td><td><code>targetId</code> — renders the element into the container with that id at runtime instead of in place.</td></tr>
               <tr><td><code>slot</code>, <code>fillSlot</code></td><td><code>slot(name?)</code> marks an insertion point; <code>fillSlot(name, contentFn)</code> populates it.</td></tr>

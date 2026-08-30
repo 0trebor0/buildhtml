@@ -333,6 +333,102 @@ div#app.container
   assert(html.includes('container'), 'root class');
 });
 
+/* ---- Attribute interpolation ---- */
+test('#{} interpolates in attribute and data values', () => {
+  assert(renderTemplate('a(href="#{u}") "go"', { u: '/about' }).includes('href="/about"'),
+    'href interpolates');
+  assert(renderTemplate('p(title="#{v}") "t"', { v: 'hello' }).includes('title="hello"'),
+    'title interpolates');
+  assert(renderTemplate('a(title="a #{v} b") "go"', { v: 'X' }).includes('title="a X b"'),
+    'interpolation composes with surrounding literal text');
+  assert(renderTemplate('div[userId=#{id}]', { id: 42 }).includes('data-user-id="42"'),
+    'data attribute values interpolate');
+});
+
+test('an unresolved attribute token is left alone rather than emptied', () => {
+  const html = renderTemplate('a(href="#{nope}") "go"');
+  assert(html.includes('href="#{nope}"'), 'the literal token survives when no variable matches');
+});
+
+test('a valueless attribute survives interpolation', () => {
+  assert(renderTemplate('button(disabled) "s"').includes('disabled'),
+    'boolean attributes are not broken by the interpolation pass');
+});
+
+test('interpolated attribute values are still escaped and sanitized', () => {
+  // The payload appears in the output as escaped TEXT, so a substring search for
+  // "onload=" matches a perfectly safe page. What matters is whether it became a
+  // real attribute, which means looking inside the tag itself.
+  const quoted = renderTemplate('a(title="#{v}") "go"', { v: '" onload="alert(1)' });
+  // A breakout needs raw quotes to close the value and open another attribute.
+  // The safe render has exactly the two that delimit title="...".
+  const tag = quoted.match(/<a[^>]*>/)[0];
+  assert((tag.match(/"/g) || []).length === 2,
+    `a quote in a variable cannot open a second attribute (tag was ${tag})`);
+  assert(tag.includes('&quot;'), 'the quote survives as an escaped entity');
+  const scheme = renderTemplate('a(href="#{v}") "go"', { v: 'javascript:alert(1)' });
+  assert(scheme.includes('href="#"'), 'an executable scheme is still neutralised');
+  const tabbed = renderTemplate('a(href="#{v}") "go"', { v: 'java	script:alert(1)' });
+  assert(tabbed.includes('href="#"'), 'a control-character split scheme is still neutralised');
+});
+
+test('event attribute values are not interpolated', () => {
+  const calls = [];
+  const html = renderTemplate('button(@click="save") "Save"', { save: function () { State.n = 1; } });
+  assert(html.includes('addEventListener("click"'), 'a named handler still wires up');
+});
+
+/* ---- Malformed tag recovery ---- */
+test('an invalid tag drops its line instead of throwing', () => {
+  let html;
+  try {
+    html = renderTemplate(['div', '  SPAN "y"', '  p "kept"'].join('\n'));
+  } catch (e) {
+    assert(false, `renderTemplate threw instead of recovering: ${e.message}`);
+    return;
+  }
+  assert(html.includes('<p>kept</p>'), 'the rest of the template still renders');
+  assert(!html.includes('SPAN'), 'the malformed line is dropped');
+  assert(html.includes('<div>'), 'the surrounding structure survives');
+});
+
+test('an invalid tag at the top level does not throw', () => {
+  let threw = false;
+  try { renderTemplate('DIV "x"'); } catch (e) { threw = true; }
+  assert(!threw, 'a top-level invalid tag is recovered, not thrown');
+});
+
+test('content dropped after a tag is reported', () => {
+  const { configure, CONFIG } = require('../index');
+  const originalMode = CONFIG.mode;
+  const originalWarn = console.warn;
+  const warnings = [];
+  try {
+    console.warn = message => warnings.push(message);
+    configure({ mode: 'dev' });
+
+    // The selector stops at the first invalid character, so "scr<ipt" renders
+    // <scr> and the rest of the line vanished without a word before this.
+    const html = renderTemplate('scr<ipt "x"');
+    assert(warnings.length === 1, `the dropped remainder is reported once (got ${warnings.length})`);
+    assert(warnings[0].includes('[BuildHTML W_TEMPLATE_SYNTAX]'), 'it uses the shared code');
+    assert(warnings[0].includes('Unexpected'), 'it names the unexpected content');
+    assert(html.includes('<scr>'), 'the element still renders — the parser recovers');
+
+    warnings.length = 0;
+    renderTemplate('a(href="/x") "fine"');
+    assert(warnings.length === 0, 'a well-formed line stays silent');
+
+    warnings.length = 0;
+    configure({ mode: 'prod' });
+    renderTemplate('scr<ipt "x"');
+    assert(warnings.length === 0, 'production stays silent');
+  } finally {
+    console.warn = originalWarn;
+    configure({ mode: originalMode });
+  }
+});
+
 /* ---- Malformed input diagnostics ---- */
 test('Malformed template lines warn in development', () => {
   const { configure, CONFIG } = require('../index');
