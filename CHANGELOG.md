@@ -185,6 +185,28 @@ rather than complete records.
 
 ### Added
 
+- **Event listeners accept options.** `on()` and all 26 `on<Event>()` shorthands
+  take an optional fourth argument. `once`, `passive` and `capture` are passed to
+  `addEventListener`; `preventDefault` and `stopPropagation` compile into the
+  generated wrapper and run before your handler.
+
+  ```javascript
+  doc.div().onScroll(function () { State.y = window.scrollY; }, undefined, { passive: true });
+  doc.form().onSubmit(function () { State.sent = true; }, undefined, { preventDefault: true });
+  ```
+
+  `passive` was previously impossible to set, so the `onScroll`, `onTouchstart`,
+  `onTouchend` and `onTouchmove` shorthands could only ever produce the
+  non-passive listeners browsers warn about on those events.
+
+  The argument is additive and the third slot still means `context`, so every
+  existing call keeps its meaning and a handler without options compiles
+  byte-identical output. Unknown keys are dropped, values are coerced to
+  booleans, and only own properties are read, so neither a crafted value nor a
+  polluted `Object.prototype` can reach the generated script. Options serialize
+  through `toJSON()` and are re-normalised on the way back in through
+  `fromJSON()`.
+
 - **The JSON definition format is now documented.** `build()`, `fromJSON()` and
   `renderJSON()` accept far more keys than the docs listed, so hand-writing a
   JSON page meant reading `lib/builder.js` and `lib/document.js`. The guide now

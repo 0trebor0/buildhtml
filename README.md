@@ -433,7 +433,24 @@ doc.button('Add task').onClick(function () {
 | `bindStyle(key, fn)` | `(value, State)` callback | Applies returned CSS rules |
 | `bindProp(key, name, fn?)` | `(value, State)` callback | Assigns a DOM property (restricted list, see below) |
 | `bindInput(key)` | state key | Two-way input value binding |
-| `on(event, fn)` | browser event callback | Adds an event listener |
+| `on(event, fn, context?, options?)` | browser event callback | Adds an event listener |
+
+`on()` and every `on<Event>()` shorthand take an optional fourth argument:
+
+```javascript
+doc.div().onScroll(function () { State.y = window.scrollY; }, undefined, { passive: true });
+doc.form().onSubmit(function () { State.sent = true; }, undefined, { preventDefault: true });
+```
+
+| Option | Effect |
+|--------|--------|
+| `once` | Removes the listener after it fires once |
+| `passive` | Promises never to call `preventDefault()`. Set it on `scroll`, `wheel` and `touch*` — browsers warn when a listener on those is not passive |
+| `capture` | Fires during the capture phase |
+| `preventDefault` | Calls `event.preventDefault()` before your handler |
+| `stopPropagation` | Calls `event.stopPropagation()` before your handler |
+
+Unknown keys are ignored and values are coerced to booleans, so nothing a caller passes is written into the page as code. Omitting the argument compiles exactly the output it always did.
 
 `bindProp()` accepts a fixed list of properties:
 

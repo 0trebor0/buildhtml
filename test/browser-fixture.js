@@ -25,6 +25,9 @@ function buildPage() {
     contextLabel: 'ready',
     eventContract: '',
     asyncEventContract: '',
+    onceCount: 0,
+    repeatCount: 0,
+    preventedCount: 0,
   });
 
   doc.div().id('portal-source').text('Portaled').portal('portal-target');
@@ -119,6 +122,16 @@ function buildPage() {
   doc.a('/app/about', 'About route').id('about-route').attr('data-route', '');
   doc.span().id('page-output').bind('page', value => value);
   doc.span().id('params-output').bind('routeParams', value => value.id || '');
+  // Event options. `once` unregistering and `preventDefault` actually cancelling
+  // are runtime behaviours; a server-side assertion can only prove what source
+  // was emitted, not what the browser does with it.
+  doc.button('Once').id('once-button').onClick(function () { State.onceCount += 1; }, undefined, { once: true });
+  doc.span().id('once-count').bind('onceCount', value => String(value));
+  doc.button('Repeat').id('repeat-button').onClick(function () { State.repeatCount += 1; });
+  doc.span().id('repeat-count').bind('repeatCount', value => String(value));
+  doc.button('Prevented').id('prevented-button').onClick(function () { State.preventedCount += 1; }, undefined, { preventDefault: true });
+  doc.span().id('prevented-count').bind('preventedCount', value => String(value));
+
   doc.historyRouter({
     stateKey: 'page',
     paramsKey: 'routeParams',

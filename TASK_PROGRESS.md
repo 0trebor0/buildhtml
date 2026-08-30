@@ -1180,3 +1180,182 @@ driving the search box: `trustedcss`, `cssText`, `htmlAttrs` and
 
 Not verified manually: rendering on a real mobile viewport, and the published
 GitHub Pages build (only the local file was opened).
+
+## Event listener options and modifiers (2026-08-22)
+
+Brief: expand event handling with listener options (#1) and declarative
+modifiers (#2). Do not break anything; run the tests and debug.
+
+### What was added
+
+`on()` and all 26 `on<Event>()` shorthands take an optional **fourth** argument.
+The third slot still means `context`, so the change is purely additive and no
+existing call site changes meaning.
+
+| Option | Compiles to |
+|--------|-------------|
+| `once`, `passive`, `capture` | `addEventListener`'s third argument |
+| `preventDefault`, `stopPropagation` | statements in the generated wrapper, ahead of the user callback |
+
+`passive` was previously unreachable, which meant the `onScroll`,
+`onTouchstart`, `onTouchend` and `onTouchmove` shorthands could only ever
+produce the non-passive listeners browsers warn about on those events. That was
+the motivation for doing this one first.
+
+### Design
+
+A single `normalizeEventOptions()` in `lib/utils.js` is the only place the key
+set is defined. Three consumers read it — `on()`, the JSON restore in
+`builder.js`, and the renderer that emits the call — which follows the same
+single-source-of-truth convention the URL and CSS sanitisers in that file
+already use, and for the same stated reason: hand-copied duplicates are how the
+tab/LF/CR hole survived.
+
+Security properties, all asserted by tests:
+
+- Unknown keys are dropped; values are coerced, so the renderer only ever emits
+  the literal `true`. Nothing a caller supplies is interpolated into the script.
+- Own properties only. An inherited flag — from a polluted `Object.prototype` or
+  an object literal carrying `__proto__` — cannot switch an option on for
+  listeners that never asked for it. This was found while testing: the first
+  implementation read through the prototype chain and a `__proto__: { capture:
+  true }` literal silently enabled capture. Not injectable, but wrong.
+- `fromJSON()` re-normalises restored options rather than trusting them, matching
+  how it already treats serialized callback sources.
+- No options set produces `null`, and the emitted call stays byte-identical to
+  what every existing page has always compiled to.
+
+### Files changed
+
+- `lib/utils.js` — `normalizeEventOptions`, `listenerOptionsSource`,
+  `eventModifierSource`, plus exports
+- `lib/element.js` — `on()` stores normalized options; 26 shorthands forward a
+  fourth argument
+- `lib/renderer.js` — emits the listener options argument and modifier statements
+- `lib/document.js` — `toJSON()` carries `options`
+- `lib/builder.js` — `fromJSON()` restores and re-normalises `options`
+- `typescript/index.d.ts` — new `EventOptions` interface; `on()` and all 26
+  shorthands take `options?: EventOptions`
+- `test/test-event-shortcuts.js` — 13 new groups, 216 assertions total
+- `test/browser-fixture.js`, `test/test-browser.js` — real-browser coverage
+- `README.md`, `docs/index.html`, `CHANGELOG.md` — documentation
+
+### Tests added
+
+Server-side (`test-event-shortcuts.js`): a handler without options compiles
+unchanged; each listener option and combination reaches `addEventListener`;
+modifiers run before the callback and do not leak into the options argument;
+options combine without disturbing `context`; all 26 shorthands forward the
+argument; hostile and unknown values cannot reach the script; inherited
+properties are ignored; options survive a `toJSON`/`fromJSON` round trip;
+tampered options in restored JSON are re-normalised. Every generated script is
+also parsed with `node:vm`, so no option shape can emit invalid JavaScript.
+
+Browser (`test-browser.js`): `once` stops firing after one click, a plain
+listener keeps firing, and `preventDefault` actually cancels the event —
+runtime behaviour no server-side assertion can prove.
+
+### Verification
+
+```
+node --check lib/*.js test/*.js        -> all parse
+tsc --project typescript/tsconfig.json -> exit 0
+node test/test-event-shortcuts.js      -> 216 passed, 0 failed
+node test/run-all.js                   -> All 23 automated suites passed
+npm run test:browser                   -> 4 Playwright suites passed
+BUILDHTML_FUZZ_ITERATIONS=20000        -> 17 passed, 0 failed
+benchmark/render.js                    -> static 3929 HTML bytes, unchanged;
+                                          ops/s within run-to-run noise
+docs/index.html tag balance            -> table 27/27, section 36/36,
+                                          tbody 27/27, div 50/50
+```
+
+Mutation-tested — every mutation was reverted and the source confirmed restored:
+
+```
+drop the own-property guard              -> 2 assertions fail
+emit the raw option value, not `true`    -> 6 fail, incl. "Unexpected token ':'"
+move modifiers inside the try block      -> 1 fails
+remove { once: true } from the fixture   -> browser test fails '3' !== '1'
+```
+
+Two mutations initially reported a pass for the wrong reason. `perl`
+substitutions containing `${...}` were mangled or silently not applied, so the
+runs proved nothing. Re-applied through a base64 helper that verifies the target
+string is present before writing, which exposed **two genuine coverage gaps**
+that the first pass had wrongly recorded as covered:
+
+- **`fromJSON` trusting raw options was not caught.** Every assertion looked at
+  the rendered script, and `listenerOptionsSource()` re-derives the literal
+  `true` on its own, so removing the normalisation in `builder.js` changed no
+  output. Fixed by asserting the *stored* value through `toJSON()`.
+- **Emitting the raw option value instead of the literal was not caught**, for
+  the mirror-image reason: with normalisation upstream the values are already
+  booleans, so the mutant is output-equivalent. Fixed by unit-testing
+  `listenerOptionsSource()` with deliberately un-normalised input.
+
+The two are independent layers and either alone is sufficient, which is why
+asserting only on rendered output could not tell them apart. They are now
+pinned separately.
+
+Full mutation matrix after those tests were added (each reverted, source
+confirmed restored and parsing):
+
+```
+own-property guard removed              -> 2 failed
+emit raw option value, not `true`       -> 1 failed
+modifiers moved inside the try block    -> 1 failed
+fromJSON trusts options unchecked       -> 1 failed
+a shorthand drops its options argument  -> 8 failed
+preventDefault modifier never emitted   -> 3 failed
+remove { once: true } from the fixture  -> browser test fails '3' !== '1'
+```
+
+### Corrected while writing the docs
+
+A first draft of the docs claimed the modifiers "still work on a `passive`-free
+listener where calling `preventDefault()` yourself would be ignored". That is
+wrong: a passive listener's `preventDefault()` is ignored by the browser however
+it is called, generated or hand-written. Replaced with a warning that `passive`
+and `preventDefault` contradict each other and should not be set together.
+
+### Not done
+
+Event delegation (`on(event, selector, fn)`) and `off()` were discussed and
+deliberately left out. Delegation is a larger change and `liveList` items
+already receive their own events (`lib/live.js:110`), which covers the usual
+motivation. `off()` does not fit the compile model: handlers are serialized
+source with no runtime handle, so supporting it would mean emitting a handler
+registry into every page.
+
+### Re-check against the "Error Handling Requirements" rule (2026-08-22)
+
+`AGENTS.md` gained an Error Handling Requirements section mid-task. The three
+functions created in this change were audited against it.
+
+| New function | Identifiable failure mode? | Outcome |
+|---|---|---|
+| `normalizeEventOptions` | **Yes** — it reads properties off a caller-supplied object, so a throwing getter or Proxy trap can raise | Already handled. Both call sites (`Element.on()` and the `fromJSON` event restore) wrap the whole registration in try/catch and record the failure, which the rule permits as "propagate to an existing error-handling layer" and matches the convention the rest of the callback path uses. No new catch added — one inside this function would have duplicated the layer above it and diverged from project convention |
+| `listenerOptionsSource` | No — pure string building over an already-normalized plain object | Exempt as pure/trivial |
+| `eventModifierSource` | No — same | Exempt as pure/trivial |
+
+The rule also requires a test exercising at least one caught error path for such
+a function. There was none, so two were added: a throwing `once` getter passed to
+`onClick()`, and a throwing `capture` getter arriving through `fromJSON()`. Both
+assert the error does not escape to the caller, the handler is dropped rather
+than half-registered, and the element still renders.
+
+Verified by mutation — both reverted, source confirmed restored and parsing:
+
+```
+normalizeEventOptions moved outside on()'s try/catch      -> 1 failed
+normalizeEventOptions moved outside fromJSON's try/catch  -> 1 failed
+```
+
+Both of those mutations reported "MUTATION DID NOT APPLY" on the first attempt:
+the patterns spanned lines and this repo's files are CRLF. The helper now falls
+back to CRLF before reporting success, so a pattern that does not match is
+surfaced instead of producing a meaningless pass. This is the second time a
+silently-inapplicable mutation produced a false clean result in this task.
+
+Final counts: `test-event-shortcuts.js` **216 passed, 0 failed**.

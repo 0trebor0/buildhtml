@@ -25,15 +25,24 @@
 * Do not add new methods, functions, classes, parameters, config options, or exported symbols unless the task explicitly requires them.
 * Before adding any new method or function, confirm either: (a) it is actually called somewhere as a result of this change, or (b) the task explicitly asked for a new public API. If neither is true, do not add it.
 * Do not add "convenience" overloads, alternate signatures, extra utility methods, or helper abstractions "while you're in there."
-* Do not add error handling, logging, retries, or validation for cases outside the task's scope, even if they seem like good practice.
+* Do not add error handling, logging, retries, or validation for cases outside the task's scope or for pre-existing functions not being modified, even if they seem like good practice. (Newly created functions that have an identifiable failure mode must still meet the baseline in "Error Handling Requirements" below — that baseline is not an unrequested addition.)
 * Do not leave in unused methods, variables, imports, or parameters introduced during the change.
 * If an addition beyond the stated scope seems genuinely necessary, stop and flag it for confirmation instead of adding it silently.
+
+### Error Handling Requirements
+
+* Every function created that performs an operation with an identifiable failure mode (I/O, network/API calls, parsing, external calls, file/db access, etc.) must include error handling for that failure path — do not leave a new function's error paths unhandled. Pure/trivial functions with no such operation are not required to add a catch.
+* Wrap operations that can fail (I/O, network or API calls, parsing, external/third-party calls, type coercion, file access, database queries) in a try/catch (or the language's equivalent) rather than letting exceptions propagate unhandled.
+* Catch specific, expected exception/error types where the language and libraries support it, rather than a bare/blanket catch-all, unless the project's existing conventions already use blanket catches.
+* On catching an error, handle it meaningfully — return or raise a clear error, log with enough context to diagnose, or propagate to an existing error-handling layer. Do not swallow errors silently (empty catch blocks).
+* Match the project's existing error-handling conventions (custom error classes, error codes, logging utilities) rather than introducing new ones.
+* This requirement applies only to newly created functions. It does not authorize adding error handling to unrelated, pre-existing functions outside the task's scope — see "No Unrequested Additions."
 
 ### Every Change Must Be Justified
 
 * Every code change must have a clear, task-specific reason.
 * Do not add code for hypothetical future use.
-* Do not add defensive logic without an identified failure case.
+* Do not add defensive logic without an identified failure case, except for the baseline error handling required under "Error Handling Requirements" for newly created functions that have an identifiable failure mode.
 * Do not introduce abstractions unless they reduce necessary duplication or are required by the current task.
 * Remove any proposed change that cannot be directly tied to a requirement, bug, test, or verified behavior.
 * Comments should explain why something is necessary, not restate what the code does. Do not strip out pre-existing comments that already follow this rule.
@@ -95,6 +104,7 @@
 * Identify the relevant test method before or while implementing the change. Confirm the project's actual test runner/command before assuming one (e.g. do not assume `npm test` or `pytest` without checking).
 * Add or update tests whenever behavior changes, a bug is fixed, or a new case is supported.
 * Test the specific behavior being changed, including relevant edge cases and failure paths.
+* For newly created functions that include error handling per "Error Handling Requirements," include a test that exercises at least one caught error path (e.g. verify the expected exception is caught and handled as intended), in addition to the normal success-path tests.
 * Prefer focused tests that prove the requirement rather than broad or unrelated test changes.
 * Run the most relevant tests after each meaningful change when practical.
 * Run regression tests scoped to the affected module and its direct dependents when the change could affect shared behavior; do not assume a full-suite run is required unless the change is broad or the project's norms call for it.
@@ -108,6 +118,7 @@
 ### Git and Repository Safety
 
 * Do not commit unless explicitly asked. Leave changes staged or in the working tree, uncommitted, until asked to commit.
+* When a commit is made, always commit directly to the main branch — do not create or use feature branches, unless the user explicitly asks for a branch.
 * Do not rewrite, reset, rebase, or otherwise change git history.
 * Do not discard existing user changes.
 * Do not modify generated files unless the task specifically requires regeneration.
@@ -130,6 +141,7 @@ Before finalizing any change, confirm all of the following:
 
 * [ ] Every changed file parses/compiles/lints with no errors
 * [ ] Every string, bracket, and delimiter in changed lines is balanced
+* [ ] Every newly created function with an identifiable failure mode includes error handling that catches it (see "Error Handling Requirements")
 * [ ] No method, function, class, or symbol was added that isn't directly used or explicitly requested
 * [ ] No unrelated files were touched
 * [ ] No new dependencies were added without flagging them first
@@ -150,3 +162,4 @@ The final response must include:
 * Any assumptions, limitations, or remaining risks.
 * Confirmation that `TASK_PROGRESS.md` is up to date.
 * Confirmation that `CHANGELOG.md` was updated when required.
+* The git commands to commit and push the change (`git add`, `git commit` with a descriptive message, `git push`), provided for the user to run themselves — per "Git and Repository Safety," do not execute these unless explicitly asked to commit.

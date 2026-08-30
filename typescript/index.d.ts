@@ -208,6 +208,31 @@ export type ClientEventHandler<E extends Event = Event, C = any, S extends State
   context: C
 ) => void | Promise<void>;
 
+/**
+ * Fourth argument to `on()` and the event shorthands.
+ *
+ * `once`, `passive` and `capture` are passed to `addEventListener`.
+ * `preventDefault` and `stopPropagation` compile into the generated wrapper and
+ * run before your handler.
+ *
+ * Unknown keys are ignored, and every value is coerced to a boolean.
+ */
+export interface EventOptions {
+  /** Remove the listener after it fires once. */
+  once?: boolean;
+  /**
+   * Promise never to call `preventDefault()`. Set this on `scroll`, `wheel` and
+   * `touch*` handlers — browsers warn when a listener on those is not passive.
+   */
+  passive?: boolean;
+  /** Fire during the capture phase instead of the bubble phase. */
+  capture?: boolean;
+  /** Call `event.preventDefault()` before the handler runs. */
+  preventDefault?: boolean;
+  /** Call `event.stopPropagation()` before the handler runs. */
+  stopPropagation?: boolean;
+}
+
 // ─── Shortcut methods shared by Element and Document ─────────────────────────
 
 export interface SharedShortcuts<TSelf, S extends StateShape = StateShape> {
@@ -522,7 +547,7 @@ export declare class Element<S extends StateShape = StateShape> implements Share
    * keys it reads change.
    */
   computed(fn: () => any): this;
-  on<C = any>(event: string, fn: ClientEventHandler<Event, C, S>, context?: C): Element<S>;
+  on<C = any>(event: string, fn: ClientEventHandler<Event, C, S>, context?: C, options?: EventOptions): Element<S>;
   bindState<C = any>(target: Element<S>, event: string, fn: ClientEventHandler<Event, C, S>, context?: C): Element<S>;
   setStateOnClick<K extends StateKey<S>>(stateKey: K, value: StateValue<S, K>): Element<S>;
   onMount(fn: (this: HTMLElement, state: S) => void | (() => void)): Element<S>;
@@ -530,32 +555,32 @@ export declare class Element<S extends StateShape = StateShape> implements Share
   onDestroy(fn: (this: HTMLElement, state: S) => void): Element<S>;
 
   // Event shorthands
-  onClick<C = any>(fn: ClientEventHandler<MouseEvent, C, S>, context?: C): Element<S>;
-  onChange<C = any>(fn: ClientEventHandler<Event, C, S>, context?: C): Element<S>;
-  onInput<C = any>(fn: ClientEventHandler<InputEvent, C, S>, context?: C): Element<S>;
-  onSubmit<C = any>(fn: ClientEventHandler<SubmitEvent, C, S>, context?: C): Element<S>;
-  onKeydown<C = any>(fn: ClientEventHandler<KeyboardEvent, C, S>, context?: C): Element<S>;
-  onKeyup<C = any>(fn: ClientEventHandler<KeyboardEvent, C, S>, context?: C): Element<S>;
-  onKeypress<C = any>(fn: ClientEventHandler<KeyboardEvent, C, S>, context?: C): Element<S>;
-  onFocus<C = any>(fn: ClientEventHandler<FocusEvent, C, S>, context?: C): Element<S>;
-  onBlur<C = any>(fn: ClientEventHandler<FocusEvent, C, S>, context?: C): Element<S>;
-  onMouseenter<C = any>(fn: ClientEventHandler<MouseEvent, C, S>, context?: C): Element<S>;
-  onMouseleave<C = any>(fn: ClientEventHandler<MouseEvent, C, S>, context?: C): Element<S>;
-  onMousedown<C = any>(fn: ClientEventHandler<MouseEvent, C, S>, context?: C): Element<S>;
-  onMouseup<C = any>(fn: ClientEventHandler<MouseEvent, C, S>, context?: C): Element<S>;
-  onMousemove<C = any>(fn: ClientEventHandler<MouseEvent, C, S>, context?: C): Element<S>;
-  onDblclick<C = any>(fn: ClientEventHandler<MouseEvent, C, S>, context?: C): Element<S>;
-  onContextmenu<C = any>(fn: ClientEventHandler<MouseEvent, C, S>, context?: C): Element<S>;
-  onScroll<C = any>(fn: ClientEventHandler<Event, C, S>, context?: C): Element<S>;
-  onLoad<C = any>(fn: ClientEventHandler<Event, C, S>, context?: C): Element<S>;
-  onError<C = any>(fn: ClientEventHandler<Event, C, S>, context?: C): Element<S>;
-  onDragstart<C = any>(fn: ClientEventHandler<DragEvent, C, S>, context?: C): Element<S>;
-  onDragend<C = any>(fn: ClientEventHandler<DragEvent, C, S>, context?: C): Element<S>;
-  onDragover<C = any>(fn: ClientEventHandler<DragEvent, C, S>, context?: C): Element<S>;
-  onDrop<C = any>(fn: ClientEventHandler<DragEvent, C, S>, context?: C): Element<S>;
-  onTouchstart<C = any>(fn: ClientEventHandler<TouchEvent, C, S>, context?: C): Element<S>;
-  onTouchend<C = any>(fn: ClientEventHandler<TouchEvent, C, S>, context?: C): Element<S>;
-  onTouchmove<C = any>(fn: ClientEventHandler<TouchEvent, C, S>, context?: C): Element<S>;
+  onClick<C = any>(fn: ClientEventHandler<MouseEvent, C, S>, context?: C, options?: EventOptions): Element<S>;
+  onChange<C = any>(fn: ClientEventHandler<Event, C, S>, context?: C, options?: EventOptions): Element<S>;
+  onInput<C = any>(fn: ClientEventHandler<InputEvent, C, S>, context?: C, options?: EventOptions): Element<S>;
+  onSubmit<C = any>(fn: ClientEventHandler<SubmitEvent, C, S>, context?: C, options?: EventOptions): Element<S>;
+  onKeydown<C = any>(fn: ClientEventHandler<KeyboardEvent, C, S>, context?: C, options?: EventOptions): Element<S>;
+  onKeyup<C = any>(fn: ClientEventHandler<KeyboardEvent, C, S>, context?: C, options?: EventOptions): Element<S>;
+  onKeypress<C = any>(fn: ClientEventHandler<KeyboardEvent, C, S>, context?: C, options?: EventOptions): Element<S>;
+  onFocus<C = any>(fn: ClientEventHandler<FocusEvent, C, S>, context?: C, options?: EventOptions): Element<S>;
+  onBlur<C = any>(fn: ClientEventHandler<FocusEvent, C, S>, context?: C, options?: EventOptions): Element<S>;
+  onMouseenter<C = any>(fn: ClientEventHandler<MouseEvent, C, S>, context?: C, options?: EventOptions): Element<S>;
+  onMouseleave<C = any>(fn: ClientEventHandler<MouseEvent, C, S>, context?: C, options?: EventOptions): Element<S>;
+  onMousedown<C = any>(fn: ClientEventHandler<MouseEvent, C, S>, context?: C, options?: EventOptions): Element<S>;
+  onMouseup<C = any>(fn: ClientEventHandler<MouseEvent, C, S>, context?: C, options?: EventOptions): Element<S>;
+  onMousemove<C = any>(fn: ClientEventHandler<MouseEvent, C, S>, context?: C, options?: EventOptions): Element<S>;
+  onDblclick<C = any>(fn: ClientEventHandler<MouseEvent, C, S>, context?: C, options?: EventOptions): Element<S>;
+  onContextmenu<C = any>(fn: ClientEventHandler<MouseEvent, C, S>, context?: C, options?: EventOptions): Element<S>;
+  onScroll<C = any>(fn: ClientEventHandler<Event, C, S>, context?: C, options?: EventOptions): Element<S>;
+  onLoad<C = any>(fn: ClientEventHandler<Event, C, S>, context?: C, options?: EventOptions): Element<S>;
+  onError<C = any>(fn: ClientEventHandler<Event, C, S>, context?: C, options?: EventOptions): Element<S>;
+  onDragstart<C = any>(fn: ClientEventHandler<DragEvent, C, S>, context?: C, options?: EventOptions): Element<S>;
+  onDragend<C = any>(fn: ClientEventHandler<DragEvent, C, S>, context?: C, options?: EventOptions): Element<S>;
+  onDragover<C = any>(fn: ClientEventHandler<DragEvent, C, S>, context?: C, options?: EventOptions): Element<S>;
+  onDrop<C = any>(fn: ClientEventHandler<DragEvent, C, S>, context?: C, options?: EventOptions): Element<S>;
+  onTouchstart<C = any>(fn: ClientEventHandler<TouchEvent, C, S>, context?: C, options?: EventOptions): Element<S>;
+  onTouchend<C = any>(fn: ClientEventHandler<TouchEvent, C, S>, context?: C, options?: EventOptions): Element<S>;
+  onTouchmove<C = any>(fn: ClientEventHandler<TouchEvent, C, S>, context?: C, options?: EventOptions): Element<S>;
 
   // Tree manipulation
   replaceWith(other: Element<S>): Element<S>;

@@ -98,6 +98,23 @@ async function run() {
     await page.waitForFunction(() => document.getElementById('async-event-contract-result')?.textContent !== '');
     assert.equal(await page.locator('#async-event-contract-result').textContent(), 'true:true');
 
+    // Event options: `once` must stop firing, a plain listener must not, and
+    // `preventDefault` must actually cancel the event.
+    await page.locator('#once-button').click();
+    await page.locator('#once-button').click();
+    await page.locator('#once-button').click();
+    assert.equal(await page.locator('#once-count').textContent(), '1');
+
+    await page.locator('#repeat-button').click();
+    await page.locator('#repeat-button').click();
+    assert.equal(await page.locator('#repeat-count').textContent(), '2');
+
+    const preventedCancelled = await page.locator('#prevented-button').evaluate(element => (
+      element.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))
+    ));
+    assert.equal(preventedCancelled, false);
+    assert.equal(await page.locator('#prevented-count').textContent(), '1');
+
     await page.locator('#name-input').fill('Grace Hopper');
     assert.equal(await page.locator('#name-output').textContent(), 'Grace Hopper');
 

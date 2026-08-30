@@ -1275,14 +1275,33 @@ doc.button('+1').onClick(function () {
             <tr><td><code>bindStyle</code></td><td><code>key, fn(value, State)</code></td><td>Applies returned CSS rules.</td></tr>
             <tr><td><code>bindProp</code></td><td><code>key, name, fn?</code></td><td>Assigns a DOM property.</td></tr>
             <tr><td><code>bindInput</code></td><td><code>key</code></td><td>Two-way input value synchronization.</td></tr>
-            <tr><td><code>on</code></td><td><code>eventName, fn(event, State, element, context)</code></td><td>Adds an event listener; <code>this</code> is the DOM element.</td></tr>
+            <tr><td><code>on</code></td><td><code>eventName, fn(event, State, element, context), context?, options?</code></td><td>Adds an event listener; <code>this</code> is the DOM element. See <a href="#event-options">event options</a>.</td></tr>
             <tr><td><code>oncreate</code></td><td><code>fn()</code></td><td>Runs once after the page is ready. The callback is invoked with <strong>no arguments</strong> — reach state through the <code>State</code> global inside the body. May return a promise.</td></tr>
             <tr><td><code>onMount</code></td><td><code>fn(State)</code></td><td>Runs when the element exists; may return cleanup.</td></tr>
             <tr><td><code>onUpdate</code></td><td><code>key, fn(value, State)</code></td><td>Runs after changes, not for the initial value.</td></tr>
             <tr><td><code>onDestroy</code></td><td><code>fn(State)</code></td><td>Runs when the element is removed.</td></tr>
           </tbody>
         </table></div>
-        <p>While an event listener runs synchronously, <code>event.currentTarget</code>, <code>element</code>, and <code>this</code> refer to its element. Arguments and <code>this</code> persist across <code>await</code>; because <code>currentTarget</code> belongs to the browser event-dispatch lifecycle, use the explicit element argument after awaiting. State is passed explicitly and also remains available as <code>window.State</code>. Returning <code>false</code> has no special meaning; use <code>preventDefault()</code> or <code>stopPropagation()</code> explicitly.</p>
+        <h3 id="event-options">Event options</h3>
+        <p><code>on()</code> and all 26 <code>on&lt;Event&gt;()</code> shorthands take an optional fourth argument. The third argument is <code>context</code> — data handed to your callback — so pass <code>undefined</code> when you only want options.</p>
+        <pre><code>doc.div().onScroll(function () { State.y = window.scrollY; }, undefined, { passive: true });
+doc.form().onSubmit(function () { State.sent = true; }, undefined, { preventDefault: true });
+doc.button('Once').onClick(function () { State.n++; }, undefined, { once: true });</code></pre>
+        <div class="table-wrap"><table>
+          <thead><tr><th>Option</th><th>Where it applies</th><th>Effect</th></tr></thead>
+          <tbody>
+            <tr><td><code>once</code></td><td><code>addEventListener</code></td><td>Removes the listener after it fires once.</td></tr>
+            <tr><td><code>passive</code></td><td><code>addEventListener</code></td><td>Promises never to call <code>preventDefault()</code>. Set it on <code>scroll</code>, <code>wheel</code> and <code>touch*</code> handlers — browsers warn when a listener on those is not passive.</td></tr>
+            <tr><td><code>capture</code></td><td><code>addEventListener</code></td><td>Fires during the capture phase instead of the bubble phase.</td></tr>
+            <tr><td><code>preventDefault</code></td><td>generated wrapper</td><td>Calls <code>event.preventDefault()</code> before your handler runs.</td></tr>
+            <tr><td><code>stopPropagation</code></td><td>generated wrapper</td><td>Calls <code>event.stopPropagation()</code> before your handler runs.</td></tr>
+          </tbody>
+        </table></div>
+        <p>The first three become <code>addEventListener</code>'s third argument. The last two compile into the generated wrapper ahead of your callback, so they save the boilerplate first line of a handler rather than changing what the browser does.</p>
+        <div class="callout warning"><p><code>passive</code> and <code>preventDefault</code> contradict each other. A passive listener's <code>preventDefault()</code> is ignored by the browser and logs a console warning — that applies to the generated call exactly as it would to one you wrote yourself. Do not set both on the same handler.</p></div>
+        <div class="callout"><p>Unknown keys are dropped and every value is coerced to a boolean, so nothing a caller passes is written into the page as code — the compiler only ever emits the literal <code>true</code>. Options restored from <code>fromJSON()</code> are re-normalised the same way. Omitting the argument compiles byte-identical output to a page that never used options.</p></div>
+        <p>Only own properties are read, so a flag inherited from a polluted <code>Object.prototype</code> cannot switch an option on for listeners that never asked for it.</p>
+        <p>While an event listener runs synchronously, <code>event.currentTarget</code>, <code>element</code>, and <code>this</code> refer to its element. Arguments and <code>this</code> persist across <code>await</code>; because <code>currentTarget</code> belongs to the browser event-dispatch lifecycle, use the explicit element argument after awaiting. State is passed explicitly and also remains available as <code>window.State</code>. Returning <code>false</code> has no special meaning; call <code>preventDefault()</code> or <code>stopPropagation()</code> explicitly, or set them as <a href="#event-options">event options</a>.</p>
         <p>Nested objects and arrays remain reactive. Assignments, deletions, and mutating array methods notify watchers for the root state key. State must remain JSON-serializable.</p>
         <h3>Typed application state</h3>
         <p>In TypeScript, pass a state shape to <code>page&lt;State&gt;()</code>. Keys and values are then inferred across nested elements, bindings, events, lifecycle hooks, live lists, routers, and views.</p>
