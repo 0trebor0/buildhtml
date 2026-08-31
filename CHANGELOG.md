@@ -128,6 +128,18 @@ rather than complete records.
   produced yourself without the check. The decision is made once at the top
   level, so an untrusted payload cannot grant itself the exemption per node.
 
+### Changed
+
+- **The published package is the library only.** `docs/`, `example/` and
+  `benchmark/` are no longer installed into consumers' `node_modules`. The guide
+  is on the docs site and the examples and benchmarks are in the repository,
+  which is where people actually read them — the copy in `node_modules` was
+  never browsed and cost every install. The package drops from 163.3 kB to
+  115.4 kB and 38 files to 30; `docs/` alone was 136 kB unpacked, roughly a
+  quarter of the package. `README.md`, `CHANGELOG.md`, `LICENSE` and
+  `SECURITY.md` still ship, since npm surfaces them and they are what people
+  check on upgrade.
+
 ### Fixed
 
 - **The production minifier could duplicate or relocate a protected block.** It

@@ -1,6 +1,6 @@
 {
   "name": "@trebor/buildhtml",
-  "version": "2.0.1",
+  "version": "2.0.2",
   "description": "Server-side HTML compiler for Node.js. Build pages with a JavaScript API while reactive state, events, and DOM bindings compile automatically.",
   "type": "commonjs",
   "main": "index.js",
@@ -42,13 +42,6 @@
   "files": [
     "index.js",
     "index.mjs",
-    "benchmark/",
-    "docs/",
-    "example/account-form.js",
-    "example/dashboard.js",
-    "example/routing.js",
-    "example/production-patterns.js",
-    "example/auth-interface.js",
     "lib/",
     "typescript/*.d.ts",
     "README.md",

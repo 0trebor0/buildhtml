@@ -1,13 +1,44 @@
-example/
+# The `files` array in package.json is the authoritative allowlist for what gets
+# published; this file changes nothing while that array is present. It is kept as
+# a fallback so removing `files` would not silently start publishing the repo,
+# and it is kept in step with `files` so the two never disagree.
+#
+# The published package is the library only: lib/, the entry points, the type
+# declarations, and the four documents npm surfaces. The guide, the examples and
+# the benchmarks live in the repository and on the docs site, so they are not
+# installed into every consumer's node_modules.
+
+# Tests and fixtures
 test/
+
+# Documentation site, examples and benchmarks — repository only
+docs/
+example/
+benchmark/
+
+# Repository and tooling
 node_modules/
-.claude/
 .git/
+.github/
 .gitignore
+.npmignore
+.claude/
+.baseline/
+
+# Working notes, not shipped
+CLAUDE.md
+AGENTS.md
+CONTRIBUTING.md
+TASK_PROGRESS.md
+
+# Build and release artefacts
+RELEASE_NOTES.md
+*.tgz
 *.log
 .DS_Store
-CLAUDE.md
-test-debug.js
-test-xss-debug.js
-test-server.js
-DEBUG_REPORT.md
+
+# Development-only tooling. `files` lists typescript/*.d.ts, so the compiler
+# config and the type-check fixture beside them are not part of the package.
+scripts/
+typescript/example.ts
+typescript/tsconfig.json

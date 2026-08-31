@@ -2022,3 +2022,74 @@ node test/test-readme-examples.js -> 52 README and 62 guide blocks parse,
 node test/run-all.js              -> All 23 automated suites passed
 tsc --noEmit                      -> exit 0
 ```
+
+## Packaging: .gitignore, .npmignore and the published set (2026-08-31)
+
+### .gitignore
+
+`test/output.html` had been committed. It is written by `test/example.js:104` on
+every run, so it would have shown as modified after any rendering change and
+added noise to unrelated diffs. Untracked with `git rm --cached` (the file is
+kept on disk) and added to `.gitignore`, along with the empty `.baseline/`
+directory.
+
+### .npmignore was dead and contradicted package.json
+
+Proven by experiment, not by reading the precedence rules: `npm pack --dry-run`
+produced a byte-identical 38-file manifest with the file present and with it
+moved aside. `files` in `package.json` is the authoritative allowlist, so
+`.npmignore` was doing nothing.
+
+It was also actively wrong. It excluded `example/` while `files` listed five
+example scripts that were being published — so the two disagreed about the
+package contents, and removing `files` at any point would have silently dropped
+files that were shipping on purpose.
+
+Rewritten as a fallback that agrees with `files`. Verified by deleting `files`
+from a scratch copy of `package.json` and re-running `npm pack`: the fallback
+now yields exactly the same set. That check caught three more leaks the original
+never covered — `scripts/`, `typescript/example.ts` and `typescript/tsconfig.json`.
+
+### The published set is now the library only
+
+Measured what each group contributed before deciding:
+
+| Group | Unpacked | Share |
+|---|---:|---:|
+| `lib/` + entry points | 237.4 kB | 41.1% |
+| `docs/` | 136.3 kB | 23.6% |
+| `README.md` | 64.9 kB | 11.2% |
+| `typescript/` | 54.2 kB | 9.4% |
+| `CHANGELOG.md` | 38.9 kB | 6.7% |
+| `example/` | 27.8 kB | 4.8% |
+| `benchmark/` | 14.3 kB | 2.5% |
+| `SECURITY.md` | 3.5 kB | 0.6% |
+
+`docs/`, `example/` and `benchmark/` were removed from `files`: **163.3 kB ->
+115.4 kB packed, 38 -> 30 files**. `docs/` was the bulk of it — a complete HTML
+site already served from GitHub Pages and linked from the README, which nobody
+opens from inside `node_modules`.
+
+`CHANGELOG.md` was kept despite its size: npm links it, and it is what a
+consumer reads when upgrading — currently 43 entries including 17 under
+Security. `SECURITY.md` was kept at 0.6% as the conventional place for a
+reporting policy.
+
+Checked before removing: nothing in `lib/`, `index.js` or `index.mjs` references
+`docs/` or `example/` at runtime. The `start`, `benchmark` and `benchmark:size`
+npm scripts do point at the dropped directories, but they are repository
+development scripts that run from a clone and are not invoked by consumers, so
+they were left alone.
+
+### Verified by installing the tarball
+
+`npm pack` was run for real, the tarball extracted, and the result required from
+outside the repository:
+
+```
+CJS require            -> 28 exports
+page().h1().render()   -> renders correctly
+six subpath entries    -> template middleware components live config metrics all resolve
+typescript/index.d.ts  -> present
+docs/ example/ test/   -> absent
+```
