@@ -485,6 +485,48 @@ test('content dropped after a tag is reported', () => {
   }
 });
 
+test('an unregistered component drops its line instead of throwing', () => {
+  const { configure, CONFIG } = require('../index');
+  const originalMode = CONFIG.mode;
+  const originalWarn = console.warn;
+  const warnings = [];
+  try {
+    console.warn = message => warnings.push(message);
+    configure({ mode: 'dev' });
+
+    let html;
+    try {
+      html = renderTemplate(['section', '  @NoSuchThing', '  p "kept"'].join('\n'));
+    } catch (e) {
+      assert(false, `renderTemplate threw instead of recovering: ${e.message}`);
+      return;
+    }
+    assert(html.includes('<p>kept</p>'), 'the rest of the template still renders');
+    assert(html.includes('<section><p>kept</p></section>'),
+      `the dropped component leaves no placeholder element (got ${html.match(/<section>.*<\/section>/)})`);
+    assert(warnings.length === 1, `the drop is reported once (got ${warnings.length})`);
+    assert(warnings[0].includes('[BuildHTML W_TEMPLATE_SYNTAX]'), 'it uses the shared code');
+    assert(warnings[0].includes('NoSuchThing'), 'the warning names the component');
+
+    warnings.length = 0;
+    configure({ mode: 'prod' });
+    renderTemplate('@NoSuchThing');
+    assert(warnings.length === 0, 'production stays silent');
+  } finally {
+    console.warn = originalWarn;
+    configure({ mode: originalMode });
+  }
+});
+
+test('a registered component is unaffected by the recovery path', () => {
+  components.register('FuzzCard', (el, props) => { el.h2(props.title || ''); });
+  assert(renderTemplate('@FuzzCard(title="Hi")').includes('<h2>Hi</h2>'), 'top-level component renders');
+  assert(renderTemplate(['section', '  @FuzzCard(title="Hi")'].join('\n')).includes('<section><div><h2>Hi</h2></div></section>'),
+    'nested component renders inside its parent');
+  assert(renderTemplate(['@FuzzCard(title="T")', '  p "child"'].join('\n')).includes('<p>child</p>'),
+    'component children still build');
+});
+
 /* ---- Malformed input diagnostics ---- */
 test('Malformed template lines warn in development', () => {
   const { configure, CONFIG } = require('../index');

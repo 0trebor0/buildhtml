@@ -265,6 +265,14 @@ rather than complete records.
   `renderTemplate`, `renderFile` — now raises
   `TypeError: Template source must be a string, received null`.
 
+- **An unregistered component aborted the whole template.** `@Name` in a
+  `.bhtml` template resolves a registered component, and an unknown name threw
+  out of `renderTemplate()`, losing every line after it — one typo cost the whole
+  page. The direct `component()` API still throws, which is right there, but a
+  template promises to recover from a malformed line: the line is now dropped,
+  reported as `W_TEMPLATE_SYNTAX` in development, and leaves no placeholder
+  element behind.
+
 - **A malformed tag name aborted the whole template.** `renderTemplate()`
   promises in the README that the parser "recovers from a malformed line rather
   than throwing", but an uppercase tag — `SPAN` instead of `span`, a plausible

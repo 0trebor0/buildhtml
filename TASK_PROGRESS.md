@@ -1870,3 +1870,155 @@ are 28 exports and six subpath exports, and CI really runs Node 18, 20, 22, 24.
   every run, so a test run leaves the working tree dirty. Adding it to
   `.gitignore` is a one-line change but touches repository configuration, so it
   is flagged rather than made.
+
+## Fuzz coverage for the new interpolation path, and finding 17 (2026-08-31)
+
+Attribute interpolation opened a new route for arbitrary data to reach an
+attribute, and this repository validates escaping invariants by fuzzing, so that
+path had no property coverage. Four properties were added to `test-fuzz.js`
+(16 -> 20 properties, 17 -> 21 assertions):
+
+- an interpolated attribute value cannot open a second attribute
+- an interpolated URL attribute never keeps an executable scheme
+- an interpolated value adds no element to the page
+- a fuzzed template line recovers instead of throwing
+
+Two of them failed on the first run.
+
+### One was my assertion, not the library
+
+`href` was reported as keeping `" data:text/html"`. The leading character was not
+an ASCII space: it was U+00A0 / U+FEFF, and my assertion used JS `\s`, which
+matches Unicode spaces the URL parser does not strip.
+
+Checked against Node's WHATWG `URL`, the same parser browsers use:
+
+```
+" data:text/html,x"  (U+0020) -> protocol data:      sanitizeUrl -> "#"
+" data:text/html,x"  (U+00A0) -> relative URL        sanitizeUrl -> passes through
+"data:text/html,x"  (U+FEFF) -> relative URL        sanitizeUrl -> passes through
+```
+
+The library's `[\x00-\x20]` matches the specification exactly. The property now
+models the parser instead of using `\s`. This is the fourth time this session a
+naive assertion mistook safe output for a vulnerability.
+
+### The other was a real, pre-existing bug — finding 17
+
+Input `@data:text/html>` made `renderTemplate()` throw
+`Component "data" is not registered`. `@Name` is a component reference, and
+`components.get()` throws for an unknown name — correct for the direct
+`component()` API, wrong here: a template promises to recover from a malformed
+line rather than throw, so one mistyped component name lost every later line.
+The same contract violation as finding 10.
+
+Confirmed pre-existing: `lib/components.js` is untouched by this session
+(`git diff 1b481ce HEAD -- lib/components.js` is empty) and the same
+`components.get()` call was already in `template.js` before the template work.
+
+`_buildComponent()` now catches the lookup failure, reports it as
+`W_TEMPLATE_SYNTAX`, and drops that line. The direct `component()` API still
+throws, unchanged.
+
+The first attempt left a stray empty `<div>`: `parentEl.child('div')` ran before
+the lookup, so the placeholder survived the failure. The component is now
+resolved first, and a dropped line leaves nothing behind.
+
+### Tests added
+
+`test/test-template.js` (+2 groups): an unregistered component drops its line,
+leaves no placeholder, warns once in dev and is silent in prod; a registered
+component still renders at top level, nested, and with children.
+
+### Verification
+
+```
+node test/test-template.js  -> 154 passed, 0 failed  (was 145)
+node test/test-fuzz.js      -> 21 passed, 0 failed   (was 17)
+fuzz across 5 fixed seeds   -> 21 passed on every one
+fuzz @ 20,000 iterations    -> 21 passed, 0 failed
+node test/run-all.js        -> All 23 automated suites passed
+npm run test:browser        -> 4 Playwright suites passed
+tsc --noEmit                -> exit 0
+```
+
+The failing case replays with `BUILDHTML_FUZZ_SEED=1447120609`, which found it
+at iteration 140.
+
+## Fuzz coverage extended to the rest of the changed surface (2026-08-31)
+
+Three more properties, covering the paths this session changed that the previous
+round did not reach (21 -> 24 properties, 25 assertions):
+
+- fuzzed event options never reach the generated script — the emitted
+  `addEventListener` options object may only contain `once`/`passive`/`capture`
+  set to the literal `true`, the script must always parse, and no extra script
+  element may appear
+- a fuzzed event name cannot break out of its listener registration
+- a fuzzed `build()` definition never throws or emits a script, across five
+  definition shapes including a `{ type: 'text' }` child and a fuzzed attribute
+  name
+
+All three passed immediately, which is the expected result for code that was
+already hardened and mutation-tested.
+
+### A latent CI failure found in the existing suite
+
+Property 11, `isValidAttrKey never admits an event handler attribute`, asserted
+`!/^on-?[a-z]/i.test(key)` — the guard's **old** rule. Fixing finding 15 made
+`one`, `only`, `once` and `online` legal attribute names, and all four match that
+prefix. The property only kept passing because the generator had not yet produced
+one of those exact words; it would have failed intermittently, on a correct
+library, with no code change to blame.
+
+Rewritten to assert the real invariant — an accepted key is never `on` plus a
+**known HTML event name**, in any of the three spellings — which is independent
+of how the guard is written. A second, deterministic property pins the specific
+decisions the generator is unlikely to hit by chance: the four ordinary words are
+accepted, all 71 event names are refused in all three spellings, and an unknown
+`on` name is still refused so the guard fails closed.
+
+Mutation-tested: widening the exception to let `onclick` through fails both
+properties.
+
+### Results
+
+```
+node test/test-fuzz.js         -> 25 passed, 0 failed  (was 17 at the session start)
+fuzz across 4 fixed seeds      -> 25 passed on every one
+fuzz @ 20,000 iterations       -> 25 passed, 0 failed
+node test/run-all.js           -> All 23 automated suites passed
+tsc --noEmit                   -> exit 0
+```
+
+README's "At a glance" fuzz-property count updated 16 -> 24.
+
+## Argument-order ambiguity introduced by the options parameter (2026-08-31)
+
+Checked whether any shipped example or fixture has a `scroll`/`touch`/`wheel`
+handler that should now be `passive`. None does — the feature is documented and
+tested but not exercised by an example, which is acceptable; no example was
+invented to demonstrate it.
+
+The search did surface a wording problem the fourth parameter created.
+`README.md` said:
+
+> The optional fourth argument is serialized callback context.
+
+That is about the **handler's** fourth parameter, and the example immediately
+above it makes that clear, so it was never wrong. But `on()` itself now takes a
+fourth argument — `options` — so the sentence reads two ways. Reworded to
+separate the handler's *parameter* from the method's *argument*, with a link to
+the options table. The adjacent line about calling `preventDefault()` explicitly
+now also mentions setting it as an option, matching the docs site.
+
+All 24 internal README anchors were checked and resolve, including the new one.
+
+### Results
+
+```
+node test/test-readme-examples.js -> 52 README and 62 guide blocks parse,
+                                     14 local links resolve
+node test/run-all.js              -> All 23 automated suites passed
+tsc --noEmit                      -> exit 0
+```

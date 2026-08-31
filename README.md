@@ -77,7 +77,7 @@ A static page stays static. Add `.states()`, `.bind()`, or `.onClick()` and the 
 | Module formats | CommonJS and ESM, plus six subpath exports |
 | TypeScript | declarations bundled (`typescript/*.d.ts`) |
 | Node.js | 18+; CI runs 18, 20, 22, 24 |
-| Testing | 23 suites, 4 Playwright browser suites, 16 fuzz properties |
+| Testing | 23 suites, 4 Playwright browser suites, 24 fuzz properties |
 | Escaping | text, attributes, CSS values, and JSON context |
 | CSP | nonce support for generated `<script>`/`<style>`; no inline `on*` attributes |
 | Client runtime | generated per page; 0 bytes when no reactive API is used |
@@ -1103,7 +1103,7 @@ doc.button('Projects')
   });
 ```
 
-The optional fourth argument is serialized callback context. While the listener runs synchronously, `event.currentTarget`, `element`, and `this` all refer to its element. The arguments and `this` value are preserved across `await`; because `currentTarget` is owned by the browser's event-dispatch lifecycle, use the explicit `element` argument after awaiting instead of relying on it. `State` is both passed explicitly and available as the browser global for compatibility. Returning `false` has no special meaning; call `event.preventDefault()` and/or `event.stopPropagation()` explicitly when required.
+The handler's optional fourth *parameter* is serialized callback context, supplied as the third *argument* to `on()` and the shorthands — not to be confused with the fourth argument to those, which is [event options](#binding-parameters). While the listener runs synchronously, `event.currentTarget`, `element`, and `this` all refer to its element. The arguments and `this` value are preserved across `await`; because `currentTarget` is owned by the browser's event-dispatch lifecycle, use the explicit `element` argument after awaiting instead of relying on it. `State` is both passed explicitly and available as the browser global for compatibility. Returning `false` has no special meaning; call `event.preventDefault()` and/or `event.stopPropagation()` explicitly, or set them as event options.
 
 In development mode, synchronous errors and rejected promises from events, bindings, computed values, lifecycle hooks, `liveList()`, and `oncreate()` are reported in the browser console. Set `window.BuildHTML.reportClientError` to forward errors to your own monitoring code; it receives `(error, context)` with the callback type, element ID, tag, and state key when relevant.
 
