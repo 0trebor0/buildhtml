@@ -1563,3 +1563,310 @@ are in `_parseAttrString()`, which this task did not modify, so per
 
 Also observed, lower severity: `@click="#{h}"` resolves nothing and wires no
 listener silently, because event values are not interpolated by design.
+
+## Findings 13 and 14 fixed, forms example simplified (2026-08-22)
+
+Both bugs were in one regex in `_parseAttrString()`:
+
+```
+/([:\@]?[\w-]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|(\S+)))?/g
+```
+
+**14 — colon in an attribute name.** The key allowed a colon only as the leading
+character, for the `:bind`/`:fn` directives. `xlink:href="/x"` therefore matched
+`xlink` alone, leaving `:href` as a separate key that `isValidAttrKey()` then
+dropped. The key pattern now allows an internal colon.
+
+**13 — escaped quote in a value.** `"([^"]*)"` stopped at the first quote, so
+`title="say \"hi\""` truncated the value and parsed the rest as more attributes,
+inventing `hi="true"`. Quoted values now accept `\"` and `\'`. Only those two are
+unwrapped — a lone backslash is preserved, so a value like `C:\temp` is unchanged.
+
+### A guard that had been resting on the bug
+
+Fixing 14 newly let `on:click="alert(1)"` reach the renderer; the colon bug had
+been suppressing it as a side effect. No browser honours that form, but the
+documented guarantee is that no inline `on*` attribute is ever emitted, so
+`EVENT_ATTR_SOURCE` in `utils.js` went from `^on-?[a-z]` to `^on[-:]?[a-z]`.
+
+Checked for new false positives by diffing the two patterns over candidate
+names: the only behaviour change is that `on:click` is now blocked. `one`,
+`only`, `once` and `online` were already blocked by the old pattern — a
+pre-existing over-match, recorded below rather than fixed. The same constant
+generates the `_mkEl` client check, so server and client stay in step.
+
+`xlink:href` now renders, and it is in `URL_ATTRS`, so it was re-checked:
+`javascript:`, a tab-split `java\tscript:`, and an interpolated payload all
+resolve to `#`.
+
+### Forms example simplified
+
+The tutorial's forms example defined a `field(parent, label, options)` wrapper
+that only called `parent.field(label, options)`. It taught an indirection the
+library does not need. The example now calls `form.field(...)` directly, with the
+return shape noted in a comment. Verified by rendering: identical markup.
+
+### Tests added
+
+`test/test-template.js`, 5 groups: an escaped quote stays inside its value and
+does not spawn an attribute; a colon in a name is kept; a namespaced URL
+attribute is still sanitized; inline event attributes stay refused in all three
+spellings; a lone backslash is preserved.
+
+One assertion was wrong on the first run — it expected `C:\temp` while the
+template source it passed actually contained two backslashes, so the correct
+output was `C:\temp`. The test was fixed, not the code.
+
+### Verification
+
+```
+node test/test-template.js  -> 127 passed, 0 failed  (was 114)
+node test/run-all.js        -> All 23 automated suites passed
+test-security.js            -> 376 passed, 0 failed  (attr guard changed)
+npm run test:browser        -> 4 Playwright suites passed
+fuzz @ 20,000 iterations    -> 17 passed, 0 failed
+tsc --noEmit                -> exit 0
+test-tutorial.js            -> 41 blocks execute, 23 behaviours hold
+test-readme-examples.js     -> 52 README + 62 guide blocks parse
+```
+
+Mutation-tested, each reverted and the source confirmed restored:
+
+```
+revert the colon key pattern       -> 4 failed
+revert the escaped-quote pattern   -> 3 failed
+drop the \" unescape step          -> 1 failed
+revert the on: guard               -> 2 failed
+```
+
+### Finding 15 — pre-existing, not fixed
+
+`EVENT_ATTR_SOURCE` matches any attribute beginning with `on` followed by a
+letter, so `one`, `only`, `once` and `online` are refused as if they were event
+handlers. Predates this change and is unrelated to it. Fixing it properly means
+matching a known event-name list rather than a prefix, which is a larger change
+than this task justifies.
+
+## Finding 15 fixed (2026-08-31)
+
+`EVENT_ATTR_SOURCE` was `^on[-:]?[a-z]`, which refused any attribute starting
+with "on" followed by a letter — so `one`, `only`, `once` and `online` were
+dropped as if they were inline event handlers.
+
+### Why not a list of real event names
+
+The obvious fix is to match the ~70 HTML event handler attributes instead of a
+prefix. That was rejected: `EVENT_ATTR_SOURCE` is interpolated verbatim into the
+`_mkEl` client runtime (`lib/live.js:84`), so every page rendering a reactive
+list would carry the whole alternation. Client runtime size is the library's
+headline property and `benchmark/runtime-size.js` exists to track it.
+
+The pattern is now
+`^on(?!e$|ly$|ce$|line$|set$)[-:]?[a-z]` — the four reported words plus `onset`.
+Cost measured at **+28 bytes** on a liveList page (5,881 -> 5,909; gzip
+2,278 -> 2,300), against several hundred for the name list.
+
+This keeps the rule **fail-closed**: only those exact words are excepted, so any
+other `on` name — including an event HTML adds later — is still refused. The
+`$` anchors are what make that true; without them the exception would swallow
+`onerror` and `online...` prefixed events.
+
+### Verified
+
+```
+74 real on<event> names        -> all still blocked, in all three spellings
+                                  (onclick, on-click, on:click)
+one only once online onset     -> now render as ordinary attributes
+onfuturething onxyz oncex      -> still refused (fails closed)
+client vs server agreement     -> identical verdict on all 16 probe names
+```
+
+### Tests added
+
+`test/test-security.js`, 4 groups: every real HTML event blocked in all three
+spellings; ordinary "on" words survive; an unknown "on" name is still refused;
+the generated client-side check agrees with the server. 376 -> **387 assertions**.
+
+### Results
+
+```
+node test/test-security.js  -> 387 passed, 0 failed  (was 376)
+node test/run-all.js        -> All 23 automated suites passed
+npm run test:browser        -> 4 Playwright suites passed
+fuzz @ 20,000 iterations    -> 17 passed, 0 failed
+tsc --noEmit                -> exit 0
+benchmark/runtime-size.js   -> liveList 5,909 bytes (+28)
+```
+
+Mutation-tested, each reverted and the source confirmed restored:
+
+```
+revert to the bare prefix              -> 5 failed  (false positives return)
+drop the $ anchors in the exception    -> 3 failed  (onerror would leak)
+drop the ":" separator                 -> 1 failed  (on:click would leak)
+```
+
+## Findings 8, 11 and 12 fixed; 7 deliberately not (2026-08-31)
+
+### 11 — non-string template source
+
+Every entry point funnels through `TemplateParser.parse()`, so one check covers
+`parseTemplate`, `compileTemplate`, `renderTemplate` and `renderFile`. A
+non-string now raises `TypeError: Template source must be a string, received
+null`, naming both the argument and the type received, instead of surfacing
+`source.split is not a function` from internals.
+
+### 12 — text at document level
+
+Wider than the finding recorded. `Document.build()` had two branches that had
+drifted apart: the array branch handled a bare string specially, the single-value
+branch accepted only objects. So:
+
+| call | before | after |
+|---|---|---|
+| `build('hello')` | rendered **nothing** | `hello` |
+| `build(42)` | rendered **nothing** | `42` |
+| `build({type:'text',content:'x'})` | **threw** | `x` |
+| `build(['hello'])` | `hello` | unchanged |
+
+The two branches are now one loop, so a single definition behaves exactly like a
+one-element array. Document-level text goes straight into the body because
+`buildNode()` reaches for `parentEl.text()`, which `Document` does not have. All
+three paths escape, verified with a script payload.
+
+### 8 — circular definitions
+
+`buildNode()` now tracks the definitions on the current path in a `Set` and
+refuses one already on it, recording the failure. `buildNodeInner()` holds the
+original body; the wrapper adds and removes in a `finally`.
+
+Only the path is tracked, not everything visited, so the same node used twice as
+a sibling still builds twice — that is a legal shape, not a loop.
+
+### 7 — depth: NOT fixed, and the first attempt was withdrawn
+
+A `MAX_BUILD_DEPTH = 512` cap was added alongside the cycle guard and then
+**removed before it shipped**. It was a regression: trees 512-1717 deep rendered
+before and would have been silently truncated.
+
+The same objection kills the general fix. A cap on `render()` is worse: the real
+ceiling is the JS stack, which moves with platform, Node version and
+`--stack-size`, so a fixed limit turns "works on your machine" into "always
+refused". Measuring showed cost was not the obstacle — a depth counter on the
+hot `renderNode()` path benchmarked at 4556 ops/s against 4640 without, inside
+run-to-run noise — the objection is correctness, not speed.
+
+So deep-but-finite trees still raise `RangeError` at the stack limit, exactly as
+before. The one path reachable from untrusted input, `fromJSON()`, is now
+protected by cycle detection instead, which is the case that actually mattered.
+
+### Tests added
+
+`test/test-json.js` (+9): circular definition refused; mutual cycle refused;
+shared sibling still builds twice; 1000-level nesting not capped; document-level
+string, number and text-node all render; document-level text escaped.
+
+`test/test-template.js` (+8): a non-string source raises a `TypeError` naming the
+type, across all three entry points.
+
+### Verification
+
+```
+node test/test-json.js      -> 52 passed, 0 failed   (was 43)
+node test/test-template.js  -> 145 passed, 0 failed  (was 127)
+node test/run-all.js        -> All 23 automated suites passed
+npm run test:browser        -> 4 Playwright suites passed
+fuzz @ 20,000 iterations    -> 17 passed, 0 failed
+tsc --noEmit                -> exit 0
+benchmark/render.js         -> 4439 ops/s, 3929 HTML bytes unchanged
+```
+
+Mutation-tested, each reverted and the source confirmed restored:
+
+```
+remove the source validation        -> 8 failed
+revert document-level text node     -> 1 failed
+revert document-level primitives    -> 1 failed
+remove cycle detection              -> 2 failed, and a RangeError escapes
+```
+
+## Post-fix audit of the changed surface (2026-08-31)
+
+With all findings resolved, the code this session changed — `lib/template.js`,
+`lib/builder.js`, `lib/document.js`, `lib/utils.js` — was probed directly for
+regressions the suites might not cover.
+
+### The module-level `buildPath` was the main risk
+
+Cycle detection keeps a `Set` at module scope. Four ways it could have leaked or
+misfired, all checked:
+
+| probe | result |
+|---|---|
+| an exception thrown mid-build leaves a stale path entry | no residue; the same shape builds afterwards |
+| the same definition object reused across two separate `build()` calls | both render |
+| a re-entrant `build()` from inside a `setup` callback | inner content renders |
+| a `setup` that rebuilds its own node | terminates instead of recursing forever |
+
+The `try/finally` around `buildNodeInner()` is what makes the first hold.
+
+### Also probed clean
+
+- `renderFile()` still works after the source-type check, and an empty template
+  string is still valid input.
+- Attribute interpolation against nine edge cases: a bare token, two tokens in
+  one value, data attributes, `undefined`/`false`/`0`/`''` variables, a nested
+  path, and a valueless attribute. `false`, `0` and `''` interpolate to their
+  string form; only a genuinely absent variable keeps the literal token.
+- Tag validation against six cases: custom elements, camelCase, digits,
+  uppercase recovery, and a valid line following an invalid one.
+- Sixteen ordinary attribute names all survive the widened `on*` guard.
+- Document-level text interleaves with elements in source order, and `build()`
+  is still chainable.
+
+### Finding 16 — `attr('class', …)` is a silent no-op
+
+Surfaced by the probe. `renderer.js:14` skips the `class` key because classes are
+held separately and written from `_classes`, so `attr('class', 'x')` does
+nothing at all — no warning, no output. Confirmed pre-existing by stashing this
+session's `lib/` changes and reproducing on `HEAD`.
+
+The behaviour is deliberate and `addClass()` is the correct call, but it was
+documented nowhere, which is exactly the sort of silent no-op that sends someone
+to read the source. Documented in the Element attributes reference rather than
+changed, since altering it would break how every class in the library is
+rendered.
+
+### Result
+
+No regression found in any code changed this session. One pre-existing
+documentation gap found and closed.
+
+## Stale factual claims in the README (2026-08-31)
+
+With the findings closed, the README's "At a glance" numbers were checked against
+the repository rather than trusted.
+
+| Claim | Stated | Actual | Action |
+|---|---|---|---|
+| automated suites | 20 | **23** | corrected |
+| Playwright browser suites | 4 | 4 | correct |
+| fuzz properties | 15 | **16** | corrected |
+
+"16" is the number of `property()` calls in `test-fuzz.js`; the suite reports 17
+passing assertions because one property emits two.
+
+Every other factual claim was re-verified by execution and is accurate: the
+static page really is 461 bytes with zero `<script>` tags, the reactive page is
+4.9 KB HTML / 4.4 KB generated JS against the stated "~5.0 KB / ~4.5 KB", there
+are 28 exports and six subpath exports, and CI really runs Node 18, 20, 22, 24.
+
+### Open items requiring a decision, not code
+
+- **No version bump.** `package.json` is still `2.0.1` while `CHANGELOG.md` has a
+  large `[Unreleased]` section containing security fixes. Releasing is the
+  maintainer's call, so nothing was changed.
+- **`test/output.html` is not gitignored.** `test/example.js:104` writes it on
+  every run, so a test run leaves the working tree dirty. Adding it to
+  `.gitignore` is a one-line change but touches repository configuration, so it
+  is flagged rather than made.

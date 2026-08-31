@@ -516,18 +516,15 @@ const html = doc.render();</code></pre>
 const doc = page('Forms');
 
 doc.form((form) =&gt; {
-  const email = field(form, 'Email address', { type: 'email', name: 'email' });
+  // field() returns { group, label, input }
+  const email = form.field('Email address', { type: 'email', name: 'email' });
   email.input.required().placeholder('you@example.com');
 
-  const bio = field(form, 'Short bio', { type: 'text', name: 'bio' });
+  const bio = form.field('Short bio', { type: 'text', name: 'bio' });
   bio.group.addClass('form-row');
 
   form.button('Save').attr('type', 'submit');
 });
-
-function field(parent, label, options) {
-  return parent.field(label, options);   // { group, label, input }
-}
 
 const html = doc.render();</code></pre>
         <p>The other form helpers, each returning the wrapper element:</p>
@@ -1166,7 +1163,7 @@ card.a('/users/42', 'View profile');</code></pre>
           <thead><tr><th>Category</th><th>Methods</th><th>Parameters</th></tr></thead>
           <tbody>
             <tr><td>Content</td><td><code>text</code>, <code>append</code>, <code>appendUnsafe</code>, <code>html</code>, <code>empty</code></td><td>Text or trusted HTML; <code>append</code> escapes, <code>appendUnsafe</code> and <code>html</code> do not; <code>empty</code> takes no parameters.</td></tr>
-            <tr><td>Attributes</td><td><code>attr</code>, <code>setAttrs</code>, <code>data</code>, <code>aria</code></td><td>Key/value or an attribute object.</td></tr>
+            <tr><td>Attributes</td><td><code>attr</code>, <code>setAttrs</code>, <code>data</code>, <code>aria</code></td><td>Key/value or an attribute object. <code>class</code> is the one name these ignore &mdash; classes come from <code>addClass()</code> and friends, so <code>attr('class', …)</code> has no effect. Inline <code>on*</code> handlers are refused; use <code>on()</code> or a shorthand.</td></tr>
             <tr><td>Classes</td><td><code>addClass</code>, <code>removeClass</code>, <code>toggleClass</code>, <code>classIf</code>, <code>classMap</code></td><td>Class names and optional conditions.</td></tr>
             <tr><td>CSS</td><td><code>css</code>, <code>style</code>, <code>hover</code>, <code>focusCss</code>, <code>pseudo</code>, <code>media</code></td><td>Rules object; pseudo selector or media query where needed.</td></tr>
             <tr><td>Tree</td><td><code>child</code>, <code>build</code>, <code>prependChild</code>, <code>insertAt</code>, <code>before</code>, <code>after</code>, <code>remove</code>, <code>wrap</code></td><td>Child definitions, child/replacement element, and optional index.</td></tr>

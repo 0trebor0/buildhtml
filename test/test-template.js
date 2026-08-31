@@ -378,6 +378,62 @@ test('event attribute values are not interpolated', () => {
   assert(html.includes('addEventListener("click"'), 'a named handler still wires up');
 });
 
+/* ---- Argument validation ---- */
+test('a non-string template source names the bad argument', () => {
+  const cases = [[null, 'null'], [undefined, 'undefined'], [12345, 'number'], [['div'], 'object'], [{}, 'object']];
+  for (const [value, described] of cases) {
+    let error = null;
+    try { renderTemplate(value); } catch (e) { error = e; }
+    assert(error instanceof TypeError, `${described} raises a TypeError`);
+    assert(error && error.message.includes('Template source must be a string'),
+      `${described} message names the argument (got ${error && error.message})`);
+    assert(error && error.message.includes(described), `${described} message names the received type`);
+  }
+});
+
+test('every template entry point validates its source', () => {
+  for (const [name, fn] of [['parseTemplate', parseTemplate], ['compileTemplate', compileTemplate], ['renderTemplate', renderTemplate]]) {
+    let error = null;
+    try { fn(null); } catch (e) { error = e; }
+    assert(error instanceof TypeError, `${name}(null) raises a TypeError`);
+  }
+});
+
+/* ---- Attribute name and value parsing ---- */
+test('an escaped quote stays inside the attribute value', () => {
+  const html = renderTemplate('a(title="say \\"hi\\"") "go"');
+  const tag = html.match(/<a[^>]*>/)[0];
+  assert(tag.includes('&quot;hi&quot;'), `the quoted word survives (tag was ${tag})`);
+  assert(!/\shi\s*=/.test(tag), 'the remainder is not parsed as another attribute');
+  assert((tag.match(/"/g) || []).length === 2, 'the value is delimited by exactly one pair of quotes');
+});
+
+test('a colon inside an attribute name is kept', () => {
+  const html = renderTemplate('svg(xlink:href="/x")');
+  assert(html.includes('xlink:href="/x"'), 'xlink:href survives as one attribute');
+  assert(!html.includes('xlink="true"'), 'the name is not split at the colon');
+});
+
+test('a namespaced URL attribute is still sanitized', () => {
+  assert(renderTemplate('svg(xlink:href="javascript:alert(1)")').includes('xlink:href="#"'),
+    'an executable scheme is neutralised on a namespaced attribute too');
+});
+
+test('inline event attributes stay refused, colon form included', () => {
+  for (const name of ['onclick', 'on-click', 'on:click']) {
+    const html = renderTemplate(`div(${name}="alert(1)")`);
+    assert(html.includes('<div></div>'), `${name} is dropped`);
+    assert(!html.includes('alert(1)'), `${name} value is not emitted`);
+  }
+});
+
+test('a lone backslash in an attribute value is preserved', () => {
+  // The template source contains one backslash; only \" and \' are unescaped,
+  // so it must survive into the output unchanged.
+  const html = renderTemplate('div(data-p="C:\\temp")');
+  assert(html.includes('C:\\temp'), `a non-quote escape is left alone (got ${html.match(/<div[^>]*>/)[0]})`);
+});
+
 /* ---- Malformed tag recovery ---- */
 test('an invalid tag drops its line instead of throwing', () => {
   let html;

@@ -1,6 +1,6 @@
 'use strict';
 
-const { Document } = require('../index');
+const { Document, renderFromJSON } = require('../index');
 
 let passed = 0;
 let failed = 0;
@@ -217,6 +217,76 @@ test('title survives repeated round trips without re-escaping', () => {
 
   const twice = roundTrip(roundTrip(new Document().title('Tom & Jerry <Show>')));
   assert(twice.render().includes(expected), 'title unchanged after two round trips');
+});
+
+/* ---- Definition-shape edge cases ---- */
+
+test('a circular node definition is refused instead of exhausting the stack', () => {
+  const node = { tag: 'div', children: [] };
+  node.children.push(node);
+  let html;
+  try {
+    html = renderFromJSON({ body: [node] });
+  } catch (e) {
+    assert(false, `renderFromJSON threw instead of recovering: ${e.constructor.name}`);
+    return;
+  }
+  assert(typeof html === 'string' && html.includes('</html>'), 'a complete document is still produced');
+});
+
+test('a mutual cycle between two definitions is refused', () => {
+  const a = { tag: 'div', children: [] };
+  const b = { tag: 'p', children: [a] };
+  a.children.push(b);
+  let threw = false;
+  try { renderFromJSON({ body: [a] }); } catch (e) { threw = true; }
+  assert(!threw, 'a two-node cycle is caught the same way');
+});
+
+test('the same node used twice as a sibling still builds twice', () => {
+  // Cycle detection tracks the current path only, so a shared (acyclic) node is
+  // legal and must not be mistaken for a loop.
+  const shared = { tag: 'span', text: 'S' };
+  const doc = new Document();
+  doc.build({ tag: 'div', children: [shared, shared] });
+  const html = doc.render();
+  assert((html.match(/<span>S<\/span>/g) || []).length === 2, 'both copies render');
+});
+
+test('deep-but-finite nesting is not capped', () => {
+  // A fixed depth limit would reject trees that render today, so there is none.
+  let root = { tag: 'div', children: [] };
+  let cursor = root;
+  for (let i = 0; i < 1000; i++) {
+    const next = { tag: 'div', children: [] };
+    cursor.children.push(next);
+    cursor = next;
+  }
+  const doc = new Document();
+  doc.build(root);
+  assert((doc.render().match(/<div>/g) || []).length === 1001, '1000 levels still render');
+});
+
+test('text at document level renders instead of throwing', () => {
+  // buildNode() reaches for parentEl.text(), which a Document does not have.
+  const cases = [
+    ['string', 'hello', 'hello'],
+    ['number', 42, '42'],
+    ['text node', { type: 'text', content: 'x' }, 'x'],
+  ];
+  for (const [label, def, expected] of cases) {
+    const doc = new Document();
+    doc.build(def);
+    assert(doc.render().includes(`<body>${expected}</body>`), `build(${label}) renders its text`);
+  }
+});
+
+test('text at document level is escaped', () => {
+  const doc = new Document();
+  doc.build('<script>alert(1)</script>');
+  const html = doc.render();
+  assert(!html.includes('<script>alert(1)'), 'a script payload is not emitted raw');
+  assert(html.includes('&lt;script&gt;'), 'it is escaped instead');
 });
 
 /* ---- summary ---- */

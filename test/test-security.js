@@ -979,6 +979,61 @@ test('jsonLd cannot corrupt script-data parsing', () => {
   assert(parsed.url === '</script><script>alert(1)</script>', 'the second value survives too');
 });
 
+/* ---- Inline event attribute guard ---- */
+
+test('the on* attribute guard blocks every real HTML event, in all three spellings', () => {
+  const events = ('click dblclick mousedown mouseup mouseover mouseout mousemove keydown keyup '
+    + 'keypress focus blur change input submit reset load unload error abort scroll resize select '
+    + 'drag dragstart dragend dragover dragenter dragleave drop wheel contextmenu copy cut paste '
+    + 'play pause ended volumechange seeked seeking timeupdate canplay durationchange ratechange '
+    + 'progress stalled suspend waiting emptied loadeddata loadedmetadata invalid search toggle '
+    + 'animationstart animationend animationiteration transitionend touchstart touchend touchmove '
+    + 'touchcancel pointerdown pointerup pointermove gotpointercapture beforeunload hashchange '
+    + 'popstate storage message online offline').split(' ');
+
+  const leaked = [];
+  for (const event of events) {
+    for (const name of [`on${event}`, `on-${event}`, `on:${event}`]) {
+      const doc = new Document();
+      doc.div().attr(name, 'alert(1)');
+      const html = doc.render();
+      if (html.includes(name) || html.includes('alert(1)')) leaked.push(name);
+    }
+  }
+  assert(leaked.length === 0, `no on<event> attribute reaches the page (leaked: ${leaked.join(' ')})`);
+});
+
+test('ordinary words beginning with "on" are not mistaken for event handlers', () => {
+  // A bare ^on[a-z] prefix test refused these as if they were handlers. They are
+  // not events, and nothing about them is executable.
+  for (const name of ['one', 'only', 'once', 'online', 'onset']) {
+    const doc = new Document();
+    doc.div().attr(name, 'x');
+    assert(doc.render().includes(`${name}="x"`), `${name} survives as an ordinary attribute`);
+  }
+});
+
+test('an unknown "on" name is still refused, so the guard fails closed', () => {
+  // Anything not in the exception list stays blocked, including an event that
+  // does not exist yet.
+  for (const name of ['onfuturething', 'onxyz', 'oncex', 'onlyness']) {
+    const doc = new Document();
+    doc.div().attr(name, 'alert(1)');
+    const html = doc.render();
+    assert(!html.includes(name), `${name} is refused rather than guessed at`);
+  }
+});
+
+test('the generated client-side attribute check agrees with the server', () => {
+  const { clientAttrKeyValidatorBody, isValidAttrKey } = require('../lib/utils');
+  const clientCheck = new Function('k', clientAttrKeyValidatorBody('k'));
+  const names = ['onclick', 'on-click', 'on:click', 'ONCLICK', 'one', 'only', 'once',
+    'online', 'onset', 'ONE', 'onload', 'oncex', 'xlink:href', 'aria-label', 'data-x', 'href'];
+  const mismatched = names.filter(n => clientCheck(n) !== isValidAttrKey(n));
+  assert(mismatched.length === 0,
+    `_mkEl and the server accept the same attribute names (differed on: ${mismatched.join(' ')})`);
+});
+
 /* ==================================================================== */
 
 (async () => {

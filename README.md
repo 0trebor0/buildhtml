@@ -77,7 +77,7 @@ A static page stays static. Add `.states()`, `.bind()`, or `.onClick()` and the 
 | Module formats | CommonJS and ESM, plus six subpath exports |
 | TypeScript | declarations bundled (`typescript/*.d.ts`) |
 | Node.js | 18+; CI runs 18, 20, 22, 24 |
-| Testing | 20 suites, 4 Playwright browser suites, 15 fuzz properties |
+| Testing | 23 suites, 4 Playwright browser suites, 16 fuzz properties |
 | Escaping | text, attributes, CSS values, and JSON context |
 | CSP | nonce support for generated `<script>`/`<style>`; no inline `on*` attributes |
 | Client runtime | generated per page; 0 bytes when no reactive API is used |

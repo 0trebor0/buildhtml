@@ -243,6 +243,28 @@ rather than complete records.
 
 ### Fixed
 
+- **A circular JSON definition exhausted the stack.** A node whose `children`
+  reached back to an ancestor recursed until Node threw
+  `RangeError: Maximum call stack size exceeded` from library internals.
+  `build()` and `fromJSON()` now track the current path and refuse a node that
+  is already on it, recording the failure like any other rejected input. Only
+  the path is tracked, so the same node used twice as a sibling — a legal
+  shape — still builds twice. No depth limit was added alongside it: any fixed
+  cap would reject trees that render today, and the real ceiling is the JS
+  stack, which varies by platform and Node version.
+
+- **Text at document level threw or vanished.** `doc.build('hello')` and
+  `doc.build(42)` rendered nothing, and `doc.build({ type: 'text', content })` —
+  the shape `toJSON()` emits — threw `parentEl.text is not a function`, because
+  `Document` has no `text()` for a top-level text node to land in. All three now
+  render their text, escaped, matching what the array form already did.
+
+- **A non-string template source threw from library internals.**
+  `renderTemplate(null)` reported `Cannot read properties of null (reading
+  'split')`. Every entry point — `parseTemplate`, `compileTemplate`,
+  `renderTemplate`, `renderFile` — now raises
+  `TypeError: Template source must be a string, received null`.
+
 - **A malformed tag name aborted the whole template.** `renderTemplate()`
   promises in the README that the parser "recovers from a malformed line rather
   than throwing", but an uppercase tag — `SPAN` instead of `span`, a plausible
@@ -256,6 +278,34 @@ rather than complete records.
   invalid character, so `scr<ipt "x"` rendered `<scr></scr>` and discarded the
   rest of the line without a word. The element still renders — that is the
   documented recovery — but the dropped remainder is now reported.
+
+- **An escaped quote truncated an attribute value.** `a(title="say \"hi\"")`
+  ended the value at the first `\"`, then parsed the remainder as further
+  attributes, so the markup gained a `hi="true"` nobody wrote. Quoted values now
+  accept `\"` and `'`. Only those two escapes are unwrapped, so a lone
+  backslash — a Windows path in a data attribute, say — is preserved.
+
+- **A colon in an attribute name lost half the attribute.**
+  `svg(xlink:href="/x")` parsed as `xlink` plus a separate `:href`, and the
+  second half was then dropped as an invalid attribute name — silently losing an
+  attribute the library recognises elsewhere (`xlink:href` is in its URL
+  attribute set). Attribute names now keep an internal colon, and a namespaced
+  URL attribute goes through the same scheme sanitisation as `href`.
+
+- **The inline event-attribute guard refused ordinary words.** It matched any
+  attribute beginning with `on` followed by a letter, so `one`, `only`, `once`
+  and `online` were dropped as if they were event handlers. The guard now
+  excepts exactly those words and stays fail-closed for everything else: an `on`
+  name that is not one of them — including an event added to HTML later — is
+  still refused. Enumerating the words rather than the ~70 real event names
+  matters because this pattern is embedded verbatim into every page that renders
+  a reactive list; the fix costs 28 bytes there instead of several hundred.
+
+  Because that parser bug had also been suppressing `on:click`, the inline
+  event-attribute guard was widened from `on-?` to `on[-:]?` so the documented
+  "no inline `on*` attribute is ever emitted" guarantee does not depend on it.
+  No browser honours the colon form, and the same pattern generates the client
+  runtime's check, so both sides stay in step.
 
 - **`#{}` interpolation did nothing in attribute values.** `a(href="#{url}")`
   emitted the literal string `#{url}` as the href, so the template read
