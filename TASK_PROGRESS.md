@@ -2093,3 +2093,45 @@ six subpath entries    -> template middleware components live config metrics all
 typescript/index.d.ts  -> present
 docs/ example/ test/   -> absent
 ```
+
+## 2.0.2 release prepared (2026-08-31)
+
+`package.json` read `2.0.2` while every entry sat under `## [Unreleased]`, so the
+release would have shipped a changelog describing itself as unreleased. That was
+the only thing blocking a publish.
+
+- `[Unreleased]` split into a new empty `[Unreleased]` and
+  `## [2.0.2] - 2026-08-31`, carrying all 43 entries.
+- A summary note added in the style of the 2.0.1 entry, stating that it is a
+  security release, that no documented API changed, and — importantly — naming
+  the three behaviours that now succeed where they previously failed: template
+  recovery from a malformed tag or unknown component, `#{}` inside attribute
+  values, and `build()` rendering document-level text. A consumer reading only
+  "no API changed" would otherwise be surprised by those.
+- Comparison links updated: `[Unreleased]` now spans `v2.0.2...HEAD`, and
+  `[2.0.2]` and the previously missing `[2.0.1]` were added.
+
+`scripts/release-notes.js` was run against the result — the workflow calls it to
+build `RELEASE_NOTES.md` for the GitHub release — and it extracted the 2.0.2
+section correctly, stopping before 2.0.1. The generated file is gitignored and
+was removed after the check.
+
+### Pre-publish state
+
+```
+package.json version          -> 2.0.2
+changelog section for 2.0.2   -> present
+already on npm                -> no (registry has 2.0.0, 2.0.1)
+node test/run-all.js          -> All 23 automated suites passed
+npm run test:browser          -> 4 Playwright suites passed
+tsc --noEmit                  -> exit 0
+npm pack                      -> 115.9 kB, 30 files
+tarball extracted + required  -> 28 exports, subpaths resolve, types present
+```
+
+### Judgement left to the maintainer
+
+The release is numbered as a patch. It carries 17 Security entries and three
+behaviour changes that turn previous failures into successes. Nothing breaks a
+documented API, so a patch is defensible, but `2.1.0` would signal the scope
+more honestly. Not changed unilaterally.

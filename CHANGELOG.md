@@ -13,6 +13,19 @@ rather than complete records.
 
 ## [Unreleased]
 
+## [2.0.2] - 2026-08-31
+
+> **Security release.** Fixes a set of injection defects across the render path —
+> element ids reaching compiled JavaScript, `jsonLd()`, `replaceWith()`, reactive
+> URL updates, `bindProp()`, CSP nonce caching, CSS property and selector names,
+> and callbacks restored from JSON. Upgrade if you render anything derived from
+> untrusted input.
+>
+> No documented API changed and 2.0.1 code runs unmodified, but three behaviours
+> that used to fail now succeed: a `.bhtml` template recovers from a malformed
+> tag or an unknown component instead of throwing, `#{}` expands inside attribute
+> values, and `build()` renders text passed at document level.
+
 ### Security
 
 - **An element id could inject executable JavaScript.** `escapeJsString()`
@@ -675,6 +688,8 @@ Client runtime security fixes and the fetch example.
 
 Initial public releases.
 
-[Unreleased]: https://github.com/0trebor0/buildhtml/compare/v2.0.0...HEAD
+[Unreleased]: https://github.com/0trebor0/buildhtml/compare/v2.0.2...HEAD
+[2.0.2]: https://github.com/0trebor0/buildhtml/compare/v2.0.1...v2.0.2
+[2.0.1]: https://github.com/0trebor0/buildhtml/compare/v2.0.0...v2.0.1
 [2.0.0]: https://github.com/0trebor0/buildhtml/compare/v1.2.5...v2.0.0
 [1.2.5]: https://github.com/0trebor0/buildhtml/releases/tag/v1.2.5
