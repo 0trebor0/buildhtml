@@ -16,9 +16,10 @@
 const assert = require('assert');
 const vm = require('vm');
 const {
-  escapeHtml, unescapeHtml, sanitizeCssValue, sanitizeUrl, safeJsonStringify,
+  escapeHtml, unescapeHtml, sanitizeUrl, safeJsonStringify,
   escapeJsString, isValidAttrKey, toKebab, normalizeTagName, isValidTagName, minHTML,
 } = require('../lib/utils');
+const { sanitizeCssValue } = require('../lib/css');
 const { Document } = require('..');
 
 let passed = 0;

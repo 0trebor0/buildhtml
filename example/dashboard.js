@@ -23,14 +23,14 @@ function buildDashboardDocument() {
     primary: '#315efb', border: '#dfe4ec', success: '#16805c',
   });
   doc.bodyCss({ background: 'var(--background)', color: 'var(--ink)', fontFamily: 'system-ui, sans-serif' });
-  doc.globalStyle('.dashboard-shell', { minHeight: '100vh', display: 'grid', gridTemplateColumns: '240px 1fr' });
-  doc.globalStyle('.dashboard-nav', { padding: '24px', background: '#101828', color: '#fff' });
-  doc.globalStyle('.dashboard-nav button', { width: '100%', padding: '10px 12px', marginTop: '8px', border: '0', borderRadius: '8px', textAlign: 'left', cursor: 'pointer', background: 'transparent', color: '#cbd5e1' });
-  doc.globalStyle('.dashboard-nav button.active', { background: 'var(--primary)', color: '#fff' });
-  doc.globalStyle('.dashboard-content', { padding: '32px', minWidth: '0' });
-  doc.globalStyle('.metric-grid', { display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '16px' });
-  doc.globalStyle('.card', { padding: '20px', border: '1px solid var(--border)', borderRadius: '12px', background: 'var(--surface)' });
-  doc.globalStyle('.activity-row', { display: 'flex', justifyContent: 'space-between', gap: '16px', padding: '12px 0', borderBottom: '1px solid var(--border)' });
+  doc.globalCss('.dashboard-shell', { minHeight: '100vh', display: 'grid', gridTemplateColumns: '240px 1fr' });
+  doc.globalCss('.dashboard-nav', { padding: '24px', background: '#101828', color: '#fff' });
+  doc.globalCss('.dashboard-nav button', { width: '100%', padding: '10px 12px', marginTop: '8px', border: '0', borderRadius: '8px', textAlign: 'left', cursor: 'pointer', background: 'transparent', color: '#cbd5e1' });
+  doc.globalCss('.dashboard-nav button.active', { background: 'var(--primary)', color: '#fff' });
+  doc.globalCss('.dashboard-content', { padding: '32px', minWidth: '0' });
+  doc.globalCss('.metric-grid', { display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '16px' });
+  doc.globalCss('.card', { padding: '20px', border: '1px solid var(--border)', borderRadius: '12px', background: 'var(--surface)' });
+  doc.globalCss('.activity-row', { display: 'flex', justifyContent: 'space-between', gap: '16px', padding: '12px 0', borderBottom: '1px solid var(--border)' });
   doc.mediaQuery('(max-width: 760px)', {
     '.dashboard-shell': { gridTemplateColumns: '1fr' },
     '.metric-grid': { gridTemplateColumns: '1fr' },

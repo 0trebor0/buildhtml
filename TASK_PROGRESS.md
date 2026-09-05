@@ -2135,3 +2135,228 @@ The release is numbered as a patch. It carries 17 Security entries and three
 behaviour changes that turn previous failures into successes. Nothing breaks a
 documented API, so a patch is defensible, but `2.1.0` would signal the scope
 more honestly. Not changed unilaterally.
+
+---
+
+# Task: CSS foundations (six-item roadmap)
+
+## Objective
+
+Make the CSS layer smaller, more consistent and safer before any new CSS
+features are added. Six items, given in this order by the user:
+
+1. Fix `live.js` CSS semantics
+2. Fix CSS security validation
+3. Deduplicate CSS
+4. Canonicalise CSS before hashing
+5. Remove/deprecate duplicate public APIs
+6. Extract CSS into `lib/css.js`
+
+## Status
+
+Complete. All six landed.
+
+### Ordering deviation, and why
+
+Items 2, 3 and 4 are all changes to *the CSS compiler*, and the compiler existed
+in four partial copies (`element.js`, `head.js`, `document.js`, `live.js`).
+Implementing them in the given order would have meant writing each fix up to four
+times and then deleting all four copies in item 6. Item 6 was therefore done
+first, and 2/3/4 were implemented once inside the new module. Item 1 followed,
+because a consistent `css` inside `liveList` needs the shared hash on both the
+server and the client, and item 5 last. The six outcomes are unchanged.
+
+## Files created, modified, or deleted
+
+- Created: `lib/css.js` — the CSS compiler. Declaration compilation and canonical
+  ordering, value sanitisation, property/selector/class/pseudo/media validation,
+  the scoped class hash, `RuleSet` de-duplication, every rule shape (scoped,
+  global, `@media`, `@keyframes`), and the generated client runtime.
+- Created: `test/test-css.js` — 82 assertions across all six items.
+- Modified: `lib/utils.js` — CSS helpers moved out to `lib/css.js`; added
+  `warnDeprecated()`.
+- Modified: `lib/element.js` — uses the shared compiler; `cssText` is now an
+  accessor over a keyed `RuleSet`; `pseudo()`, `media()` and `_pseudoClass()`
+  (and so `nthChild()`) validate their arguments; `clone()` copies rules by key;
+  `attribute()` deprecated.
+- Modified: `lib/renderer.js` — de-duplicates one rule at a time instead of
+  comparing whole concatenated `cssText` strings.
+- Modified: `lib/live.js` — `css` compiles to a scoped class on both the server
+  and the client; `style` stays inline; the client CSS runtime is generated from
+  `lib/css.js`; nested children contribute their rules to the page.
+- Modified: `lib/document.js` — uses the shared compiler; `globalCss()` is the
+  canonical name; `globalStyle()`, `createElement()`, `child()` and
+  `defineClass()` deprecated; `mediaQuery()` uses the named at-rule check.
+- Modified: `lib/head.js`, `lib/builder.js`, `lib/pools.js` — import from
+  `lib/css.js`; `builder.js` now uses `create()`, the name both `Document` and
+  `Element` share, so a top-level `doc.build()` no longer routes through the
+  deprecated `Document.child()`.
+- Modified: `lib/shortcuts.js` — bound to `create` rather than `createElement`.
+- Modified: `test/test-fuzz.js`, `test/test-security.js` — import
+  `sanitizeCssValue` from its new home; the client-runtime parity test follows
+  the renamed generated functions.
+- Modified: `test/browser-fixture.js`, `test/test-browser.js` — browser-level CSS
+  security and semantics regression tests (below).
+- Modified: `test/run-all.js` — registers `test-css.js`.
+- Modified: `typescript/index.d.ts`, `README.md`, `docs/index.html`,
+  `example/*.js` — canonical API names, and the new `liveList` CSS semantics.
+- Modified: `CHANGELOG.md` — Unreleased section.
+
+## Findings
+
+1. **`Element.pseudo()`, `Element.media()`, `Element.nthChild()` were unvalidated.**
+   Arguments were interpolated straight into an emitted rule. Reproduction:
+   `doc.create('div').nthChild('1){} body{display:none} .x:nth-child(1', { color: 'red' })`
+   emitted `body{display:none}` as a rule of its own. The `</style><script>`
+   variant materialised a script element. The document-level equivalents had
+   always validated; only the element-level paths had not. FIXED.
+
+2. **`liveList` never validated CSS property names.** The item renderer built
+   declarations by hand. The style attribute is HTML-escaped at render, so this
+   was a depth gap rather than a reachable injection — stated plainly because the
+   probe below passes on the pre-change tree. FIXED.
+
+3. **`css` meant two different things.** An element compiled it to a shared
+   scoped class; a `liveList` row compiled it to an inline `style` attribute.
+   Anything selecting on the class — a stylesheet override, a `:hover` rule, a
+   test selector — silently did not apply inside a list. FIXED (behaviour change,
+   recorded in the changelog).
+
+4. **Identical rules were emitted more than once.** `el.css(X).css(X)` appended
+   the rule twice, and the renderer's whole-string comparison could not see
+   inside a concatenation, so a rule shared between `.css(A).hover(B)` and
+   `.css(A)` went out twice. FIXED.
+
+5. **Declaration order changed the class name.** `{color, margin}` and
+   `{margin, color}` produced two classes carrying the same declarations. FIXED,
+   with the cascade-safety constraint recorded below.
+
+## Design decision: how far canonical ordering goes
+
+Sorting every declaration alphabetically would reorder
+`{ marginTop: '5px', margin: '0' }` into `margin; margin-top` and silently invert
+which one wins. Ordering is therefore canonical *between* property families and
+preserved *within* one — two declarations can only override each other when they
+share a family. `{ color, margin }` and `{ margin, color }` collapse to one class;
+`{ margin, marginTop }` and `{ marginTop, margin }` stay distinct. Tested both
+ways.
+
+## Tests run
+
+```
+node test/run-all.js     -> All 24 automated suites passed (test-css.js added, 82 assertions)
+npm run test:browser     -> 4 Playwright suites passed
+tsc --noEmit             -> exit 0
+node --check lib/*.js    -> every file parses
+```
+
+Regression value was verified rather than assumed: each fix was disabled in turn,
+in place, and the probe covering it was confirmed to fail. All seven probes pass
+on the restored tree.
+
+| Probe | Fix disabled to make it fail |
+|-------|------------------------------|
+| `validate-nthchild` | `isSafePseudoSelector()` forced to `true` |
+| `validate-pseudo` | `isSafePseudoElement()` forced to `true` |
+| `validate-media` | `isSafeMediaQuery()` forced to `true` |
+| `canonical-order-shares-a-class` | canonical `declarations.sort()` removed |
+| `dedup-same-rule-twice` | `RuleSet.add()` key check removed |
+| `dedup-shared-rule-across-elements` | renderer per-rule `seenCss` check removed |
+| `livelist-css-is-a-class` | `nodeDefToHtml()` class compilation branch disabled |
+
+Isolating them one at a time caught a mistake in the first attempt:
+`validate-pseudo` still passed with `isSafePseudoSelector()` disabled, because
+`pseudo()` guards with `isSafePseudoElement()`. A coarser check would have
+credited the wrong function.
+
+The browser assertions were checked for vacuity the same way — forcing
+`isSafePseudoSelector()` to return true made `test-browser.js` fail on "a crafted
+nth-child argument must not write a rule that hides another element", and pass
+again once reverted.
+
+Finding 2 has no probe of its own. It was a defence-in-depth gap rather than a
+reachable injection — the style attribute was already HTML-escaped — so there is
+no pre-change behaviour that a probe could show failing. It is not claimed as a
+fixed vulnerability.
+
+### Note on verification method
+
+An earlier run of this comparison used a `git worktree` checked out to a
+temporary directory outside the repository. The user then added the
+"Repository / Working Directory Lock" rule to `AGENTS.md`, which disallows that.
+The worktree was removed (`git worktree list` shows only the main tree, and
+`git worktree prune --dry-run` reports nothing), and the comparison above was
+redone entirely inside the working directory. Nothing outside the repository
+influenced any source, test, or documentation change: the temporary worktree was
+a checkout of this repository's own `HEAD`, used only to observe pre-change
+behaviour, and the scratch files were transient captures of command output.
+
+## Browser-level security regression tests
+
+Item 2 asked for these specifically. A server-side assertion can only prove which
+characters were emitted; whether the browser's CSS parser reassembles them into a
+rule or an element is only observable in a browser. Added to the fixture and
+`test-browser.js`:
+
+- A hostile `pseudo()`, `media()` and `nthChild()` argument executes no script,
+  leaves no `__cssPwned` text in any `<style>` or `<script>`, and does not hide a
+  canary element.
+- Every emitted rule parses (`document.styleSheets` walks without error).
+- Rejected rules apply no styling; a real `:hover` and a real `:nth-child(odd)`
+  still do.
+- Declarations written in either order share one class, and that rule appears in
+  the stylesheet exactly once.
+- A `liveList` row carries a scoped class and no `color` in its inline style;
+  after a client rebuild both the existing and the brand-new row hold the same
+  class the server rendered, with the declarations actually computed — which is
+  only true if the client also inserted the rule.
+
+## Completion audit
+
+Asked afterwards whether the six items were actually done, each was re-checked
+against the code rather than from memory. Five were complete. Item 6 was not:
+`Document.keyframes()`, `Document.mediaQuery()` and `Head.globalCss()` still
+assembled their own rule text, so "media rules" was only half-centralised —
+`Element.media()` went through `lib/css.js` and `Document.mediaQuery()` did not,
+which is the same split the item existed to remove.
+
+Closed by adding `compileGlobalRule()`, `compileMediaRule()` and
+`compileKeyframesRule()` to `lib/css.js` and routing all three callers through
+them. Verified: the only `@media`/`@keyframes` text outside `lib/css.js` is in
+doc comments, and a hostile query is now refused identically by
+`Document.mediaQuery()`, `Element.media()` and `Document.keyframes()`.
+
+One deliberate exception remains. `Head.render()` builds `.name{declarations}`
+when writing the stylesheet. That is emission of already-compiled, already-
+validated input, not compilation — `Head` is the stylesheet writer, and moving
+the string concatenation into `lib/css.js` would spread the writer across two
+modules for no safety gain.
+
+`head.globalStyles` still de-duplicates with `Array.includes()` rather than a
+`RuleSet`. It is a plain string array in the `toJSON()`/`fromJSON()` contract, so
+changing its shape would be a serialisation change for no behavioural gain. It
+does de-duplicate; it just does so with a different mechanism. Left alone and
+recorded here rather than changed silently.
+
+## Not done
+
+- **Consolidating the pseudo helpers into one API.** The user marked this
+  "eventually"; `hover()`, `focusCss()`, `active()`, `firstChild()`,
+  `lastChild()` and `nthChild()` are unchanged. They now share one validated
+  implementation, so the consolidation is a naming decision, not a safety one.
+- **`Element.create()`** is still an undeprecated alias of `Element.child()`. It
+  was not on the list, and it is now the polymorphic seam `builder.js` uses to
+  treat a `Document` and an `Element` alike. Flagged for the maintainer.
+- **No new CSS features** — `@supports`, `@container`, `@layer` and nesting were
+  explicitly deferred.
+
+## Risks
+
+- The `liveList` `css` change is a real behaviour change. Rendered appearance is
+  unchanged, but code reading a row's inline `style` attribute for a value that
+  came from `css` must read the class instead.
+- Client-minted rules accumulate in `<style id="_bh-live-css">` for the life of
+  the page and are never removed. A class name is a pure function of its
+  declarations, so a rule stays correct once inserted and a re-rendering list
+  reuses what it already created; the stylesheet grows only with the number of
+  *distinct* declaration sets a list produces.

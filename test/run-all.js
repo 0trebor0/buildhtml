@@ -10,6 +10,7 @@ const suites = [
   'test-json.js',
   'test-middleware.js',
   'test-spa.js',
+  'test-css.js',
   'test-template.js',
   'test-new-apis.js',
   'test-apis-v2.js',

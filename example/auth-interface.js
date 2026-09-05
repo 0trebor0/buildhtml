@@ -8,15 +8,15 @@ function buildAuthInterfaceDocument() {
   doc.states({ activeAuthView: 'login' });
   doc.cssVars({ primary: '#1d4ed8', border: '#d0d5dd', muted: '#667085', surface: '#ffffff' });
   doc.bodyCss({ margin: '0', padding: '32px 16px', background: '#f2f4f7', color: '#101828', fontFamily: 'system-ui, sans-serif' });
-  doc.globalStyle('.auth-shell', { maxWidth: '560px', margin: '0 auto', padding: '28px', border: '1px solid var(--border)', borderRadius: '12px', background: 'var(--surface)' });
-  doc.globalStyle('.auth-tabs', { display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px', margin: '24px 0' });
-  doc.globalStyle('.auth-tabs button', { padding: '10px', border: '1px solid var(--border)', borderRadius: '8px', background: '#fff', cursor: 'pointer' });
-  doc.globalStyle('.auth-tabs button.active', { borderColor: 'var(--primary)', background: '#eff6ff', color: 'var(--primary)', fontWeight: '700' });
-  doc.globalStyle('.auth-form', { display: 'grid', gap: '16px' });
-  doc.globalStyle('.form-group', { display: 'grid', gap: '6px' });
-  doc.globalStyle('.form-group input', { boxSizing: 'border-box', width: '100%', padding: '10px 12px', border: '1px solid var(--border)', borderRadius: '8px' });
-  doc.globalStyle('.auth-form button[type="submit"]', { padding: '11px 16px', border: '0', borderRadius: '8px', background: 'var(--primary)', color: '#fff', cursor: 'pointer', fontWeight: '700' });
-  doc.globalStyle('button:focus-visible, input:focus-visible', { outline: '3px solid #93c5fd', outlineOffset: '2px' });
+  doc.globalCss('.auth-shell', { maxWidth: '560px', margin: '0 auto', padding: '28px', border: '1px solid var(--border)', borderRadius: '12px', background: 'var(--surface)' });
+  doc.globalCss('.auth-tabs', { display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px', margin: '24px 0' });
+  doc.globalCss('.auth-tabs button', { padding: '10px', border: '1px solid var(--border)', borderRadius: '8px', background: '#fff', cursor: 'pointer' });
+  doc.globalCss('.auth-tabs button.active', { borderColor: 'var(--primary)', background: '#eff6ff', color: 'var(--primary)', fontWeight: '700' });
+  doc.globalCss('.auth-form', { display: 'grid', gap: '16px' });
+  doc.globalCss('.form-group', { display: 'grid', gap: '6px' });
+  doc.globalCss('.form-group input', { boxSizing: 'border-box', width: '100%', padding: '10px 12px', border: '1px solid var(--border)', borderRadius: '8px' });
+  doc.globalCss('.auth-form button[type="submit"]', { padding: '11px 16px', border: '0', borderRadius: '8px', background: 'var(--primary)', color: '#fff', cursor: 'pointer', fontWeight: '700' });
+  doc.globalCss('button:focus-visible, input:focus-visible', { outline: '3px solid #93c5fd', outlineOffset: '2px' });
   doc.mediaQuery('(max-width: 520px)', { '.auth-tabs': { gridTemplateColumns: '1fr' }, '.auth-shell': { padding: '20px' } });
 
   doc.main(main => {

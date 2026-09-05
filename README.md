@@ -221,8 +221,8 @@ Creation aliases:
 | Call | Where content is added | Returns |
 |------|------------------------|---------|
 | `doc.create(tag)` | Document body | `Element` |
-| `doc.createElement(tag)` | Document body | `Element` |
-| `doc.child(tag)` | Document body | `Element` |
+| `doc.createElement(tag)` | Document body | `Element` — *deprecated, use `doc.create(tag)`* |
+| `doc.child(tag)` | Document body | `Element` — *deprecated, use `doc.create(tag)`* |
 | `element.create(tag)` | Inside that element | `Element` |
 | `element.child(tag)` | Inside that element | `Element` |
 
@@ -752,6 +752,8 @@ list.addClass('task-list');
 
 The method returns the list container `Element`.
 
+A `NodeDef` treats `css` and `style` exactly as an element does: `css` compiles to a **scoped class** that every row with the same declarations shares, and `style` becomes an inline `style` attribute. The class name is derived from the declarations themselves and computed the same way on the server and in the browser, so a row keeps its class across a re-render. Rules minted in the browser during a rebuild are appended to a `<style id="_bh-live-css">` element.
+
 ## SPA routing
 
 ### Dashboard views without URL routing
@@ -993,7 +995,7 @@ doc.cssVars({
   radius: '8px'
 });
 
-doc.globalStyle('body', {
+doc.globalCss('body', {
   fontFamily: 'system-ui',
   lineHeight: '1.6'
 });
@@ -1179,7 +1181,7 @@ render · renderStream · validate · clear
 CSS:
 
 ```text
-resetCss · globalStyle · sharedClass · defineClass
+resetCss · globalCss · sharedClass
 cssVar · cssVars · keyframes · mediaQuery · darkMode · print
 ```
 

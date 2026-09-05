@@ -401,6 +401,7 @@ export declare class Element<S extends StateShape = StateShape> implements Share
 
   // Attributes
   attr(key: string, value: any): this;
+  /** @deprecated Use {@link attr}. */
   attribute(key: string, value: any): this;
   id(value?: string): this;
   setAttrs(obj: Record<string, any>): this;
@@ -865,8 +866,15 @@ export declare class Document<S extends StateShape = StateShape> implements Shar
   noindex(nofollow?: boolean): this;
 
   // Global CSS
-  globalStyle(selector: string, rules: CSSRules): this;
+  globalCss(selector: string, rules: CSSRules): this;
   sharedClass(name: string, rules: CSSRules): this;
+  /** @deprecated Use {@link globalCss}. */
+  globalStyle(selector: string, rules: CSSRules): this;
+  /**
+   * @deprecated Use {@link sharedClass} for a class name, or {@link globalCss}
+   * for a raw selector. `defineClass(name, rules)` is `sharedClass(name, rules)`;
+   * `defineClass(sel, rules, true)` is `globalCss(sel, rules)`.
+   */
   defineClass(selector: string, rules: CSSRules, isRawSelector?: boolean): this;
   resetCss(): this;
 
@@ -892,8 +900,10 @@ export declare class Document<S extends StateShape = StateShape> implements Shar
   oncreate(fn: () => void | Promise<void>): this;
 
   // Element creation
-  createElement(tag: string): Element<S>;
   create(tag: string): Element<S>;
+  /** @deprecated Use {@link create}. */
+  createElement(tag: string): Element<S>;
+  /** @deprecated Use {@link create}. `Element.child()` is unaffected. */
   child(tag: string): Element<S>;
 
   // Component system

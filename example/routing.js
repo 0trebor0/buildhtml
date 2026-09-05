@@ -9,8 +9,8 @@ function buildRoutingDocument(mode) {
   const doc = page(mode === 'hash' ? 'Hash Routing Example' : 'History Routing Example');
   doc.states({ view: 'home', routeParams: {} });
   doc.bodyCss({ maxWidth: '720px', margin: '0 auto', padding: '32px', fontFamily: 'system-ui, sans-serif' });
-  doc.globalStyle('.route-nav', { display: 'flex', gap: '16px', margin: '24px 0' });
-  doc.globalStyle('.route-view', { padding: '20px', border: '1px solid #d0d5dd', borderRadius: '8px' });
+  doc.globalCss('.route-nav', { display: 'flex', gap: '16px', margin: '24px 0' });
+  doc.globalCss('.route-view', { padding: '20px', border: '1px solid #d0d5dd', borderRadius: '8px' });
 
   doc.header(header => {
     header.h1(mode === 'hash' ? 'Hash-routed application' : 'History-routed application');

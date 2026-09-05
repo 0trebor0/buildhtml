@@ -577,8 +577,8 @@ const html = doc.render();</code></pre>
 const doc = page('Document styling');
 
 doc.cssVars({ brand: '#0099ff', text: '#111' });
-doc.globalStyle('body', { margin: 0, color: 'var(--text)' });
-doc.defineClass('badge', { padding: '2px 6px', borderRadius: '4px' });
+doc.globalCss('body', { margin: 0, color: 'var(--text)' });
+doc.sharedClass('badge', { padding: '2px 6px', borderRadius: '4px' });
 doc.sharedClass('pill', { display: 'inline-block' });
 doc.keyframes('fade', { from: { opacity: 0 }, to: { opacity: 1 } });
 doc.mediaQuery('(min-width: 768px)', { body: { fontSize: '18px' } });
@@ -587,7 +587,8 @@ doc.print({ nav: { display: 'none' } });
 
 doc.h1('Styled');
 const html = doc.render();</code></pre>
-        <p><code>defineClass()</code> and <code>sharedClass()</code> take a <strong>bare class name</strong>, not a selector — they add the leading dot themselves. A name that is not a valid CSS identifier is dropped rather than rewritten, because silently turning <code>.badge</code> into <code>badge</code> would invent a rule you did not write. In development the rejection is reported as <code>[defineClass] Ignored invalid CSS name</code>; production stays quiet. <code>globalStyle()</code> and <code>mediaQuery()</code> do take full selectors.</p>
+        <p><code>sharedClass()</code> takes a <strong>bare class name</strong>, not a selector — it adds the leading dot itself. A name that is not a valid CSS identifier is dropped rather than rewritten, because silently turning <code>.badge</code> into <code>badge</code> would invent a rule you did not write. In development the rejection is reported as <code>[sharedClass] Ignored invalid CSS name</code>; production stays quiet. <code>globalCss()</code> and <code>mediaQuery()</code> do take full selectors.</p>
+        <p><code>defineClass()</code> is deprecated: with no third argument it is <code>sharedClass()</code>, and with <code>true</code> it is <code>globalCss()</code>. Call the one you mean.</p>
       </section>
 
       <section id="tut-tree-operations" data-search="tutorial tree operations every element moved wrapped removed level nested const page require trebor buildhtml tree anchor before text string sibling escaped after wrapper wrap section returns">
@@ -838,6 +839,7 @@ doc.div().liveList('tasks', function (task) {
 const html = doc.render();</code></pre>
         <p>The list renders server-side too, so the first paint is complete HTML. <code>filter</code> and <code>sort</code> run on both sides; <code>filterKeys</code> lists the extra state keys that should trigger a re-render.</p>
         <p>A node definition supports <code>tag</code>, <code>text</code>, <code>html</code>, <code>id</code>, <code>class</code>, <code>style</code>, <code>attrs</code>, <code>data</code>, <code>aria</code>, <code>css</code>, <code>on</code>, <code>onMount</code>, and <code>children</code>.</p>
+        <p><code>css</code> and <code>style</code> mean the same here as on an element: <code>css</code> compiles to a <strong>scoped class</strong> shared by every row that uses the same declarations, and <code>style</code> becomes an inline <code>style</code> attribute. The class is computed identically on the server and in the browser, so a row keeps its class when the list re-renders; rules the browser mints during a rebuild are appended to a <code>&lt;style id=&quot;_bh-live-css&quot;&gt;</code> element.</p>
       </section>
 
       <section id="tut-views-and-routing" data-search="tutorial views and routing like pages where should change views const page require trebor buildhtml states activepage overview button attr data view reports section statekey default activeclass active">
@@ -1081,8 +1083,8 @@ card.create('custom-status').attr('role', 'status').text('Ready');</code></pre>
           <thead><tr><th>Call</th><th>Destination</th><th>Returns</th></tr></thead>
           <tbody>
             <tr><td><code>doc.create(tag)</code></td><td>Document body</td><td>Element</td></tr>
-            <tr><td><code>doc.createElement(tag)</code></td><td>Document body</td><td>Element</td></tr>
-            <tr><td><code>doc.child(tag)</code></td><td>Document body</td><td>Element</td></tr>
+            <tr><td><code>doc.createElement(tag)</code></td><td>Document body</td><td>Element — deprecated, use <code>doc.create(tag)</code></td></tr>
+            <tr><td><code>doc.child(tag)</code></td><td>Document body</td><td>Element — deprecated, use <code>doc.create(tag)</code></td></tr>
             <tr><td><code>element.create(tag)</code></td><td>Nested child</td><td>Element</td></tr>
             <tr><td><code>element.child(tag)</code></td><td>Nested child</td><td>Element</td></tr>
           </tbody>
@@ -1129,7 +1131,7 @@ if (!doc.head.hasStyles()) doc.head.addStyle('body{margin:0}');</code></pre>
             <tr><td><code>setCharset</code></td><td><code>charset</code></td><td>Sets the character encoding.</td></tr>
             <tr><td><code>setNonce</code></td><td><code>nonce</code></td><td>Sets the CSP nonce applied to generated style and script tags. <code>createCachedRenderer</code>'s <code>nonce</code> option calls this per response.</td></tr>
             <tr><td><code>addRawLink</code></td><td><code>html</code></td><td><strong>Raw HTML</strong> inserted into the head verbatim, for link tags the typed helpers cannot express. Trusted content only.</td></tr>
-            <tr><td><code>globalCss</code></td><td><code>selector, rules</code></td><td>Adds a global rule. The <code>Head</code>-level equivalent of <code>doc.globalStyle()</code>.</td></tr>
+            <tr><td><code>globalCss</code></td><td><code>selector, rules</code></td><td>Adds a global rule. The <code>Head</code>-level equivalent of <code>doc.globalCss()</code>.</td></tr>
             <tr><td><code>hasStyles</code></td><td>none</td><td>Returns <code>true</code> when the head holds any style content. Useful before adding a fallback stylesheet.</td></tr>
             <tr><td><code>addMeta</code>, <code>addLink</code>, <code>addStyle</code>, <code>addScript</code>, <code>addClass</code></td><td>see above</td><td>Same as the matching <code>doc.*</code> methods.</td></tr>
             <tr><td><code>render</code></td><td>none</td><td>Renders the head contents. Unlike <code>doc.render()</code>, this does <strong>not</strong> consume the document.</td></tr>
@@ -1142,7 +1144,7 @@ if (!doc.head.hasStyles()) doc.head.addStyle('body{margin:0}');</code></pre>
   .bodyCss({ backgroundColor: '#07111f' });
 
 doc.cssVars({ primary: '#56d6b3', radius: '8px' });
-doc.globalStyle('body', { fontFamily: 'system-ui' });
+doc.globalCss('body', { fontFamily: 'system-ui' });
 doc.sharedClass('card', { padding: '16px', borderRadius: '8px' });</code></pre>
         <p><code>render()</code> returns the complete HTML string. <code>renderStream()</code> returns a stream that renders on demand, so the head reaches the socket before the body is built and a slow consumer applies backpressure. Streaming applies no production minification and does not use the response cache, and scoped <code>&lt;style&gt;</code> follows the body because the head has already been sent. <code>clear()</code> resets body content and per-render state but intentionally keeps head configuration.</p>
       </section>
@@ -1592,12 +1594,12 @@ doc.historyRouter({
               <tr><td><code>render</code></td><td>No parameters → complete HTML string. <strong>Consumes the document</strong>: it clears the body and releases pooled elements, so call it once and build a fresh document per request.</td></tr>
               <tr><td><code>renderStream</code></td><td>No parameters → readable HTML stream.</td></tr>
               <tr><td><code>clear</code></td><td>Resets body, state, and per-render scripts; preserves head.</td></tr>
-              <tr><td><code>create</code>, <code>createElement</code>, <code>child</code></td><td><code>tag</code> → new body element.</td></tr>
+              <tr><td><code>create</code></td><td><code>tag</code> → new body element. <code>createElement</code> and <code>child</code> are deprecated aliases.</td></tr>
               <tr><td><code>title</code>, <code>charset</code>, <code>lang</code></td><td>String value.</td></tr>
               <tr><td><code>htmlAttr</code>, <code>bodyAttr</code></td><td><code>key, value</code>.</td></tr>
               <tr><td><code>bodyId</code>, <code>bodyClass</code>, <code>bodyCss</code></td><td>Id, class names, or rules.</td></tr>
-              <tr><td><code>globalStyle</code></td><td><code>selector, rules</code> — takes a full CSS selector.</td></tr>
-              <tr><td><code>defineClass</code>, <code>sharedClass</code></td><td><code>name, rules</code> — a <strong>bare class name</strong>, no leading dot. An invalid CSS identifier is dropped, not rewritten, and reported in development.</td></tr>
+              <tr><td><code>globalCss</code></td><td><code>selector, rules</code> — takes a full CSS selector. <code>globalStyle</code> is a deprecated alias.</td></tr>
+              <tr><td><code>sharedClass</code></td><td><code>name, rules</code> — a <strong>bare class name</strong>, no leading dot. An invalid CSS identifier is dropped, not rewritten, and reported in development. <code>defineClass</code> is a deprecated alias.</td></tr>
               <tr><td><code>keyframes</code></td><td><code>name, frames</code>.</td></tr>
               <tr><td><code>mediaQuery</code></td><td><code>query, selectorRules</code>.</td></tr>
               <tr><td><code>cssVar</code>, <code>cssVars</code></td><td><code>name, value</code> or variables object.</td></tr>

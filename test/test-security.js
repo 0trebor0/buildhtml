@@ -797,7 +797,8 @@ test('whitespace between inline elements is still collapsed, not deleted', () =>
  * so a future edit to one side without the other fails here.
  */
 test('the generated client runtime agrees with the server sanitizers', () => {
-  const { isValidAttrKey, sanitizeCssValue, sanitizeUrl } = require('../lib/utils');
+  const { isValidAttrKey, sanitizeUrl } = require('../lib/utils');
+  const { sanitizeCssValue } = require('../lib/css');
 
   const doc = new Document();
   doc.states({ items: [{ x: 1 }] });
@@ -811,8 +812,10 @@ test('the generated client runtime agrees with the server sanitizers', () => {
     return html.slice(a + startMarker.length, b);
   };
   const ak = new Function('k', between('function ak(k){', '}function uv('));
-  const uv = new Function('v', between('function uv(v){', '}function sv('));
-  const sv = new Function('v', between('function sv(v){', '}function mk('));
+  const uv = new Function('v', between('function uv(v){', '}function _bhHash('));
+  // The CSS value sanitiser is part of the shared client CSS runtime emitted
+  // from lib/css.js, which is also where the server implementation lives.
+  const sv = new Function('v', between('function _bhValue(v){', '}function _bhDecls('));
 
   const attrKeys = ['on-click', 'on-error', 'onclick', 'onClick', 'data-x', 'aria-label',
     'href', 'xlink:href', '1bad', 'a b', ''];

@@ -235,6 +235,96 @@ async function run() {
     assert.equal(await page.locator('#page-output').textContent(), 'home');
     assert.equal(await page.locator('#view-output').textContent(), 'done');
 
+    /* ---- CSS compilation, as the browser's own parser sees it ---- */
+
+    // Nothing a pseudo, media or nth-child argument contained may become an
+    // element, and no rule may escape its own selector.
+    assert.equal(await page.evaluate(() => window.__cssPwned === true), false,
+      'a CSS argument must not execute script');
+    assert.equal(
+      await page.evaluate(() => [...document.querySelectorAll('script')]
+        .filter(s => s.textContent.includes('__cssPwned')).length),
+      0, 'no script element was smuggled in through a stylesheet');
+    assert.equal(
+      await page.evaluate(() => [...document.querySelectorAll('style')]
+        .filter(s => s.textContent.includes('__cssPwned')).length),
+      0, 'the payload did not survive into a style element either');
+    assert.equal(
+      await page.locator('#css-canary').evaluate(el => getComputedStyle(el).display), 'block',
+      'a crafted nth-child argument must not write a rule that hides another element');
+
+    // Every stylesheet the page loaded must parse into rules; a rule the browser
+    // could not parse is a rule that was assembled wrong.
+    const styleSheetErrors = await page.evaluate(() => {
+      const problems = [];
+      for (const sheet of document.styleSheets) {
+        try {
+          for (const rule of sheet.cssRules) if (!rule.cssText) problems.push('empty rule');
+        } catch (error) { problems.push(error.message); }
+      }
+      return problems;
+    });
+    assert.deepEqual(styleSheetErrors, [], 'every emitted rule parses');
+
+    // The rejected rules must not have applied, and the legitimate ones must.
+    for (const id of ['css-pseudo-attack', 'css-media-attack', 'css-nth-attack']) {
+      assert.equal(await page.locator(`#${id}`).evaluate(el => getComputedStyle(el).color),
+        'rgb(0, 0, 0)', `${id} got no styling from a rejected rule`);
+    }
+    assert.equal(await page.locator('#css-nth-ok').evaluate(el => getComputedStyle(el).color),
+      'rgb(7, 8, 9)', 'a real :nth-child(odd) rule still applies');
+    await page.locator('#css-hover-ok').hover();
+    assert.equal(await page.locator('#css-hover-ok').evaluate(el => getComputedStyle(el).color),
+      'rgb(4, 5, 6)', 'a real :hover rule still applies');
+
+    // Canonical ordering, observed through the DOM: one class, one rule, both
+    // elements styled.
+    const orderClasses = await page.evaluate(() => [
+      document.getElementById('css-order-a').className,
+      document.getElementById('css-order-b').className,
+    ]);
+    assert.equal(orderClasses[0], orderClasses[1],
+      'declarations written in either order share one class');
+    assert.equal(await page.evaluate((cls) => {
+      let count = 0;
+      for (const sheet of document.styleSheets) {
+        for (const rule of sheet.cssRules) if (rule.selectorText === '.' + cls) count++;
+      }
+      return count;
+    }, orderClasses[0]), 1, 'the shared rule is in the stylesheet exactly once');
+
+    // liveList: `css` is a class and `style` is inline, before and after a
+    // client-side rebuild, and the class carries real computed styles.
+    const ssrRow = await page.evaluate(() => {
+      const row = document.querySelector('#css-list [data-row="1"]');
+      return { className: row.className, inline: row.getAttribute('style'), color: getComputedStyle(row).color };
+    });
+    assert.match(ssrRow.className, /^c[a-z0-9]+$/, 'a server-rendered row carries a scoped class');
+    assert.equal(ssrRow.color, 'rgb(13, 14, 15)', 'the class actually styles the row');
+    assert.match(ssrRow.inline, /font-style:\s*italic/, 'style stays inline');
+    assert.doesNotMatch(ssrRow.inline, /color/, 'css did not leak into the style attribute');
+
+    await page.locator('#add-css-row').click();
+    await page.waitForFunction(() => document.querySelectorAll('#css-list [data-row]').length === 2);
+    const rebuiltRows = await page.evaluate(() => (
+      [...document.querySelectorAll('#css-list [data-row]')].map(row => ({
+        className: row.className,
+        inline: row.getAttribute('style'),
+        color: getComputedStyle(row).color,
+        padding: getComputedStyle(row).paddingLeft,
+      }))
+    ));
+    assert.equal(rebuiltRows.length, 2, 'the list rebuilt');
+    assert.equal(rebuiltRows[0].className, ssrRow.className,
+      'a rebuilt row lands on the same class the server rendered');
+    assert.equal(rebuiltRows[1].className, ssrRow.className,
+      'a brand-new row lands on that same class too');
+    for (const row of rebuiltRows) {
+      assert.equal(row.color, 'rgb(13, 14, 15)', 'the client-minted rule reached the document');
+      assert.equal(row.padding, '2px', 'every declaration in the rule applies');
+      assert.match(row.inline, /font-style:\s*italic/, 'style is still inline after rebuild');
+    }
+
     await page.locator('#remove-lifecycle').click();
     await page.waitForFunction(() =>
       !document.getElementById('lifecycle-target') &&

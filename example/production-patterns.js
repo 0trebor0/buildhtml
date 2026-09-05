@@ -27,7 +27,7 @@ function personalizedCacheKey(request) {
 function buildNonceDocument() {
   const doc = page('CSP nonce integration');
   doc.states({ status: 'Protected browser behavior loaded' });
-  doc.globalStyle('main', { maxWidth: '640px', margin: '40px auto', fontFamily: 'system-ui, sans-serif' });
+  doc.globalCss('main', { maxWidth: '640px', margin: '40px auto', fontFamily: 'system-ui, sans-serif' });
   doc.main(main => {
     main.h1('CSP nonce integration');
     main.p().bind('status', value => value);

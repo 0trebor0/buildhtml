@@ -25,13 +25,13 @@ function buildAccountDocument({ values = {}, errors = {}, saved = false } = {}) 
     margin: '0', background: '#f4f7fb', color: '#172033',
     fontFamily: 'system-ui, sans-serif',
   });
-  doc.globalStyle('.account-shell', { maxWidth: '620px', margin: '48px auto', padding: '0 20px' });
-  doc.globalStyle('.account-card', { padding: '28px', border: '1px solid #dce2eb', borderRadius: '14px', background: '#fff' });
-  doc.globalStyle('.form-group', { display: 'grid', gap: '6px', marginTop: '18px' });
-  doc.globalStyle('.form-group input', { padding: '10px 12px', border: '1px solid #aeb8c7', borderRadius: '7px', font: 'inherit' });
-  doc.globalStyle('.field-error', { margin: '0', color: '#b42318', fontSize: '14px' });
-  doc.globalStyle('.success', { padding: '12px', borderRadius: '7px', background: '#e8f7ef', color: '#176b45' });
-  doc.globalStyle('button', { marginTop: '22px', padding: '11px 16px', border: '0', borderRadius: '7px', background: '#315efb', color: '#fff', font: 'inherit', cursor: 'pointer' });
+  doc.globalCss('.account-shell', { maxWidth: '620px', margin: '48px auto', padding: '0 20px' });
+  doc.globalCss('.account-card', { padding: '28px', border: '1px solid #dce2eb', borderRadius: '14px', background: '#fff' });
+  doc.globalCss('.form-group', { display: 'grid', gap: '6px', marginTop: '18px' });
+  doc.globalCss('.form-group input', { padding: '10px 12px', border: '1px solid #aeb8c7', borderRadius: '7px', font: 'inherit' });
+  doc.globalCss('.field-error', { margin: '0', color: '#b42318', fontSize: '14px' });
+  doc.globalCss('.success', { padding: '12px', borderRadius: '7px', background: '#e8f7ef', color: '#176b45' });
+  doc.globalCss('button', { marginTop: '22px', padding: '11px 16px', border: '0', borderRadius: '7px', background: '#315efb', color: '#fff', font: 'inherit', cursor: 'pointer' });
 
   doc.main((main) => {
     main.addClass('account-shell');

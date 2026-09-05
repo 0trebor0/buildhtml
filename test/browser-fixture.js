@@ -28,6 +28,7 @@ function buildPage() {
     onceCount: 0,
     repeatCount: 0,
     preventedCount: 0,
+    cssRows: [{ id: 1, label: 'First' }],
   });
 
   doc.div().id('portal-source').text('Portaled').portal('portal-target');
@@ -113,6 +114,41 @@ function buildPage() {
     if (target) target.remove();
   });
   doc.span().id('lifecycle-destroyed').bind('lifecycleDestroyed', value => String(value));
+
+  // ---- CSS compilation, in a real stylesheet parser ----
+  //
+  // A server-side assertion can only prove which characters were emitted. Whether
+  // the browser's CSS parser then reassembles them into a rule, a new element, or
+  // a selector that matches something it should not, is only observable here.
+  const CSS_BREAKOUT = '}</style><script>window.__cssPwned=true;</script><style>.x{';
+  doc.div().id('css-pseudo-attack').text('pseudo').pseudo(CSS_BREAKOUT, { color: 'rgb(1, 2, 3)' });
+  doc.div().id('css-media-attack').text('media').media(`screen{}${CSS_BREAKOUT}`, { color: 'rgb(1, 2, 3)' });
+  doc.div().id('css-nth-attack').text('nth')
+    .nthChild('1){} #css-canary{display:none} .x:nth-child(1', { color: 'rgb(1, 2, 3)' });
+  doc.div().id('css-canary').text('canary');
+
+  // A legitimate pseudo-class and media query must still compile and apply.
+  doc.div().id('css-hover-ok').text('hover').hover({ color: 'rgb(4, 5, 6)' });
+  doc.div().id('css-nth-ok').text('nth-ok').nthChild('odd', { color: 'rgb(7, 8, 9)' });
+
+  // Two elements whose declarations are written in different orders must land on
+  // one shared class, and the rule must reach the stylesheet exactly once.
+  doc.div().id('css-order-a').text('a').css({ color: 'rgb(10, 11, 12)', paddingTop: '3px' });
+  doc.div().id('css-order-b').text('b').css({ paddingTop: '3px', color: 'rgb(10, 11, 12)' });
+
+  // A liveList whose rows carry `css`: the class the server rendered and the
+  // class the client mints on rebuild must be the same, and it must actually
+  // style the row — which is only true if the client also inserted the rule.
+  doc.div().id('css-list').liveList('cssRows', item => ({
+    tag: 'span',
+    text: item.label,
+    attrs: { 'data-row': item.id },
+    css: { color: 'rgb(13, 14, 15)', paddingLeft: '2px' },
+    style: { fontStyle: 'italic' },
+  }));
+  doc.button('Add styled row').id('add-css-row').onClick(function () {
+    State.cssRows.push({ id: 2, label: 'Second' });
+  });
 
   doc.a('#done', 'Done route').id('done-route');
   doc.span().id('view-output').bind('view', value => value);

@@ -13,6 +13,90 @@ rather than complete records.
 
 ## [Unreleased]
 
+> **CSS foundations.** The CSS compiler is now a single module, `lib/css.js`, and
+> every emitter routes through it. `css: {}` means the same thing everywhere,
+> three element-level rule builders gained the validation their document-level
+> equivalents already had, identical rules are emitted once, and declaration
+> order no longer changes a generated class name.
+>
+> One behaviour changed on purpose: a `liveList` item's `css` object now compiles
+> to a scoped class instead of an inline `style` attribute. See "Changed" below.
+
+### Security
+
+- **`Element.pseudo()`, `Element.media()` and `Element.nthChild()` interpolated
+  their arguments into a stylesheet without validating them.** The pseudo name,
+  the media query and the `nth-child()` expression were written straight into the
+  rule being emitted, so an argument containing `}` closed the rule and one
+  containing `</style>` closed the element — `nthChild('1){} body{display:none} .x:nth-child(1', …)`
+  wrote a rule the caller never asked for, and a `</style><script>` argument
+  materialised a script element. The equivalent document-level APIs
+  (`Document.mediaQuery()`, `Head.globalCss()`) had always validated these; only
+  the element-level paths were unchecked. Pseudo selectors are now validated as
+  an identifier plus an optional argument drawn from selector punctuation, and
+  media queries reuse the existing at-rule check.
+
+- **`liveList` compiled declarations without validating property names.** The
+  server-side item renderer kebab-cased and sanitised each value by hand but
+  never checked the property name, the one part of a declaration that reaches the
+  output unfiltered elsewhere. It now uses the shared compiler, which drops an
+  invalid name rather than emitting it. The style attribute was HTML-escaped at
+  render, so this closed a gap in depth rather than a reachable injection.
+
+### Changed
+
+- **A `liveList` item's `css` object now compiles to a scoped class, not an
+  inline `style` attribute.** This was the largest inconsistency in the library:
+  the same `css: { color: 'red' }` produced a shared class on an element and a
+  repeated inline style on every row of a list, so a stylesheet override, a
+  `:hover` rule or a class-based test selector silently did not apply inside a
+  list. `style` is unchanged and remains the way to ask for an inline attribute.
+  The class is computed identically on both sides of the wire, so a row keeps its
+  class when the list re-renders; rules minted during a browser rebuild are
+  appended to a `<style id="_bh-live-css">` element.
+
+  Markup that relied on reading a row's inline `style` attribute must read the
+  class instead. Rendered appearance is unchanged.
+
+- **Identical CSS rules are emitted once.** Rules are held per element in a keyed
+  set rather than a concatenated string, so `el.css({color:'red'}).css({color:'red'})`
+  stores one rule, and a rule shared between `.css(A).hover(B)` and a plain
+  `.css(A)` element is emitted once rather than twice — the renderer previously
+  compared whole concatenations and could not see inside one. `element.cssText`
+  still reads and writes as the same string.
+
+- **Declaration order no longer changes a generated class name.**
+  `{ color, margin }` and `{ margin, color }` now compile to one rule and one
+  class. Ordering is canonical *between* property families and preserved *within*
+  one, so `{ marginTop, margin }` and `{ margin, marginTop }` stay distinct —
+  reordering those would invert which declaration wins the cascade.
+
+### Deprecated
+
+Each alias still behaves identically and warns once per name in development
+mode. All are scheduled for removal in the next major version.
+
+- `Document.globalStyle()` → `Document.globalCss()`
+- `Document.createElement()` and `Document.child()` → `Document.create()`
+  (`Element.child()` is unaffected)
+- `Document.defineClass()` → `Document.sharedClass()` for a class name, or
+  `Document.globalCss()` for a raw selector
+- `Element.attribute()` → `Element.attr()`
+
+### Internal
+
+- Added `lib/css.js` as the single source of truth for declaration compilation,
+  value sanitisation, selector and property validation, the scoped class hash,
+  rule de-duplication, and every rule shape — scoped, global, `@media` and
+  `@keyframes`. `Element`, `Document`, `Head`, `builder` and `live` all use it,
+  so `Document.mediaQuery()` and `Element.media()` now judge a query with the
+  same code instead of one validating and the other not. The CSS helpers
+  previously exported from `lib/utils.js` now live there.
+- The client-side CSS compiler emitted into `_mkEl` is generated from the same
+  module as the server implementation, and `test/test-css.js` asserts the two
+  mint byte-identical class names over a corpus — the same anti-drift approach
+  the URL and attribute-key guards already use.
+
 ## [2.0.2] - 2026-08-31
 
 > **Security release.** Fixes a set of injection defects across the render path —
