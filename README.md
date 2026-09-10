@@ -1014,6 +1014,54 @@ doc.darkMode({
 });
 ```
 
+### Nested blocks
+
+`css()` accepts nested blocks beside ordinary declarations:
+
+```javascript
+el.css({
+  color: 'red',
+  '&:hover': { color: 'blue' },
+  '& .child': { margin: '0' },
+  '&.active': { fontWeight: '700' },
+  '@media (min-width: 40em)': { padding: '8px' },
+});
+```
+
+A key beginning with `&` is a selector pattern in which `&` becomes the generated
+class. A key beginning with `@media`, `@supports` or `@container` wraps its block
+in that at-rule. Both flatten into separate rules — the same output `hover()` and
+`media()` produce — so the result parses everywhere rather than relying on native
+CSS nesting.
+
+Nesting works inside a `liveList` row too, and flattens identically on the server
+and in the browser.
+
+### Modern at-rules
+
+`@supports`, `@container` and `@layer` compile through the same validated path as
+`@media`, at both document and element level:
+
+```javascript
+// Feature queries
+doc.supports('(display: grid)', { '.layout': { display: 'grid' } });
+el.supports('(display: grid)', { display: 'grid' });
+
+// Container queries. The container itself is an ordinary declaration on an
+// ancestor; a query with no container simply never matches.
+doc.create('div').css({ containerType: 'inline-size' });
+doc.containerQuery('(min-width: 20em)', { '.card': { padding: '2rem' } });
+el.containerQuery('sidebar (min-width: 20em)', { padding: '2rem' });
+
+// Cascade layers. Declare the order first — earliest name is lowest priority.
+doc.layerOrder('reset', 'base', 'components', 'utilities');
+doc.layer('base', { body: { margin: '0' } });
+doc.layer('utilities');   // declaring an empty layer still fixes its position
+```
+
+`containerQuery()` is named that way on both `Document` and `Element` because
+`container()` is already a layout helper.
+
 Other helpers include keyframes, print rules, pseudo-elements, transitions, transforms, and element media queries.
 
 ## Security
@@ -1182,7 +1230,7 @@ CSS:
 
 ```text
 resetCss · globalCss · sharedClass
-cssVar · cssVars · keyframes · mediaQuery · darkMode · print
+cssVar · cssVars · keyframes · mediaQuery · supports · containerQuery · layer · layerOrder · darkMode · print
 ```
 
 Data and behavior:

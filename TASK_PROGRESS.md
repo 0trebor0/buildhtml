@@ -2360,3 +2360,254 @@ recorded here rather than changed silently.
   declarations, so a rule stays correct once inserted and a re-rendering list
   reuses what it already created; the stylesheet grows only with the number of
   *distinct* declaration sets a list produces.
+
+---
+
+# Task: Security review findings — Phases 1 to 4
+
+## Objective
+
+Fix or improve the findings from the senior-developer review of every file in
+the repository. The review's roadmap had five phases; phase 5 was new CSS
+features (`@supports`, `@container`, `@layer`, nesting), which the user had
+already deferred, so it is out of scope here. Phases 1 to 4 are all findings.
+
+## Status
+
+Complete. Every finding is fixed, improved, or explicitly recorded as declined
+below.
+
+## The pattern behind most of the findings
+
+Nearly every defect was the same shape: **a guard applied to one path but not
+its twin.** `Document.mediaQuery()` validated while `Element.media()` did not.
+`setAttrs()` refused `__proto__` while `attr()` did not. `bindProp()` refused
+`srcdoc` while `attr()` emitted it. `Element.style()` validated property names
+while the compiled `bindStyle()` did not. Fixing instances one at a time is what
+allowed the class to persist, so each fix below routes both twins through one
+implementation rather than adding a second copy of a check.
+
+## Findings and disposition
+
+| ID | Finding | Disposition |
+|----|---------|-------------|
+| H-1 | `srcdoc` emitted from every static attribute path; HTML-escaping is not a defence for it | Fixed — refused in `isValidAttrKey`, server and generated client |
+| M-2 | Callback denylist bypassable (`document["cookie"]`, `constructor.constructor`, …) | Improved — comment corrected, `fromJSON(def, { callbacks: false })` added, SECURITY.md states the boundary |
+| M-3 | Prototype-chain leakage into attributes, state and CSS via `for...in` | Fixed — `Object.keys()` throughout, plus `attr()` key guard |
+| M-4 | `bindStyle()` skipped name validation and value sanitisation | Fixed — shared applier generated from `lib/css.js` |
+| L-5 | 32-bit class hash collides at scale | Fixed — two FNV-1a lanes |
+| L-6 | `String(value)` coercion can throw out of `render()` | Declined — see below |
+| L-7 | Client stylesheet never shrinks | Declined — see below |
+| L-8 | Stack overflow at ~5,000 nesting depth | Improved — reported clearly, no cap imposed |
+| L-9 | `renderFile`/`compileFile` unguarded, path traversal invited | Fixed — guarded, documented |
+| L-10 | `Document.save()` unguarded | Fixed |
+| P-11 | No `devDependencies`, floating CI installs | Fixed — declared and pinned; lockfile left to the maintainer |
+| P-12 | Three test files never executed | Fixed — removed |
+| P-13 | SECURITY.md drift | Fixed |
+| — | Version | Bumped to 2.1.0 |
+
+## Verification
+
+Each fix was confirmed to fail before and pass after, in place, inside the
+repository — no external worktree, per the Repository / Working Directory Lock
+rule.
+
+```
+node --check lib/*.js test/*.js  -> every file parses
+node test/run-all.js             -> All 24 automated suites passed
+npm run test:browser             -> 4 Playwright suites passed
+tsc --noEmit                     -> exit 0
+node scripts/release-notes.js --dry-run -> extracts the 2.1.0 section (8851 bytes)
+```
+
+Measurements taken rather than assumed:
+
+- Callback denylist: 7 of 11 hostile payloads accepted, including
+  `({}).constructor.constructor("…")()`. Recorded as a test so the limitation
+  cannot quietly be forgotten again.
+- Class hash: the old single lane produced 4 collisions over 150,000 distinct
+  declaration blocks and 17 over 400,000, matching the birthday bound. The two
+  lanes produce none at 1,000,000.
+- Prototype pollution: verified end to end by polluting `Object.prototype` with
+  `data-evil`, `srcdoc` and `color`, then asserting none reaches markup,
+  serialised state, or a compiled rule.
+- ReDoS: the template attribute regex was tested to 4,000 characters of
+  pathological input and showed no backtracking blowup. **Not a finding** — the
+  alternation branches barely overlap. Recorded so it is not re-investigated.
+
+## Declined, with reasons
+
+- **L-6, `String(value)` coercion.** A CSS or attribute value whose `toString()`
+  throws propagates out of `render()`. The code is pre-existing and byte-identical
+  to 2.0.2, and fixing it means choosing a fallback — drop the declaration, or
+  substitute an empty value — which changes rendered output for a case nobody has
+  reported. Flagged for the maintainer rather than decided unilaterally.
+
+- **L-7, client stylesheet growth.** Rules minted during a browser rebuild
+  accumulate in `<style id="_bh-live-css">` and are never removed. A class name is
+  a pure function of its declarations, so a rule stays correct once inserted and a
+  re-rendering list reuses what it already created; the sheet grows only with the
+  number of *distinct* declaration sets. Bounded in practice, and eviction would
+  need reference counting that the current design has no place for.
+
+- **A depth cap in `renderNode()`.** `builder.js` declines one for a reason
+  recorded there: the real ceiling varies with platform, Node version and
+  `--stack-size`, so a fixed limit would refuse trees that render today. The
+  failure is now reported clearly instead of being prevented.
+
+- **Committing a lockfile.** `devDependencies` are declared and CI installs are
+  pinned, which addresses the floating-version half of P-11. Generating a
+  lockfile requires a network install and adds a large generated artefact to the
+  repository; that is the maintainer's call, and CI does not use `npm ci` today.
+
+- **`Head.render()` assembling `.name{…}` itself.** That is emission of
+  already-compiled, already-validated input. `Head` is the stylesheet writer, and
+  moving the concatenation into `lib/css.js` would split the writer across two
+  modules for no safety gain.
+
+- **`head.globalStyles` de-duplicating with `Array.includes()`** rather than a
+  `RuleSet`. It is a plain string array in the `toJSON()`/`fromJSON()` contract,
+  so changing its shape would be a serialisation change for no behavioural gain.
+
+## Breaking-change notes for the release
+
+- Generated scoped class names differ from 2.0.x (wider hash). Never stable API,
+  but a snapshot test asserting on one will need updating.
+- A `liveList` item's `css` object compiles to a class, not an inline style.
+  Rendered appearance is unchanged; code reading a row's inline `style` attribute
+  for a value that came from `css` must read the class instead.
+- `srcdoc` is now refused on the static attribute paths. Nothing in this
+  repository used it, and the README and type declarations already said it was
+  refused.
+
+## Files changed
+
+- Created: `lib/css.js`, `test/test-css.js`.
+- Removed: `test/test-xss-debug.js`, `test/test-server.js`, `test/example.js`.
+- Modified: `lib/utils.js`, `lib/element.js`, `lib/document.js`, `lib/renderer.js`,
+  `lib/live.js`, `lib/head.js`, `lib/builder.js`, `lib/pools.js`,
+  `lib/shortcuts.js`, `lib/template.js`, `lib/css.js`.
+- Modified: `test/test-security.js`, `test/test-bindings.js`, `test/test-template.js`,
+  `test/test-fuzz.js`, `test/test-browser.js`, `test/browser-fixture.js`,
+  `test/run-all.js`.
+- Modified: `package.json` (version 2.1.0, `devDependencies`),
+  `.github/workflows/ci.yml`, `.github/workflows/release.yml`, `.gitignore`.
+- Modified: `typescript/index.d.ts`, `README.md`, `docs/index.html`,
+  `SECURITY.md`, `CHANGELOG.md`, `example/*.js`.
+
+## Phase 5 — modern CSS features
+
+Added after phases 1 to 4, once the compiler was a single module and the at-rule
+shapes were centralised. `@supports`, `@container` and `@layer` needed no new
+validation and no second copy of anything: `compileScopedRule()` gained two
+options, and `compileMediaRule()` became a thin wrapper over a generic
+`compileConditionalRule()` that the three conditional at-rules share.
+
+- `Document.supports()` / `Element.supports()`
+- `Document.containerQuery()` / `Element.containerQuery()`
+- `Document.layer()`, `Document.layerOrder()`
+
+### Two problems the work surfaced
+
+**A silent API collision.** `container()` already exists on both prototypes as a
+layout helper, and `applyShortcuts()` runs *after* the class body — so defining
+`container()` as a query method did not raise an error, it was silently
+overwritten. The symptom was a rule reading `max-width:[object Object]`: the
+layout helper had received the selector-rules object as its `maxWidth` argument.
+Renamed to `containerQuery()` on both, with a test asserting the layout helper
+still behaves as before. Worth remembering that this prototype is open to silent
+replacement by any name `shortcuts.js` uses.
+
+**Three vacuous assertions.** Several tests asserted
+`!styleBlocks(html).includes('</style>')`, but `styleBlocks()` returns the
+matched `<style>…</style>` blocks *including* their closing tags, so the check
+could only ever pass when no style element existed at all — which was exactly the
+case in the rejected-payload tests that used it. Added `styleContents()`, which
+strips the wrappers, and moved all three assertions onto it. They now test what
+they claimed to.
+
+Also fixed: a NUL byte written into `lib/css.js` by an editing script, which made
+`grep` treat the file as binary. Removed; verified no other source file carries
+one. The three NUL bytes in `test/test-security.js` are deliberate
+control-character payloads and are present in the committed file.
+
+### Native CSS nesting — decision and implementation
+
+Flagged first as needing a decision, then decided and built. Two questions had to
+be answered:
+
+**Native nesting or flattening?** Flattening. `hover()`, `pseudo()` and `media()`
+already produce exactly these flattened rules, so nesting becomes a second
+spelling of something the library does rather than a second mechanism, and
+flattened output parses in every browser. `compileNestedRules()` splits a rules
+object into its own declarations and its nested blocks, and emits one rule each.
+
+**Does the client learn it too?** Yes, and this was not really optional. Leaving
+nesting server-only would mean a `liveList` row's `css` flattened one way during
+rendering and another during a browser rebuild — the exact inconsistency this
+compiler was written to remove. The client runtime therefore carries the same
+split, the same canonical ordering of nested keys, and the same hash input;
+`test-css.js` asserts class AND rule-text parity over an 11-case corpus that
+includes malformed and hostile keys.
+
+Two design points worth recording:
+
+- The class is derived from the declarations AND the nested blocks, so
+  `css({color:'red'})` and `css({color:'red','&:hover':{…}})` are different
+  classes. Sharing the base name would let the hover rule apply to elements that
+  asked only for the base declarations.
+- An object with no nested keys hashes to exactly what it hashed before nesting
+  existed. That is deliberate: the client computes `hash(declarations)` for a
+  flat object, and padding the hash input for the nested case would have broken
+  liveList parity silently. The same trap as the at-rule scope separator, caught
+  the same way — by the parity test.
+
+The client rule injector is now keyed by rule rather than by class, since one
+class can own several rules.
+
+### Verification
+
+```
+node test/run-all.js  -> All 24 suites passed (test-css.js now 135 assertions)
+npm run test:browser  -> 4 Playwright suites passed
+tsc --noEmit          -> exit 0
+```
+
+## Pre-completion audit
+
+A systematic pass over the finished diff, rather than trusting that each step had
+been clean. Three things it caught:
+
+- **Six unused exports on `lib/css.js`.** `clientCssValueSanitizerBody`,
+  `CSS_VALUE_STRIP_SOURCE`, `compileCssDeclarations`, `propertyFamily`,
+  `scopedClassName` and `isValidLayerName` are building blocks used only inside
+  the module. The export list of a file written in this task is that task's
+  authorship, so leaving them exported would be leaving unused symbols behind.
+  Removed from `module.exports`; all six are still defined and used internally.
+
+- **Two files whose line endings had been flipped** by editing scripts writing
+  `
+` into a repository configured for CRLF (`core.autocrlf=true`).
+  `test/test-security.js` (CRLF at HEAD) had become LF, turning a ~180-line
+  addition into a **2,303-line diff**; `CHANGELOG.md` (LF at HEAD) had become
+  CRLF. Both restored byte-wise, preserving the three deliberate NUL payloads in
+  the security tests. The whole diff went from 2,728/1,353 to 1,680/305.
+
+- **A pre-existing unused import**, `sanitizeFunctionSource` in
+  `lib/renderer.js`. Present at HEAD, unrelated to any finding, so it is reported
+  here rather than removed — "do not clean up unrelated code".
+
+Also verified: no dangling references to the three removed test files, every
+method the README and docs now promise exists and is callable, and the packaged
+tarball still contains 31 files with no dev dependency leaking in.
+
+## Final verification
+
+```
+node --check lib/*.js test/*.js  -> every file parses
+node test/run-all.js             -> All 24 suites passed
+npm run test:browser             -> 4 Playwright suites passed
+tsc --noEmit                     -> exit 0
+node scripts/release-notes.js --dry-run -> extracts the 2.1.0 section
+npm pack --dry-run               -> 31 files, zero runtime dependencies
+```

@@ -1,6 +1,6 @@
 {
   "name": "@trebor/buildhtml",
-  "version": "2.0.2",
+  "version": "2.1.0",
   "description": "Server-side HTML compiler for Node.js. Build pages with a JavaScript API while reactive state, events, and DOM bindings compile automatically.",
   "type": "commonjs",
   "main": "index.js",
@@ -56,6 +56,14 @@
     "test:types": "tsc --project typescript/tsconfig.json --noEmit",
     "benchmark": "node benchmark/render.js",
     "benchmark:size": "node benchmark/runtime-size.js"
+  },
+  "devDependencies": {
+    "playwright": "^1.62.1",
+    "preact": "^10.29.8",
+    "preact-render-to-string": "^6.7.0",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "typescript": "^5.9.3"
   },
   "repository": {
     "type": "git",

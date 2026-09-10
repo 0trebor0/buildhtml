@@ -1,6 +1,6 @@
-## Non-Negotiable Engineering Rules
+# Non-Negotiable Engineering Rules
 
-### Understand Before Changing
+## Understand Before Changing
 
 * Read all relevant files before making edits.
 * Inspect the existing implementation, tests, helpers, conventions, and surrounding code first.
@@ -9,7 +9,7 @@
 * If the task description conflicts with what the code actually does, flag the discrepancy before proceeding rather than assuming either is correct.
 * Check for related open branches, PRs, or in-progress work that might overlap before starting.
 
-### Keep the Scope Strict
+## Keep the Scope Strict
 
 * Make the smallest safe change that fully solves the problem.
 * Only edit files that are directly related to the task.
@@ -20,7 +20,20 @@
 * Prefer existing helpers and utilities over introducing new ones.
 * If strict scope conflicts with correctness (e.g. a correct fix requires touching a file outside the stated scope), stop and flag it rather than silently expanding scope or leaving the task half-fixed.
 
-### No Unrequested Additions
+## Repository / Working Directory Lock
+
+* The agent must remain in the repository and working directory where the task is being performed for the entire task.
+* Never leave, switch, or operate from another repository, project, workspace, or unrelated directory.
+* All file inspection, edits, tests, builds, git commands, and other task-related operations must be executed within the active working directory.
+* Do not search for or modify files outside the active working directory unless the task explicitly requires it and the user approves the scope expansion first.
+* Before performing any operation that depends on the current directory, verify that the agent is still operating inside the original working directory.
+* Do not automatically change to a parent directory, sibling directory, home directory, temporary directory, or another project.
+* Do not use files, configuration, dependencies, source code, or git repositories from outside the active working directory to influence the task.
+* If a command, tool, script, test runner, build system, or development environment attempts to operate outside the active working directory, stop and assess the situation before continuing.
+* If the working directory becomes unavailable, changes unexpectedly, or the agent would need to leave it to continue, stop and report the issue rather than switching directories automatically.
+* The original working directory is the task boundary unless the user explicitly approves expanding that boundary.
+
+## No Unrequested Additions
 
 * Do not add new methods, functions, classes, parameters, config options, or exported symbols unless the task explicitly requires them.
 * Before adding any new method or function, confirm either: (a) it is actually called somewhere as a result of this change, or (b) the task explicitly asked for a new public API. If neither is true, do not add it.
@@ -29,16 +42,16 @@
 * Do not leave in unused methods, variables, imports, or parameters introduced during the change.
 * If an addition beyond the stated scope seems genuinely necessary, stop and flag it for confirmation instead of adding it silently.
 
-### Error Handling Requirements
+## Error Handling Requirements
 
-* Every function created that performs an operation with an identifiable failure mode (I/O, network/API calls, parsing, external calls, file/db access, etc.) must include error handling for that failure path — do not leave a new function's error paths unhandled. Pure/trivial functions with no such operation are not required to add a catch.
+* Every function created that performs an operation with an identifiable failure mode (I/O, network/API calls, parsing, external calls, file/db access, etc.) must include error handling for that failure path — do not leave a new function's error paths unhandled.
 * Wrap operations that can fail (I/O, network or API calls, parsing, external/third-party calls, type coercion, file access, database queries) in a try/catch (or the language's equivalent) rather than letting exceptions propagate unhandled.
 * Catch specific, expected exception/error types where the language and libraries support it, rather than a bare/blanket catch-all, unless the project's existing conventions already use blanket catches.
 * On catching an error, handle it meaningfully — return or raise a clear error, log with enough context to diagnose, or propagate to an existing error-handling layer. Do not swallow errors silently (empty catch blocks).
 * Match the project's existing error-handling conventions (custom error classes, error codes, logging utilities) rather than introducing new ones.
 * This requirement applies only to newly created functions. It does not authorize adding error handling to unrelated, pre-existing functions outside the task's scope — see "No Unrequested Additions."
 
-### Every Change Must Be Justified
+## Every Change Must Be Justified
 
 * Every code change must have a clear, task-specific reason.
 * Do not add code for hypothetical future use.
@@ -47,7 +60,7 @@
 * Remove any proposed change that cannot be directly tied to a requirement, bug, test, or verified behavior.
 * Comments should explain why something is necessary, not restate what the code does. Do not strip out pre-existing comments that already follow this rule.
 
-### Syntax and Build Verification
+## Syntax and Build Verification
 
 * After every edit, the affected file(s) must be parsed, linted, or compiled before the change is considered complete — visual inspection of a diff is not sufficient.
 * Run the appropriate syntax/build check for the language and project (e.g. `node --check`, `python -m py_compile`, `tsc --noEmit`, `cargo check`, the project's configured lint/build command).
@@ -57,23 +70,23 @@
 * For structured data (JSON, YAML, function argument lists, object/array literals), explicitly verify commas, matching brackets, and correct nesting before finishing.
 * Do not mark a task complete if a syntax/build check was skipped or failed. Either fix the error or state plainly in the final response and in `TASK_PROGRESS.md` that verification could not be completed and why.
 
-### Dependencies and Sensitive Files
+## Dependencies and Sensitive Files
 
 * Do not add dependencies unless the task cannot be completed safely with the existing stack. If a new dependency seems necessary, stop and ask before adding it rather than deciding unilaterally.
 * Do not modify lockfiles unless dependencies were intentionally changed.
 * Do not edit secrets, `.env` files, tokens, keys, credentials, or generated sensitive values.
 * Preserve all existing authentication, authorization, validation, and security checks.
 
-### Public API and Compatibility
+## Public API and Compatibility
 
 * Do not change the signature, return type, or behavior of an existing public/exported function unless the task requires it.
 * If a change would break an existing caller, flag it explicitly rather than updating call sites silently.
 
-### Documentation Consistency
+## Documentation Consistency
 
 * If a change alters documented behavior, update the relevant README, docstring, or inline API doc in the same change — don't let `CHANGELOG.md` be the only place behavior changes are recorded.
 
-### Progress Tracking Is Required
+## Progress Tracking Is Required
 
 * Create a `TASK_PROGRESS.md` file in the repository root to keep track of where the task currently stands.
 * Record the task objective and current status.
@@ -87,7 +100,7 @@
 * Keep the file concise, factual, and up to date.
 * Do not include secrets, tokens, keys, credentials, or other sensitive values.
 
-### Changelog Is Required
+## Changelog Is Required
 
 * Create a `CHANGELOG.md` file in the repository root if one does not already exist.
 * Record completed changes that affect users, integrations, APIs, configuration, data formats, deployment, or documented behavior.
@@ -99,7 +112,7 @@
 * Update the changelog before completing any task that introduces a changelog-worthy change.
 * Do not rewrite or remove existing changelog history unless explicitly asked.
 
-### Testing Is Required
+## Testing Is Required
 
 * Identify the relevant test method before or while implementing the change. Confirm the project's actual test runner/command before assuming one (e.g. do not assume `npm test` or `pytest` without checking).
 * Add or update tests whenever behavior changes, a bug is fixed, or a new case is supported.
@@ -115,7 +128,7 @@
 * If tests cannot be run, clearly state what was not tested and why.
 * Do not claim that code works unless it was tested or the limitation is explicitly stated.
 
-### Git and Repository Safety
+## Git and Repository Safety
 
 * Do not commit unless explicitly asked. Leave changes staged or in the working tree, uncommitted, until asked to commit.
 * When a commit is made, always commit directly to the main branch — do not create or use feature branches, unless the user explicitly asks for a branch.
@@ -126,16 +139,16 @@
 * Respect `CODEOWNERS` or existing review-assignment conventions if present; don't reassign or bypass them.
 * Never add Co-Authored-By or any AI attribution lines.
 * Never add Claude attribution to PR descriptions.
-* Commit message format: [type]: [description]
+* Commit message format: `[type]: [description]`
 
-### Failure Handling
+## Failure Handling
 
 * If a change breaks existing behavior or tests mid-task, stop and assess before proceeding further — do not layer additional changes on top of a known-broken state.
 * Prefer fixing forward when the cause is understood and the fix is within scope; revert the specific change when the cause is unclear or the fix would expand scope.
 * If the task's instructions and this rule set conflict (e.g. user explicitly asks to skip tests or commit directly), state the conflict and ask for confirmation rather than silently picking one side.
 * Record the failure, its cause (if known), and the resolution in `TASK_PROGRESS.md`.
 
-### Pre-Completion Checklist
+## Pre-Completion Checklist
 
 Before finalizing any change, confirm all of the following:
 
@@ -147,10 +160,10 @@ Before finalizing any change, confirm all of the following:
 * [ ] No new dependencies were added without flagging them first
 * [ ] No public API signature or behavior was changed without being required by the task
 * [ ] Relevant documentation was updated if documented behavior changed
-* [ ] Tests were run and results recorded, including actual command output
+* [ ] Tests were run and results recorded, including syntax/build verification
 * [ ] `TASK_PROGRESS.md` and `CHANGELOG.md` (if applicable) are up to date
 
-### Final Response Requirements
+## Final Response Requirements
 
 The final response must include:
 

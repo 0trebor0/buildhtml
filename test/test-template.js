@@ -566,6 +566,51 @@ test('Malformed template lines warn in development', () => {
   }
 });
 
+/* ---- File reading errors ---- */
+
+test('a missing template file reports the path and the reason', () => {
+  const { renderFile, compileFile } = require('..');
+  for (const [name, fn] of [['renderFile', renderFile], ['compileFile', compileFile]]) {
+    let error = null;
+    try { fn('./definitely-not-here.bhtml'); } catch (e) { error = e; }
+    assert(error !== null, `${name} throws for a missing file`);
+    assert(error.message.includes('definitely-not-here.bhtml'), `${name} names the path`);
+    assert(error.message.includes('buildhtml'), `${name} names the library`);
+    assert(error.code === 'ENOENT', `${name} preserves the underlying code`);
+    assert(error.cause && error.cause.code === 'ENOENT', `${name} keeps the original error as cause`);
+  }
+});
+
+test('a non-string template path is refused before touching the filesystem', () => {
+  const { renderFile } = require('..');
+  for (const bad of [null, undefined, 42, {}]) {
+    let error = null;
+    try { renderFile(bad); } catch (e) { error = e; }
+    assert(error instanceof TypeError, `renderFile(${JSON.stringify(bad) || String(bad)}) raises a TypeError`);
+  }
+});
+
+test('templateEngine reports a missing file through its callback, not a throw', () => {
+  const { templateEngine } = require('..');
+  let received = 'not called';
+  templateEngine('./definitely-not-here.bhtml', {}, (err, html) => { received = err || html; });
+  assert(received instanceof Error, 'the callback receives the error');
+  assert(received.message.includes('definitely-not-here.bhtml'), 'the message names the path');
+});
+
+test('save() reports an unwritable path with context', () => {
+  const { Document } = require('..');
+  const doc = new Document();
+  doc.create('p').text('x');
+  let error = null;
+  // A directory that does not exist — the write fails, the render does not.
+  try { doc.save('./no-such-directory-here/page.html'); } catch (e) { error = e; }
+  assert(error !== null, 'the failed write throws');
+  assert(error.message.includes('no-such-directory-here'), 'the message names the path');
+  assert(error.message.includes('[Document]'), 'the message names the caller');
+  assert(error.cause && error.cause.code === 'ENOENT', 'the original error is kept as cause');
+});
+
 /* ---- Summary ---- */
 console.log(`\n${'='.repeat(40)}`);
 console.log(`Results: ${passed} passed, ${failed} failed`);

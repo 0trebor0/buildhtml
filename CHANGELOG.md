@@ -13,35 +13,115 @@ rather than complete records.
 
 ## [Unreleased]
 
-> **CSS foundations.** The CSS compiler is now a single module, `lib/css.js`, and
-> every emitter routes through it. `css: {}` means the same thing everywhere,
-> three element-level rule builders gained the validation their document-level
-> equivalents already had, identical rules are emitted once, and declaration
-> order no longer changes a generated class name.
+## [2.1.0] - 2026-09-10
+
+> **Security hardening and CSS foundations.** Adds a markup-sink guard for
+> `srcdoc`, closes prototype-chain leakage into rendered output, brings the
+> reactive `bindStyle` path under the same CSS guards as its server twin, and
+> gives `fromJSON()` a mode that drops callbacks instead of screening them. The
+> CSS compiler is now a single module, `lib/css.js`, and every emitter routes
+> through it.
 >
-> One behaviour changed on purpose: a `liveList` item's `css` object now compiles
-> to a scoped class instead of an inline `style` attribute. See "Changed" below.
+> Two things change on purpose: a `liveList` item's `css` object now compiles to
+> a scoped class instead of an inline `style` attribute, and generated class
+> names differ from 2.0.x. See "Changed" below.
 
 ### Security
 
+- **`srcdoc` was emitted from every static attribute path.** `attr()`,
+  `setAttrs()`, builder `attrs`, template attributes and reactive list rows all
+  wrote it out HTML-escaped — and escaping is what *delivers* a payload for this
+  attribute, because the browser entity-decodes the value and then parses it as
+  an HTML document, so `&lt;script&gt;` becomes a live script inside the frame.
+  `bindProp()` had always refused it as a markup sink, and both the README and
+  the type declarations stated it was refused; only the static paths never
+  enforced it. Now refused everywhere, server and client. Raw markup keeps its
+  documented homes: `appendUnsafe()`, `raw()` and the builder `html` field.
+
+- **A polluted `Object.prototype` leaked into rendered output.** The library
+  iterated caller-supplied objects with `for...in`, which walks the prototype
+  chain, so a single pollution from *any* package in the process was rendered as
+  an attribute on every element, copied into serialised client state, and
+  compiled into every CSS rule — `srcdoc`, `style` and `src` included. Every such
+  loop now uses `Object.keys()`. `attr()` additionally refuses `__proto__`,
+  `constructor` and `prototype`, which `setAttrs()` already did:
+  `attr('__proto__', {…})` previously replaced the attribute bag's prototype and
+  rendered every enumerable property on it.
+
+- **`bindStyle()` skipped the guards its server twin applies.** The compiled
+  binding ran a raw property-assignment loop — no property-name validation, no
+  value sanitisation, and a prototype-chain walk — while `Element.style()` did
+  all three. It now routes through a shared applier generated from `lib/css.js`,
+  which also closes the `cssText` escape that let a binding replace an element's
+  whole declaration block.
+
 - **`Element.pseudo()`, `Element.media()` and `Element.nthChild()` interpolated
-  their arguments into a stylesheet without validating them.** The pseudo name,
-  the media query and the `nth-child()` expression were written straight into the
-  rule being emitted, so an argument containing `}` closed the rule and one
-  containing `</style>` closed the element — `nthChild('1){} body{display:none} .x:nth-child(1', …)`
-  wrote a rule the caller never asked for, and a `</style><script>` argument
-  materialised a script element. The equivalent document-level APIs
-  (`Document.mediaQuery()`, `Head.globalCss()`) had always validated these; only
-  the element-level paths were unchecked. Pseudo selectors are now validated as
-  an identifier plus an optional argument drawn from selector punctuation, and
-  media queries reuse the existing at-rule check.
+  their arguments into a stylesheet without validating them.** An argument
+  containing a closing brace ended the rule and one containing `</style>` closed
+  the element, so a crafted `nth-child` expression wrote a rule the caller never
+  asked for. The document-level equivalents had always validated; only the
+  element-level paths were unchecked.
 
 - **`liveList` compiled declarations without validating property names.** The
-  server-side item renderer kebab-cased and sanitised each value by hand but
-  never checked the property name, the one part of a declaration that reaches the
-  output unfiltered elsewhere. It now uses the shared compiler, which drops an
-  invalid name rather than emitting it. The style attribute was HTML-escaped at
-  render, so this closed a gap in depth rather than a reachable injection.
+  style attribute was HTML-escaped at render, so this closed a gap in depth
+  rather than a reachable injection.
+
+### Added
+
+- **Nested blocks in `css()`**, at element level and inside a `liveList` row:
+
+  ```javascript
+  el.css({
+    color: 'red',
+    '&:hover': { color: 'blue' },
+    '& .child': { margin: '0' },
+    '@media (min-width: 40em)': { padding: '8px' },
+  });
+  ```
+
+  A key beginning with `&` is a selector pattern in which `&` becomes the
+  generated class; a key beginning with `@media`, `@supports` or `@container`
+  wraps its block in that at-rule. Both **flatten into separate rules** rather
+  than emitting native CSS nesting — that is the same output `hover()` and
+  `media()` already produce, and it parses in every browser.
+
+  Adding a nested block changes the class, because the class is derived from the
+  whole rule set; sharing the base name would let a hover rule apply to elements
+  that asked only for the base declarations. An object with no nested keys hashes
+  exactly as it did before, so existing class names are unaffected.
+
+  The client runtime understands nesting too. A `liveList` row using `&:hover`
+  flattens identically on both sides — `css` means one thing in this library, and
+  a row that flattened differently from its server rendering would recreate the
+  inconsistency the compiler exists to prevent.
+
+- **`@supports`, `@container` and `@layer`**, at both document and element level:
+
+  - `doc.supports(condition, selectorRules)` / `el.supports(condition, rules)`
+  - `doc.containerQuery(query, selectorRules)` / `el.containerQuery(query, rules)`
+  - `doc.layer(name, selectorRules?)` — an empty layer still compiles to
+    `@layer name{}`, because declaring the name is what fixes its cascade position
+  - `doc.layerOrder(...names)` — accepts varargs or an array, and never sorts
+
+  All three route through the same compiler and the same prelude validation as
+  `@media`, so a condition cannot be safe at one level and unsafe at the other.
+  The container itself is an ordinary `container-type` declaration on an
+  ancestor; a query with no container never matches.
+
+  Named `containerQuery`, not `container`, on both prototypes: `container()` is
+  an existing layout helper, and because `applyShortcuts()` runs after the class
+  body, the clash would not have raised an error — it would have silently
+  replaced the query method.
+
+- **`fromJSON(def, { callbacks: false })`** drops every callback-bearing field —
+  `events`, `stateBindings`, `computed`, `lifecycle`, `liveList`, `on`, `bind`,
+  `onMount`, `onUpdate`, `onDestroy`, `setup` and `oncreateCallbacks` — instead
+  of screening them, while still restoring markup, text, attributes, classes and
+  CSS. Restoring callbacks from a payload you did not produce is equivalent to
+  running its JavaScript in your page: the screening in `builder.js` catches
+  malformed source, not hostile source, and a denylist cannot be made to. The
+  code comment that claimed otherwise has been corrected, and SECURITY.md now
+  states the boundary explicitly.
 
 ### Changed
 
@@ -71,6 +151,33 @@ rather than complete records.
   one, so `{ marginTop, margin }` and `{ margin, marginTop }` stay distinct —
   reordering those would invert which declaration wins the cascade.
 
+- **The scoped class hash is now two FNV-1a lanes instead of one.** The single
+  32-bit lane collided at the rate the birthday bound predicts — 4 collisions
+  over 150,000 distinct declaration blocks, 17 over 400,000 — and a collision
+  here is two different rules sharing a class name, which renders as silently
+  wrong styling with nothing to log. Class names gain six characters; there are
+  no collisions at 1,000,000 rules. **Generated class names differ from 2.0.x.**
+  They were never stable API, but a snapshot test asserting on one needs updating.
+
+- **A tree too deep to render now reports why.** `renderNode()` recursion
+  exhausting the stack surfaced as a bare "Maximum call stack size exceeded"
+  from library internals; it now names the cause and states that the document is
+  left intact for inspection. No depth cap is imposed — the real ceiling varies
+  with platform, Node version and `--stack-size`.
+
+- `Document.save()`, `renderFile()` and `compileFile()` report a failed read or
+  write with the path, the library name, and the original error as `cause`.
+  They previously propagated a bare `ENOENT` with nothing naming the caller.
+  `renderFile()` and `compileFile()` also refuse a non-string path before
+  touching the filesystem.
+
+### Removed
+
+- Three test files that no test script ever executed: `test/test-xss-debug.js`
+  (a console-only script with no assertions, named as though it were a security
+  test), `test/test-server.js`, and `test/example.js`. The behaviour they printed
+  is asserted by `test.js`, `test-fuzz.js` and `test-security.js`.
+
 ### Deprecated
 
 Each alias still behaves identically and warns once per name in development
@@ -96,6 +203,12 @@ mode. All are scheduled for removal in the next major version.
   module as the server implementation, and `test/test-css.js` asserts the two
   mint byte-identical class names over a corpus — the same anti-drift approach
   the URL and attribute-key guards already use.
+- `devDependencies` are declared for the first time. `playwright`, `typescript`,
+  `react`, `react-dom`, `preact` and `preact-render-to-string` were already
+  required by `test:browser`, `test:types` and `benchmark`; only the declaration
+  is new, and none of them is a runtime dependency — the published package still
+  has zero. CI installs are pinned to exact versions rather than floating majors,
+  and the publish job continues to install none of them.
 
 ## [2.0.2] - 2026-08-31
 
@@ -772,7 +885,8 @@ Client runtime security fixes and the fetch example.
 
 Initial public releases.
 
-[Unreleased]: https://github.com/0trebor0/buildhtml/compare/v2.0.2...HEAD
+[Unreleased]: https://github.com/0trebor0/buildhtml/compare/v2.1.0...HEAD
+[2.1.0]: https://github.com/0trebor0/buildhtml/compare/v2.0.2...v2.1.0
 [2.0.2]: https://github.com/0trebor0/buildhtml/compare/v2.0.1...v2.0.2
 [2.0.1]: https://github.com/0trebor0/buildhtml/compare/v2.0.0...v2.0.1
 [2.0.0]: https://github.com/0trebor0/buildhtml/compare/v1.2.5...v2.0.0

@@ -12,8 +12,5 @@ npm-debug.log*
 RELEASE_NOTES.md
 *.tgz
 
-# Written by test/example.js on every run
-test/output.html
-
 # Local scratch
 .baseline/

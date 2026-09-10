@@ -20,6 +20,16 @@ export declare function configure(overrides: Partial<ConfigOptions>): Required<C
 
 export type CSSRules = Record<string, string | number>;
 
+/**
+ * A rules object that may carry nested blocks beside ordinary declarations.
+ *
+ * A key beginning with `&` is a selector pattern — `&:hover`, `& .child`,
+ * `&.active` — in which `&` is replaced by the generated class. A key beginning
+ * with `@media`, `@supports` or `@container` wraps its block in that at-rule.
+ * Both flatten into separate rules; nothing emits native CSS nesting.
+ */
+export type NestedCSSRules = Record<string, string | number | CSSRules>;
+
 export interface TransitionOptions {
   property?: string;
   duration?: string;
@@ -443,7 +453,16 @@ export declare class Element<S extends StateShape = StateShape> implements Share
   draggable(v?: boolean): this;
 
   // CSS / Classes
-  css(rules: CSSRules): this;
+  /**
+   * Scoped CSS. Accepts nested blocks beside ordinary declarations:
+   * `'&:hover'`, `'& .child'`, `'&.active'`, and `'@media …'` /
+   * `'@supports …'` / `'@container …'`.
+   *
+   * Nested blocks flatten into separate rules sharing this element's generated
+   * class — the same output `hover()` and `media()` produce — so the result
+   * parses everywhere rather than relying on native CSS nesting.
+   */
+  css(rules: NestedCSSRules): this;
   style(prop: CSSRules): this;
   style(prop: string, value: string | number): this;
   addClass(...names: string[]): this;
@@ -470,6 +489,16 @@ export declare class Element<S extends StateShape = StateShape> implements Share
   nthChild(n: string | number, rules: CSSRules): this;
   pseudo(which: 'before' | 'after' | string, rules: CSSRules): this;
   media(query: string, rules: CSSRules): this;
+  /** `@supports` block scoped to this element. */
+  supports(condition: string, rules: CSSRules): this;
+  /**
+   * `@container` block scoped to this element. Named `containerQuery` because
+   * `container()` is the layout helper.
+   *
+   * The container itself is an ordinary `container-type` declaration on an
+   * ancestor; a query with no container never matches.
+   */
+  containerQuery(query: string, rules: CSSRules): this;
   transition(props: string | TransitionOptions): this;
   transform(value: string): this;
   animate(keyframeName: string, options?: {
@@ -881,6 +910,21 @@ export declare class Document<S extends StateShape = StateShape> implements Shar
   // CSS features
   keyframes(name: string, frames: Record<string, CSSRules>): this;
   mediaQuery(query: string, selectorRules: Record<string, CSSRules>): this;
+  /** `@supports` block: rules that apply only where a feature is supported. */
+  supports(condition: string, selectorRules: Record<string, CSSRules>): this;
+  /**
+   * `@container` block: rules that apply by the size of a containing element.
+   * Named `containerQuery` because `container()` is the layout helper.
+   */
+  containerQuery(query: string, selectorRules: Record<string, CSSRules>): this;
+  /**
+   * `@layer` block. Declaring a layer with no rules is meaningful — it fixes the
+   * name's position in the cascade — so `layer('base')` emits `@layer base{}`.
+   */
+  layer(name: string, selectorRules?: Record<string, CSSRules>): this;
+  /** `@layer a, b, c;` — fixes layer precedence, earliest name lowest. */
+  layerOrder(...names: string[]): this;
+  layerOrder(names: string[]): this;
   cssVar(name: string, value: string | number): this;
   cssVars(obj: Record<string, string | number>): this;
   darkMode(selectorRules: Record<string, CSSRules>): this;
@@ -957,7 +1001,18 @@ export declare class Document<S extends StateShape = StateShape> implements Shar
   validate(): ValidationResult;
 
   // JSON import / export
-  fromJSON(def: PageDef): this;
+  /**
+   * Restore a document from a plain definition.
+   *
+   * Pass `{ callbacks: false }` for a payload you did not produce: it DROPS every
+   * callback-bearing field (`events`, `stateBindings`, `computed`, `lifecycle`,
+   * `liveList`, `on`, `bind`, `onMount`, `onUpdate`, `onDestroy`, `setup` and
+   * `oncreateCallbacks`) rather than screening them. Restoring callbacks from
+   * untrusted JSON is equivalent to running that JSON's JavaScript in your page;
+   * the screening catches malformed source, not hostile source. Markup, text,
+   * attributes, classes and CSS still restore.
+   */
+  fromJSON(def: PageDef, options?: { callbacks?: boolean }): this;
   toJSON(): object;
 
   // Rendering

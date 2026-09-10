@@ -19,7 +19,7 @@ const assert_ = require('assert');
 const vm = require('vm');
 const { Document, configure, CONFIG } = require('../index');
 const {
-  compileScopedRule, compileDeclarationText, canonicalizeDeclarations,
+  compileScopedRule, compileNestedRules, compileDeclarationText, canonicalizeDeclarations,
   isSafePseudoSelector, isSafeMediaQuery, RuleSet, clientCssRuntimeSource,
 } = require('../lib/css');
 const { MK_EL_SRC } = require('../lib/live');
@@ -40,6 +40,20 @@ function test(name, fn) {
 /** The rule text of a rendered document, with the head's own <style> excluded. */
 function styleBlocks(html) {
   return (html.match(/<style[^>]*>[\s\S]*?<\/style>/g) || []).join('');
+}
+
+/**
+ * The CONTENTS of every <style> element, without the wrapper tags.
+ *
+ * Asserting "no </style> escaped" against styleBlocks() is vacuous — the wrapper
+ * it returns always ends in one — and it passed only because the rejected-payload
+ * tests emit no style element at all. Checking the contents is what actually
+ * proves nothing closed the element early.
+ */
+function styleContents(html) {
+  return (html.match(/<style[^>]*>([\s\S]*?)<\/style>/g) || [])
+    .map(block => block.replace(/^<style[^>]*>/, '').replace(/<\/style>$/, ''))
+    .join('');
 }
 
 function classesUsed(html) {
@@ -152,7 +166,7 @@ test('pseudo() refuses a pseudo-element name that is really markup', () => {
   doc.create('div').pseudo(CSS_BREAKOUT, { color: 'red' });
   const html = doc.render();
   assert(!html.includes('<script>alert(1)'), 'no script element materialises');
-  assert(!styleBlocks(html).includes('</style>'), 'the style block is not closed early');
+  assert(!styleContents(html).includes('</style>'), 'the style block is not closed early');
 });
 
 test('pseudo() refuses an argument on a pseudo-element', () => {
@@ -166,7 +180,7 @@ test('media() validates its query the way Document.mediaQuery() always has', () 
   doc.create('div').media(`screen{}${CSS_BREAKOUT}`, { color: 'red' });
   const html = doc.render();
   assert(!html.includes('<script>alert(1)'), 'no script element materialises');
-  assert(!styleBlocks(html).includes('</style>'), 'the style block is not closed early');
+  assert(!styleContents(html).includes('</style>'), 'the style block is not closed early');
   assert(!isSafeMediaQuery('x{}</style>'), 'the query check rejects block punctuation');
   assert(isSafeMediaQuery('(min-width: 40em) and (orientation: landscape)'),
     'a real query is accepted');
@@ -239,6 +253,190 @@ test('a global rule is compiled by the same code as a scoped one', () => {
   const rejected = new Document();
   rejected.globalCss(CSS_BREAKOUT, { color: 'red' });
   assert(!rejected.render().includes('<script>alert(1)'), 'an unsafe selector is refused');
+});
+
+/* ============================================================
+   NESTING
+   ============================================================ */
+
+test('nested blocks flatten into rules sharing one class', () => {
+  const doc = new Document();
+  doc.create('div').css({
+    color: 'red',
+    '&:hover': { color: 'blue' },
+    '& .child': { margin: '0' },
+    '&.active': { fontWeight: '700' },
+    '@media (min-width: 40em)': { padding: '8px' },
+    '@supports (display: grid)': { display: 'grid' },
+  });
+  const html = doc.render();
+  const style = styleBlocks(html);
+  const cls = [...classesUsed(html)][0];
+  assert(classesUsed(html).size === 1, 'one class covers the whole block');
+  assert(style.includes(`.${cls}{color:red;}`), 'own declarations compile');
+  assert(style.includes(`.${cls}:hover{color:blue;}`), '&:hover flattens');
+  assert(style.includes(`.${cls} .child{margin:0;}`), '& .child flattens to a descendant rule');
+  assert(style.includes(`.${cls}.active{font-weight:700;}`), '&.active flattens');
+  assert(style.includes(`@media (min-width: 40em){.${cls}{padding:8px;}}`), 'a nested @media wraps');
+  assert(style.includes(`@supports (display: grid){.${cls}{display:grid;}}`), 'a nested @supports wraps');
+  assert(!style.includes('&'), 'no native nesting syntax reaches the output');
+});
+
+test('an object with no nested keys hashes exactly as it did before nesting', () => {
+  // The client runtime computes hash(declarations) for a flat object, so padding
+  // the hash input for the nested case would have broken liveList parity.
+  const flat = compileScopedRule({ color: 'red' });
+  const viaNested = compileNestedRules({ color: 'red' });
+  assert(flat.className === viaNested.className, 'both compilers agree on a flat object');
+});
+
+test('nested key order does not change the class', () => {
+  const a = compileNestedRules({ '&:focus': { outline: 'none' }, '&:hover': { color: 'blue' } });
+  const b = compileNestedRules({ '&:hover': { color: 'blue' }, '&:focus': { outline: 'none' } });
+  assert(a.className === b.className, 'nested keys are canonically ordered');
+});
+
+test('adding a nested block changes the class', () => {
+  // Sharing the base name would let the hover rule apply to elements that only
+  // asked for the base declarations.
+  const plain = compileNestedRules({ color: 'red' });
+  const withHover = compileNestedRules({ color: 'red', '&:hover': { color: 'blue' } });
+  assert(plain.className !== withHover.className, 'the two rule sets are different classes');
+});
+
+test('a malformed or hostile nested key is dropped, not guessed at', () => {
+  const doc = new Document();
+  doc.create('div').css({
+    color: 'red',
+    '&:hover': 'not-an-object',
+    [`&${CSS_BREAKOUT}`]: { color: 'blue' },
+    [`@media ${CSS_BREAKOUT}`]: { color: 'blue' },
+    '@unknown (x)': { color: 'blue' },
+    '@media': { color: 'blue' },
+  });
+  const html = doc.render();
+  assert(!html.includes('<script>alert(1)'), 'no nested key materialises a script');
+  assert(!styleContents(html).includes('</style>'), 'no nested key closes the style element');
+  assert(!styleBlocks(html).includes('@unknown'), 'an unknown at-rule is refused');
+  assert(styleBlocks(html).includes('color:red;'), 'the valid declarations still compile');
+});
+
+test('nesting works inside a liveList row, and matches the element path', () => {
+  const doc = new Document();
+  doc.states({ rows: [{ t: 'a' }] });
+  doc.create('span').css({ color: 'red', '&:hover': { color: 'blue' } });
+  doc.div().liveList('rows', item => ({
+    tag: 'span', text: item.t, css: { color: 'red', '&:hover': { color: 'blue' } },
+  }));
+  const html = doc.render();
+  assert(classesUsed(html).size === 1, 'the element and the row land on one class');
+  const style = styleBlocks(html);
+  assert((style.match(/:hover\{color:blue;\}/g) || []).length === 1, 'the hover rule is emitted once');
+});
+
+test('the client runtime flattens nesting exactly as the server does', () => {
+  const corpus = [
+    { color: 'red' },
+    { color: 'red', '&:hover': { color: 'blue' } },
+    { '&:hover': { color: 'blue' } },
+    { color: 'red', '& .child': { margin: '0' }, '&.active': { fontWeight: '700' } },
+    { color: 'red', '@media (min-width: 40em)': { padding: '8px' } },
+    { color: 'red', '@supports (display: grid)': { display: 'grid' } },
+    { '&:focus': { outline: 'none' }, '&:hover': { color: 'blue' } },
+    { '&:hover': { color: 'blue' }, '&:focus': { outline: 'none' } },
+    { color: 'red', '&:hover': 'not-an-object' },
+    { color: 'red', '&}</style><script>x': { color: 'blue' } },
+    { color: 'red', '@media x{}</style>': { color: 'blue' } },
+  ];
+  for (const rules of corpus) {
+    const server = compileNestedRules(rules, { prefix: 'c' });
+    const client = clientClassFor(rules);
+    const label = JSON.stringify(rules).slice(0, 46);
+    assert((server ? server.className : '') === client.className, `class parity for ${label}`);
+    const serverRules = (server ? server.rules.map(r => r[1]) : []).slice().sort();
+    const clientRules = client.inserted.slice().sort();
+    assert(JSON.stringify(serverRules) === JSON.stringify(clientRules), `rule parity for ${label}`);
+  }
+});
+
+/* ============================================================
+   MODERN AT-RULES
+   ============================================================ */
+
+test('@supports compiles at both document and element level', () => {
+  const doc = new Document();
+  doc.supports('(display: grid)', { '.layout': { display: 'grid' } });
+  doc.create('div').supports('(display: grid)', { display: 'grid' });
+  const style = styleBlocks(doc.render());
+  assert(style.includes('@supports (display: grid){.layout{display:grid;}}'),
+    'the document-level rule compiles');
+  assert(/@supports \(display: grid\)\{\.s[a-z0-9]+\{display:grid;\}\}/.test(style),
+    'the element-level rule compiles to a scoped class');
+});
+
+test('@container compiles, and does not collide with the layout helper', () => {
+  const doc = new Document();
+  doc.containerQuery('card (min-width: 20em)', { '.c': { padding: '2rem' } });
+  doc.create('div').css({ containerType: 'inline-size' })
+    .containerQuery('(min-width: 20em)', { padding: '2rem' });
+  // container() is a pre-existing layout helper on both prototypes; the query
+  // API had to take a different name or applyShortcuts() would have silently
+  // replaced it.
+  doc.container(c => c.text('layout'), '60rem');
+  const html = doc.render();
+  const style = styleBlocks(html);
+  assert(style.includes('@container card (min-width: 20em){.c{padding:2rem;}}'),
+    'a named container query compiles');
+  assert(/@container \(min-width: 20em\)\{\.q[a-z0-9]+\{padding:2rem;\}\}/.test(style),
+    'an element-level container query compiles');
+  assert(html.includes('layout') && /max-width:60rem/.test(style),
+    'the layout helper still behaves as before');
+});
+
+test('@layer emits ordering and blocks, including an empty one', () => {
+  const doc = new Document();
+  doc.layerOrder('reset', 'base', 'components');
+  doc.layer('base', { body: { margin: '0' } });
+  doc.layer('components');
+  const style = styleBlocks(doc.render());
+  assert(style.includes('@layer reset,base,components;'), 'the order statement is emitted verbatim');
+  assert(style.includes('@layer base{body{margin:0;}}'), 'a layer with rules compiles');
+  assert(style.includes('@layer components{}'),
+    'an empty layer still compiles — declaring the name is what fixes its position');
+});
+
+test('layerOrder accepts an array as well as varargs, and preserves order', () => {
+  const spread = new Document();
+  spread.layerOrder('a', 'b', 'c');
+  const array = new Document();
+  array.layerOrder(['a', 'b', 'c']);
+  assert(styleBlocks(spread.render()) === styleBlocks(array.render()), 'both forms agree');
+  const reversed = new Document();
+  reversed.layerOrder('c', 'b', 'a');
+  assert(styleBlocks(reversed.render()).includes('@layer c,b,a;'), 'order is never sorted');
+});
+
+test('every at-rule prelude is validated by the same check', () => {
+  const doc = new Document();
+  doc.supports(`(x)${CSS_BREAKOUT}`, { '.a': { color: 'red' } });
+  doc.containerQuery(`(x)${CSS_BREAKOUT}`, { '.a': { color: 'red' } });
+  doc.layer('bad name}</style><script>alert(1)</script>', { '.a': { color: 'red' } });
+  doc.layerOrder('ok', 'bad}</style>');
+  doc.create('div').supports(`(x)${CSS_BREAKOUT}`, { color: 'red' });
+  doc.create('div').containerQuery(`(x)${CSS_BREAKOUT}`, { color: 'red' });
+  const html = doc.render();
+  assert(!html.includes('<script>alert(1)'), 'no at-rule prelude can materialise a script');
+  assert(!styleContents(html).includes('</style>'), 'no at-rule prelude closes the style element');
+  assert(styleBlocks(html).includes('@layer ok;'), 'the valid layer name in the order survives');
+});
+
+test('the same declarations under different conditions are different classes', () => {
+  const doc = new Document();
+  const a = doc.create('div').supports('(display: grid)', { color: 'red' });
+  const b = doc.create('div').media('(min-width: 40em)', { color: 'red' });
+  const c = doc.create('div').css({ color: 'red' });
+  const classes = new Set([...a._classes, ...b._classes, ...c._classes]);
+  assert(classes.size === 3, `three distinct classes (got ${classes.size})`);
 });
 
 /* ============================================================

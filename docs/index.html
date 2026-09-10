@@ -402,6 +402,7 @@ doc.div()
 const html = doc.render();</code></pre>
         <div class="callout warning"><p><strong><code>toggleClass(condition, name)</code> takes the condition first.</strong> Calling <code>toggleClass('is-active', true)</code> applies nothing at all, silently.</p></div>
         <p><code>css()</code> takes a style object and produces a <strong>scoped class</strong>, not an inline style. Identical rules are emitted once and shared:</p>
+        <p>It also accepts <strong>nested blocks</strong>: a key beginning with <code>&amp;</code> is a selector pattern in which <code>&amp;</code> becomes the generated class (<code>&amp;:hover</code>, <code>&amp; .child</code>, <code>&amp;.active</code>), and a key beginning with <code>@media</code>, <code>@supports</code> or <code>@container</code> wraps its block in that at-rule. Both flatten into separate rules rather than emitting native CSS nesting, so the output parses everywhere. Adding a nested block changes the generated class, because the class covers the whole rule set.</p>
         <pre><code>const { page } = require('@trebor/buildhtml');
 
 const doc = page('Scoped CSS');
@@ -1602,6 +1603,10 @@ doc.historyRouter({
               <tr><td><code>sharedClass</code></td><td><code>name, rules</code> — a <strong>bare class name</strong>, no leading dot. An invalid CSS identifier is dropped, not rewritten, and reported in development. <code>defineClass</code> is a deprecated alias.</td></tr>
               <tr><td><code>keyframes</code></td><td><code>name, frames</code>.</td></tr>
               <tr><td><code>mediaQuery</code></td><td><code>query, selectorRules</code>.</td></tr>
+              <tr><td><code>supports</code></td><td><code>condition, selectorRules</code> — <code>@supports</code> feature query.</td></tr>
+              <tr><td><code>containerQuery</code></td><td><code>query, selectorRules</code> — <code>@container</code>. Named to avoid the <code>container()</code> layout helper.</td></tr>
+              <tr><td><code>layer</code></td><td><code>name, selectorRules?</code> — <code>@layer</code>. An empty layer still fixes the name's cascade position.</td></tr>
+              <tr><td><code>layerOrder</code></td><td><code>...names</code> — <code>@layer a, b, c;</code>. Order is preserved exactly.</td></tr>
               <tr><td><code>cssVar</code>, <code>cssVars</code></td><td><code>name, value</code> or variables object.</td></tr>
               <tr><td><code>darkMode</code>, <code>print</code></td><td>Selector-to-rules object.</td></tr>
               <tr><td><code>state</code>, <code>states</code></td><td><code>key, value</code> or state object.</td></tr>

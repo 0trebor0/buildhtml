@@ -33,7 +33,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 24
-      - run: npm install --no-save --package-lock=false typescript@5 playwright@1
+      # Pinned exactly — see the note in ci.yml. The publish job below installs
+      # none of this and is the only job that can see NPM_TOKEN.
+      - run: npm install --no-save --package-lock=false typescript@5.9.3 playwright@1.62.1
       - run: npm run test:types
       - run: npx playwright install --with-deps chromium
       - run: npm run test:browser

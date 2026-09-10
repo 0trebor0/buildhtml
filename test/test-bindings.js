@@ -87,7 +87,11 @@ test('bindStyle — applies style object', () => {
   doc.states({ progress: 50 });
   doc.div().bindStyle('progress', val => ({ width: val + '%' }));
   const html = doc.render();
-  assert(html.includes('el.style['), 'compiled style loop');
+  // Asserts the compiled call, not a raw property assignment: bindStyle now
+  // routes through the shared applier so it validates property names and
+  // sanitises values the way the server's style() does.
+  assert(html.includes('_bhStyle(el,'), 'compiled style binding calls the applier');
+  assert(html.includes('function _bhStyle('), 'the applier is defined on the page');
   assert(html.includes('"progress"'), 'watchState for progress');
 });
 
@@ -151,7 +155,7 @@ test('doc.build() bind type: style', () => {
   doc.states({ width: 80 });
   doc.build({ tag: 'div', bind: { key: 'width', type: 'style', fn: val => ({ width: val + '%' }) } });
   const html = doc.render();
-  assert(html.includes('el.style['), 'build() dispatched to bindStyle');
+  assert(html.includes('_bhStyle(el,'), 'build() dispatched to bindStyle');
 });
 
 test('doc.build() bind type: prop', () => {

@@ -4,7 +4,8 @@
 
 | Version | Supported |
 | ------- | --------- |
-| 2.0.0   | Yes       |
+| 2.1.x   | Yes       |
+| 2.0.x   | Yes       |
 | < 2.0.0 | No        |
 
 Fixes land on the latest minor release. Please upgrade before reporting an issue
@@ -37,7 +38,10 @@ would rather not be named.
 ## What is in scope
 
 This library's job is to render untrusted data into HTML safely. The security
-boundary is `lib/utils.js`, and the following are the guarantees worth testing:
+boundary is `lib/utils.js` (escaping, URLs, attribute keys, callback screening,
+JSON and JS embedding) and `lib/css.js` (every stylesheet byte: declaration
+compilation, selector and property validation, the scoped class hash). The
+following are the guarantees worth testing:
 
 - **HTML escaping** — text and attribute values cannot introduce markup or close
   the attribute they sit in.
@@ -48,10 +52,24 @@ boundary is `lib/utils.js`, and the following are the guarantees worth testing:
   escape a `<style>` element, or reach `expression()` / `url(javascript:)`.
 - **Attribute keys** — inline event handler attributes (`onclick`, and the
   camelCase form `onClick` that kebab-cases to `on-click`) are never emitted.
-  Events compile to `addEventListener` instead.
-- **Callback serialisation** — handler source is captured at registration and
-  screened for dangerous patterns. Serialised context is JSON-encoded so it cannot
-  break out of the compiled script.
+  Events compile to `addEventListener` instead. `srcdoc` is refused on every
+  path: its value is parsed as an HTML document, so escaping would deliver a
+  payload rather than defuse it.
+
+- **Prototype chains** — a polluted `Object.prototype`, from this library or any
+  other package in the process, cannot introduce an attribute, a state key, or a
+  CSS declaration into rendered output.
+- **Callback serialisation** — handler source is captured at registration, so a
+  later `toString()` override cannot change what is emitted, and it must parse as
+  JavaScript. Serialised context is JSON-encoded so it cannot break out of the
+  compiled script.
+
+  The pattern screening alongside those checks is a **denylist, not a sandbox**.
+  It rejects malformed source and the obvious spellings of a few dangerous calls;
+  it does not stop `document["cookie"]`, `window["ev"+"al"]`, or
+  `({}).constructor.constructor(...)`, and no denylist can. A report that a
+  screened callback still does something dangerous is therefore **not** a
+  vulnerability — see the note on `fromJSON()` below.
 - **JSON and JS embedding** — `<` and the U+2028/U+2029 separators are escaped so
   embedded data cannot close a `<script>` element.
 
@@ -66,6 +84,14 @@ A report that shows any of these failing is a vulnerability.
 - Application-level issues in your own callbacks. Serialised callbacks run in the
   browser with full page privileges; the library screens for known-dangerous
   patterns but does not sandbox your code.
+
+- **`fromJSON()` on a payload you did not produce, restored with callbacks
+  enabled.** Restoring `events`, `stateBindings`, `computed`, `lifecycle` or
+  `liveList` from untrusted JSON is equivalent to running that JSON's JavaScript
+  in your page. Use `fromJSON(def, { callbacks: false })`, which drops every
+  callback-bearing field instead of screening it and still restores markup, text,
+  attributes, classes and CSS. Use `trustedCss: true` only for snapshots you
+  produced yourself.
 - Content Security Policy configuration. The library supports nonces
   (`new Document({ nonce })`); choosing and enforcing a policy is yours.
 - Denial of service from deliberately enormous documents.

@@ -1038,6 +1038,213 @@ test('the generated client-side attribute check agrees with the server', () => {
 });
 
 /* ==================================================================== */
+/* Markup-sink attributes and prototype-chain leakage                   */
+/* ==================================================================== */
+
+test('srcdoc is refused on every static attribute path', () => {
+  // srcdoc is the one attribute whose value the browser parses as an HTML
+  // DOCUMENT, so escaping is what delivers the payload rather than what stops
+  // it: the parser entity-decodes first. bindProp() always refused it and both
+  // the README and the .d.ts said it was refused; the static paths did not.
+  const payload = '<script>alert(1)</' + 'script>';
+
+  const viaAttr = new Document();
+  viaAttr.create('iframe').attr('srcdoc', payload);
+  assert(!/srcdoc=/i.test(viaAttr.render()), 'attr() refuses srcdoc');
+
+  const viaSetAttrs = new Document();
+  viaSetAttrs.create('iframe').setAttrs({ srcdoc: payload });
+  assert(!/srcdoc=/i.test(viaSetAttrs.render()), 'setAttrs() refuses srcdoc');
+
+  const viaBuilder = new Document();
+  viaBuilder.build({ tag: 'iframe', attrs: { srcdoc: payload } });
+  assert(!/srcdoc=/i.test(viaBuilder.render()), 'builder attrs refuse srcdoc');
+
+  const viaList = new Document();
+  viaList.states({ rows: [{ id: 1 }] });
+  viaList.div().liveList('rows', () => ({ tag: 'iframe', attrs: { srcdoc: payload } }));
+  assert(!/srcdoc=/i.test(viaList.render()), 'a liveList row refuses srcdoc');
+
+  const { clientAttrKeyValidatorBody } = require('../lib/utils');
+  const clientCheck = new Function('k', clientAttrKeyValidatorBody('k'));
+  assert(clientCheck('srcdoc') === false, 'the client rebuild refuses it too');
+});
+
+test('attr() cannot replace the prototype of the attribute bag', () => {
+  // setAttrs() has always refused these three; attr() did not, so
+  // attr('__proto__', {...}) swapped the prototype and every enumerable
+  // property on it was then rendered as an attribute.
+  const doc = new Document();
+  const el = doc.create('div');
+  el.attr('__proto__', { injected: 'yes' });
+  el.attr('constructor', 'x');
+  el.attr('prototype', 'x');
+  assert(Object.getPrototypeOf(el.attrs) === Object.prototype, 'prototype is untouched');
+  const html = doc.render();
+  assert(!html.includes('injected'), 'nothing inherited is rendered');
+  assert(html.includes('<div>'), 'the element renders with no attributes at all');
+});
+
+test('a polluted Object.prototype cannot leak into rendered output', () => {
+  // The library used for...in throughout, which walks the prototype chain — so a
+  // single pollution from ANY package in the process was rendered as an
+  // attribute on every element, serialised into client state, and compiled into
+  // every CSS rule. Object.keys() is own-enumerable by definition.
+  Object.prototype['data-evil'] = 'yes';
+  Object.prototype.srcdoc = 'BAD';
+  Object.prototype.color = 'red';
+  let html;
+  try {
+    const doc = new Document();
+    doc.create('div').text('x').css({ padding: '1px' });
+    doc.states({ rows: [{ label: 'a' }] });
+    doc.div().liveList('rows', item => ({ tag: 'span', text: item.label }));
+    doc.ogTags({ title: 'T' });
+    doc.meta('description', 'd');
+    doc.bodyAttr('id', 'b');
+    html = doc.render();
+  } finally {
+    delete Object.prototype['data-evil'];
+    delete Object.prototype.srcdoc;
+    delete Object.prototype.color;
+  }
+  assert(!html.includes('data-evil'), 'no inherited attribute is rendered');
+  assert(!html.includes('BAD'), 'no inherited srcdoc reaches the page');
+  assert(!/color:red/.test(html), 'no inherited CSS declaration is compiled');
+});
+
+test('bindStyle validates property names and sanitises values like style()', () => {
+  // The compiled binding did `for (var k in obj) el.style[k] = obj[k]` — no name
+  // validation, no value sanitisation, and a prototype-chain walk — while the
+  // server's style() did all three.
+  const doc = new Document();
+  doc.states({ width: 50 });
+  doc.div().bindStyle('width', value => ({ width: value + '%' }));
+  const html = doc.render();
+  assert(html.includes('function _bhStyle('), 'the shared applier is emitted');
+  assert(html.includes('_bhStyle(el,'), 'the binding calls it');
+  assert(!html.includes('el.style[_k]'), 'the raw assignment loop is gone');
+
+  // Exercise the emitted applier against a stub element.
+  const source = html.slice(html.indexOf('function _bhSKebab('));
+  const body = source.slice(0, source.indexOf('var initBindings'));
+  const applier = new Function(body + '; return _bhStyle;')();
+  const set = {};
+  const el = { style: { setProperty(k, v) { set[k] = v; } } };
+  applier(el, { fontSize: '12px', 'bad;name': 'x', cssText: 'color:red', '--brand': '#fff' });
+  assert(set['font-size'] === '12px', 'a valid property is kebab-cased and applied');
+  assert(set['--brand'] === '#fff', 'a custom property keeps its name');
+  assert(!('bad;name' in set), 'an invalid property name is dropped');
+  assert(set['css-text'] === 'color:red' && !('cssText' in set),
+    'cssText can no longer replace the whole declaration block');
+});
+
+/* ==================================================================== */
+/* fromJSON({ callbacks: false }) — the only boundary that holds        */
+/* ==================================================================== */
+
+test('the callback screening is a denylist, and is documented as one', () => {
+  // Stated as a test so the limitation cannot quietly be forgotten again: these
+  // all PASS screening. They are not vulnerabilities in themselves — an author's
+  // own callbacks already run with page privileges — but they are why restoring
+  // untrusted JSON needs { callbacks: false } rather than trust in this screen.
+  const { sanitizeFunctionSourceString } = require('../lib/utils');
+  const bypasses = [
+    'function(){ return document["cookie"]; }',
+    'function(){ this["inner"+"HTML"] = "x"; }',
+    'function(){ window["ev"+"al"]("x"); }',
+    'function(){ ({}).constructor.constructor("x")(); }',
+  ];
+  const accepted = bypasses.filter(src => {
+    try { sanitizeFunctionSourceString(src, 10000); return true; } catch { return false; }
+  });
+  assert(accepted.length === bypasses.length,
+    'the denylist does not claim to stop these — bracket access and constructor.constructor pass');
+
+  // What it DOES stop is malformed source, which is the useful half.
+  let rejected = false;
+  try { sanitizeFunctionSourceString('function(){ this is not javascript', 10000); }
+  catch { rejected = true; }
+  assert(rejected, 'source that does not parse is still refused');
+});
+
+test('fromJSON({ callbacks: false }) drops every executable field', () => {
+  const hostile = {
+    title: 'Restored',
+    globalState: { k: 1 },
+    oncreateCallbacks: ['function(){ window["ev"+"al"]("PAYLOAD_E"); }'],
+    body: [{
+      tag: 'div', id: 'x', text: 'visible text', class: 'keep',
+      css: { color: 'red' }, attrs: { 'data-keep': '1' },
+      events: [{ event: 'click', id: 'x', fn: 'function(){ ({}).constructor.constructor("PAYLOAD_A")(); }' }],
+      stateBindings: [{ stateKey: 'k', id: 'x', bindType: 'text', templateFn: 'function(v){ return "PAYLOAD_B"; }' }],
+      computed: 'function(){ return "PAYLOAD_C"; }',
+      lifecycle: [{ type: 'mount', fn: 'function(){ return "PAYLOAD_D"; }' }],
+    }],
+  };
+
+  const { result: html } = quiet(() => new Document().fromJSON(hostile, { callbacks: false }).render());
+  const leaked = ['PAYLOAD_A', 'PAYLOAD_B', 'PAYLOAD_C', 'PAYLOAD_D', 'PAYLOAD_E'].filter(p => html.includes(p));
+  assert(leaked.length === 0, `no callback source reaches the page (leaked: ${leaked.join(', ') || 'none'})`);
+  assert(!html.includes('addEventListener("click"'), 'no handler is registered');
+  assert(!html.includes('watchState('), 'no binding is registered');
+
+  // Everything non-executable still restores — the mode is a filter, not a refusal.
+  assert(html.includes('visible text'), 'text restores');
+  assert(html.includes('data-keep="1"'), 'attributes restore');
+  assert(html.includes('class="keep'), 'classes restore');
+  assert(/color:red/.test(html), 'compiled CSS restores');
+});
+
+test('the default fromJSON still restores callbacks', () => {
+  const doc = new Document();
+  doc.state('clicks', 0);
+  doc.create('button').text('Go').on('click', (event, State) => { State.clicks += 1; });
+  const restored = new Document().fromJSON(doc.toJSON()).render();
+  assert(restored.includes('addEventListener("click"'), 'unchanged without the option');
+});
+
+test('a nested node cannot re-enable callbacks from inside the payload', () => {
+  // Same rule as trustedCss: the decision is made once, at the top.
+  const payload = {
+    body: [{ tag: 'div', children: [{
+      tag: 'span', id: 'deep', callbacks: true,
+      events: [{ event: 'click', id: 'deep', fn: 'function(){ return "PAYLOAD_F"; }' }],
+    }] }],
+  };
+  const { result: html } = quiet(() => new Document().fromJSON(payload, { callbacks: false }).render());
+  assert(!html.includes('PAYLOAD_F'), 'a nested opt-in is ignored');
+});
+
+/* ==================================================================== */
+/* Resource limits and failure modes                                    */
+/* ==================================================================== */
+
+test('a tree too deep to render reports why, and leaves the document intact', () => {
+  const doc = new Document();
+  let el = doc.create('div');
+  for (let i = 0; i < 20000; i++) el = el.child('div');
+  let error = null;
+  try { doc.render(); } catch (e) { error = e; }
+  assert(error instanceof RangeError, 'a depth failure is still a RangeError');
+  assert(error.message.includes('[Document]'), 'the message names the library');
+  assert(error.message.includes('nested too deeply'), 'the message names the cause');
+  assert(error.cause instanceof RangeError, 'the original stack error is kept as cause');
+  assert(doc.body.length > 0, 'the document is not cleared, so it can be inspected');
+});
+
+test('the scoped class hash resists collision at scale', () => {
+  // A collision is two different rules sharing one class name — silently wrong
+  // styling with nothing to log. The single 32-bit lane this replaced produced
+  // 4 collisions over 150,000 distinct declaration blocks.
+  const { hash } = require('../lib/utils');
+  const seen = new Set();
+  const total = 150000;
+  for (let i = 0; i < total; i++) seen.add(hash('p' + i + ':v' + (i * 7919) + ';'));
+  assert(seen.size === total, `no collisions over ${total} distinct rules (got ${total - seen.size})`);
+});
+
+/* ==================================================================== */
 
 (async () => {
   for (const run of pending) await run();

@@ -30,7 +30,10 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 24
-      - run: npm install --no-save --package-lock=false typescript@5
+      # Pinned exactly, not to a floating major: this installs into the same job
+      # that runs the checks, so a compromised release of either tool would run
+      # with the workflow's permissions. The versions match devDependencies.
+      - run: npm install --no-save --package-lock=false typescript@5.9.3
       - run: npm run test:types
 
   browser:
@@ -41,7 +44,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 24
-      - run: npm install --no-save --package-lock=false playwright@1
+      - run: npm install --no-save --package-lock=false playwright@1.62.1
       - run: npx playwright install --with-deps chromium
       - run: npm run test:browser
       - run: npm pack --dry-run
