@@ -17,15 +17,17 @@ npm test
 ```
 
 There is nothing to install for the unit tests — they use only the Node standard
-library.
+library. The type and browser checks need the tooling in `devDependencies`
+(TypeScript, Playwright), which a plain `npm install` provides; none of it is a
+runtime dependency, and the published package still has zero.
 
 ## Running the checks
 
 | Command | What it covers |
 | --- | --- |
 | `npm test` | All unit suites, including property-based fuzz tests |
-| `npm run test:types` | Type declarations (needs `npm i --no-save typescript@5`) |
-| `npm run test:browser` | Real Chromium (needs `npm i --no-save playwright@1 && npx playwright install chromium`) |
+| `npm run test:types` | Type declarations |
+| `npm run test:browser` | Real Chromium (needs `npx playwright install chromium` once) |
 | `npm run benchmark` | Render throughput and output size |
 | `npm run benchmark:size` | Client JavaScript compiled per feature |
 

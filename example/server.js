@@ -1,6 +1,7 @@
 // Unlike the other examples, this one needs Express. buildhtml has no runtime
-// dependencies and no devDependencies, so Express is not installed for you —
-// a bare MODULE_NOT_FOUND stack here tells a contributor nothing useful.
+// dependencies, and Express is not among the devDependencies either, so it is
+// not installed for you — a bare MODULE_NOT_FOUND stack here tells a
+// contributor nothing useful.
 let express;
 try {
   express = require('express');
