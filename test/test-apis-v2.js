@@ -561,8 +561,8 @@ test('Full integration with all new APIs', () => {
   doc.template('badge', (d, { label }) => {
     d.create('span').addClass('badge').text(label)
       .transition({ duration: '0.2s' })
-      .cursor('pointer')
-      .opacity(0.9);
+      .style('cursor', 'pointer')
+      .style('opacity', 0.9);
   });
 
   // Each + when

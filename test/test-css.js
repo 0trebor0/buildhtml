@@ -570,6 +570,54 @@ test('the emitted _mkEl runtime carries the shared CSS compiler', () => {
 });
 
 /* ============================================================
+   API SURFACE — one primitive instead of one method per case
+   ============================================================ */
+
+test('pseudoClass() reaches states the named helpers never covered', () => {
+  const doc = new Document();
+  doc.create('div')
+    .pseudoClass('focus-visible', { outline: '2px solid' })
+    .pseudoClass('nth-of-type(2n+1)', { background: '#eee' })
+    .pseudoClass('not(.disabled)', { cursor: 'pointer' });
+  const style = styleBlocks(doc.render());
+  assert(/:focus-visible\{outline:2px solid;\}/.test(style), ':focus-visible compiles');
+  assert(/:nth-of-type\(2n\+1\)\{background:#eee;\}/.test(style), ':nth-of-type() compiles');
+  assert(/:not\(\.disabled\)\{cursor:pointer;\}/.test(style), ':not() compiles');
+});
+
+test('pseudoClass() is validated exactly as the named helpers are', () => {
+  const viaPrimitive = new Document();
+  viaPrimitive.create('div').pseudoClass(CSS_BREAKOUT, { color: 'red' });
+  assert(!viaPrimitive.render().includes('<script>alert(1)'), 'the primitive refuses a hostile name');
+
+  // The named helper and the primitive must produce the same rule for the same
+  // input — they are one implementation, not two.
+  const viaHelper = new Document();
+  viaHelper.create('div').hover({ color: 'blue' });
+  const viaName = new Document();
+  viaName.create('div').pseudoClass('hover', { color: 'blue' });
+  assert(styleBlocks(viaHelper.render()) === styleBlocks(viaName.render()),
+    'hover() and pseudoClass("hover") compile identically');
+});
+
+test('the deprecated style aliases still behave as style() does', () => {
+  const viaAlias = new Document();
+  viaAlias.create('div').opacity(0.5).zIndex(100).cursor('pointer')
+    .overflow('hidden').display('flex').position('absolute');
+  const viaStyle = new Document();
+  viaStyle.create('div').style('opacity', '0.5').style('z-index', '100')
+    .style('cursor', 'pointer').style('overflow', 'hidden')
+    .style('display', 'flex').style('position', 'absolute');
+  assert(viaAlias.render() === viaStyle.render(), 'identical output from both spellings');
+});
+
+test('renderJSON is an exact alias of renderFromJSON', () => {
+  const { renderJSON, renderFromJSON } = require('..');
+  const def = { title: 'T', body: [{ tag: 'p', text: 'x' }] };
+  assert(renderJSON(def) === renderFromJSON(def), 'identical output');
+});
+
+/* ============================================================
    5. DEPRECATED ALIASES
    ============================================================ */
 

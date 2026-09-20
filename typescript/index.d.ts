@@ -481,6 +481,14 @@ export declare class Element<S extends StateShape = StateShape> implements Share
   hasClass(name: string): boolean;
 
   // CSS pseudo-class & responsive
+  /**
+   * Styles for any pseudo-class — the primitive the named helpers are built
+   * from, so the API does not need a new method per pseudo-class.
+   *
+   *   el.pseudoClass('focus-visible', { outline: '2px solid' })
+   *   el.pseudoClass('nth-of-type(2n+1)', { background: '#eee' })
+   */
+  pseudoClass(name: string, rules: CSSRules): this;
   hover(rules: CSSRules): this;
   focusCss(rules: CSSRules): this;
   active(rules: CSSRules): this;
@@ -511,11 +519,17 @@ export declare class Element<S extends StateShape = StateShape> implements Share
   }): this;
 
   // CSS property shorthands
+  /** @deprecated Use `style('opacity', n)`. */
   opacity(n: number | string): this;
+  /** @deprecated Use `style('z-index', n)`. */
   zIndex(n: number | string): this;
+  /** @deprecated Use `style('cursor', type)`. */
   cursor(type: string): this;
+  /** @deprecated Use `style('overflow', value)`. */
   overflow(value: string): this;
+  /** @deprecated Use `style('display', value)`. */
   display(value: string): this;
+  /** @deprecated Use `style('position', value)`. */
   position(value: string): this;
   size(w: string, h?: string): this;
 
@@ -1349,6 +1363,7 @@ export declare function page<S extends StateShape = StateShape>(title: string, o
 export declare function renderFromJSON(def: PageDef, setup?: ((doc: Document) => void) | DocumentOptions, options?: DocumentOptions): string;
 
 /** Alias for renderFromJSON */
+/** @deprecated Use {@link renderFromJSON}. An exact alias. */
 export declare const renderJSON: typeof renderFromJSON;
 
 export declare function resetPools(): void;
