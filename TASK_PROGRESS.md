@@ -780,3 +780,65 @@ npm run benchmark:scaling  -> no regression; streaming finding above
 - Generator-based `renderNode()` for genuinely incremental streaming.
 - Depth cost grows super-linearly past ~1,500 levels; not investigated, and not
   a shape real documents take.
+
+---
+
+# Task: Codebase orientation pass
+
+## Objective
+
+Read every file in `lib/` and `README.md` in full, and work under the rules in
+`AGENTS.md`. Requested as a comprehension pass ahead of future work, not as a
+change to the library.
+
+## Status
+
+Reading complete. No code change was requested and none was made.
+
+## Files inspected
+
+- All 17 files in `lib/` (7,203 lines): `index.js`, `document.js`, `element.js`,
+  `renderer.js`, `css.js`, `utils.js`, `live.js`, `template.js`, `builder.js`,
+  `shortcuts.js`, `head.js`, `components.js`, `middleware.js`, `config.js`,
+  `cache.js`, `pools.js`, `metrics.js`.
+- `README.md` (1,688 lines), `package.json`, `index.js`, `index.mjs`.
+- `AGENTS.md`, and the headings and tail of this file.
+
+## Files created, modified, or deleted
+
+- Modified: `TASK_PROGRESS.md` — this section.
+
+Nothing under `lib/`, `test/`, `docs/` or `example/` was touched.
+
+## Tests run
+
+None. No source file changed, so no suite is implicated. The last recorded run
+is in the release-hardening section above (24 suites, 31 fuzz properties, 4
+Playwright suites, `tsc --noEmit` clean); nothing in the tree has changed since,
+but that result was not re-confirmed in this session.
+
+## Verification
+
+This file is the only change. The repository has no linter, formatter, or
+Markdown check configured — no `.prettierrc`, `.eslintrc`, `.editorconfig`, and
+no `lint`/`format` script in `package.json` — so verification was limited to
+re-reading the appended section and confirming the heading structure matches the
+sections above it. No syntax or build check applies to a Markdown edit.
+
+## Notes carried forward
+
+- Working tree is clean apart from an untracked `CLAUDE.md` (a one-line
+  `@AGENTS.md` include). `main` is level with `origin/main` at `fe0797a`.
+- `package.json` is at 2.1.0 and `CHANGELOG.md` has a dated `[2.1.0]` section,
+  but the newest git tag is `v2.0.2`. Whether 2.1.0 was tagged or released
+  elsewhere was not investigated.
+- Per this file's own header, sections whose work has shipped are prunable. The
+  six sections above describe 2.1.0 work and are candidates once its release
+  state is confirmed.
+
+## Assumptions and limitations
+
+- Reading was limited to `lib/` and `README.md` as asked. `test/`, `docs/`,
+  `example/`, `benchmark/`, `scripts/` and `typescript/` were not read, so any
+  claim here about library behaviour rests on the source and the README, not on
+  the tests that prove it.
