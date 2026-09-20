@@ -1014,6 +1014,42 @@ doc.darkMode({
 });
 ```
 
+### How generated CSS behaves
+
+Three properties the compiler guarantees, worth knowing because they decide what
+your output looks like:
+
+**`css()` is scoped, `style()` is inline.** `css()` compiles to a generated class
+shared by every element with the same declarations; `style()` sets an inline
+`style` attribute on one element. The same rule holds inside a `liveList` row, on
+the server and after a browser re-render.
+
+**Class names are deterministic.** A class name is a hash of its declarations, so
+the same rules always produce the same name — across elements, across renders,
+and across processes. Two consequences: declaration *order* does not change the
+name (`{ color, margin }` and `{ margin, color }` are one class), and output is
+byte-stable, so it caches and diffs cleanly.
+
+Ordering is canonical *between* property families and preserved *within* one.
+`{ marginTop: '5px', margin: 0 }` keeps its order, because reordering it would
+invert which declaration wins the cascade.
+
+**Identical rules are emitted once.** A rule is stored under its class name, so
+a thousand components sharing a rule emit it once:
+
+```javascript
+for (const row of rows) {
+  doc.create('div').css({ padding: '8px' }).hover({ color: '#000' });
+}
+// 1000 elements -> 2 CSS rules
+```
+
+**Validation.** Property names, selectors, pseudo-class arguments and at-rule
+preludes are all validated before reaching the stylesheet. Anything that could
+end a declaration or close the `<style>` element is **dropped and reported in
+development**, never rewritten — silently deleting a `;` would emit a
+declaration you did not write. Values are sanitised rather than dropped.
+
 ### Nested blocks
 
 `css()` accepts nested blocks beside ordinary declarations:
@@ -1253,7 +1289,7 @@ Style:
 
 ```text
 css · style · hover · focusCss · active · pseudo · media
-transition · transform · animate · opacity · zIndex
+transition · transform · animate · pseudoClass
 display · position · size · overflow · cursor
 ```
 

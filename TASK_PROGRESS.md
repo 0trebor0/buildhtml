@@ -543,3 +543,148 @@ node test/run-all.js            -> All 24 automated suites passed
 
 No library code changed, so the type and browser suites were not re-run for this
 follow-up; they passed on the commit these files sit on.
+
+---
+
+# Task: Close the two remaining API-surface gaps
+
+## Objective
+
+A handoff summary listed the CSS foundations work. Audited against the code, all
+of it was done except two items under "reduce duplicate/overlapping APIs":
+`renderJSON()` vs `renderFromJSON()`, and the inflation of one-off CSS helpers.
+
+## 1. renderJSON()
+
+An exact alias, and the only pair in the export surface where two names named one
+function with nothing to tell them apart. Deprecated in favour of
+`renderFromJSON()`, following the pattern the other five aliases already use:
+still works, warns once per name in dev, silent in prod.
+
+## 2. CSS helper inflation
+
+The handoff asked for "a smaller, validated primitive rather than continually
+adding one-off methods". Usage was counted first rather than deprecating
+wholesale — `hover()` alone has 17 call sites in this repository, and churning
+~100 of them would have been cost without benefit.
+
+What the API actually lacked was the primitive, not fewer helpers:
+
+- **Added `Element.pseudoClass(name, rules)`.** `:checked`, `:focus-visible`,
+  `:nth-of-type()` and `:is()` were previously unreachable without adding a
+  seventh named helper. Now they are not, so the set can stop growing. The six
+  named helpers delegate to it, so there is one implementation and one
+  validation path.
+- **Deprecated the six one-property aliases** over `style()`: `opacity`,
+  `zIndex`, `cursor`, `overflow`, `display`, `position`. Each saved nothing over
+  the primitive it called and each invited a seventh for the next property.
+- **Kept** `size()`, `transition()`, `transform()` and `animate()` — each builds
+  a composite value or sets more than one property, so they do work rather than
+  rename it. Kept the six named pseudo-class helpers for the same reason of
+  proportion: they cover the states most pages use.
+
+Only test files called the deprecated six; no example, README or docs code used
+them, so migration was one chained call site. The tests that exercise the
+aliases deliberately still call them, as the other alias tests do.
+
+## Tests run
+
+```
+node test/run-all.js  -> All 24 automated suites passed (test-css.js now 142 assertions)
+tsc --noEmit          -> exit 0
+```
+
+New assertions cover the primitive reaching states the helpers never did, the
+primitive being validated identically (`hover()` and `pseudoClass('hover')`
+compile byte-identically), the six aliases still matching `style()`, and
+`renderJSON` still matching `renderFromJSON`.
+
+## Note on the handoff
+
+It described the branch as "around v2.0.2". Main is at 2.1.0, unreleased and
+untagged, so these changes fold into the existing `[2.1.0]` changelog section
+rather than opening a new one.
+
+---
+
+# Task: Validation phase — regression, API audit, docs, performance
+
+## Objective
+
+A second handoff listed five items for after the CSS refactor: regression
+testing, a public API audit, documentation of the final CSS model, a
+performance/output audit, and an architectural review. Audit what was already
+done and close the gaps.
+
+## Status by item
+
+| # | Item | Status |
+|---|------|--------|
+| 1 | Regression testing | Was covered except repeated components and large live lists; now measured |
+| 2 | Public API audit | Done — all five named candidates deprecated |
+| 3 | Documentation | Gap closed: de-duplication and deterministic class generation now documented |
+| 4 | Performance/output audit | Was never run; run here, and it corrected a decision |
+| 5 | Architectural review | Not started — still open |
+
+## Item 1: the untested cases
+
+| Case | CSS rules emitted | HTML | Time |
+|------|------------------|------|------|
+| 1,000 identical components | 2 (base + hover) | 53.8 KB | 13 ms |
+| 5,000-row live list | 1 | 483 KB | 26 ms |
+
+De-duplication holds at scale. Client runtime added by the CSS work: 2,785 bytes
+(1,312 gzip) on pages with a liveList, 674 bytes (434 gzip) on pages with a
+style binding, and nothing on pages with neither.
+
+## Item 4: the performance audit corrected the hash width
+
+The earlier widening to two full FNV-1a lanes was justified by a real
+measurement — 4 collisions over 150,000 distinct rules with one lane — but the
+*cost* was never measured against it. Measured here, gzipped, against a single
+lane:
+
+| Distinct rules | Two full lanes | Three digits | One-lane collision risk |
+|---------------|---------------|--------------|------------------------|
+| 20 | +10.1% | +4.5% | 0.0000044% |
+| 100 | +17.9% | +7.5% | 0.00012% |
+| 250 | +18.1% | +9.3% | 0.00072% |
+| 1000 | +48.6% | +26.1% | 0.0116% |
+
+Ten to eighteen per cent of a page's compressed weight, at the scale real pages
+occupy, to close a risk near one in a million, is the wrong trade. The second
+lane is now truncated to its low three base-36 digits (~47 bits total): zero
+collisions through 400,000 distinct rules, at half the byte cost.
+
+Two notes for anyone touching this again:
+
+- The cost scales with the number of **distinct** rules, not with page size. A
+  page of a thousand identical elements compresses so well that the wider hash
+  measured *negative* — 41 bytes smaller gzipped. Benchmarking on repetitive
+  markup would have hidden the cost entirely.
+- The padding idiom is deliberately ES5 (`('00' + n.toString(36)).slice(-3)`,
+  not `padStart`). The client runtime has to spell the hash identically, and it
+  is ES5; `test-css.js` asserts the two agree over a corpus.
+
+## Item 3: what was missing
+
+`css()` vs `style()` was documented; de-duplication and deterministic class
+generation were not. Both are now in the README and the docs site, together with
+the validation rule — invalid names are dropped and reported in development,
+never rewritten, because silently removing a `;` would emit a declaration the
+caller never wrote.
+
+## Still open
+
+Item 5, the architectural review: `Document` and `Element` carry a lot of
+responsibility, `Head` still stores compiled CSS as strings, and `live.js` keeps
+its own client-side node representation. Not started, and not urgent.
+
+## Tests run
+
+```
+node test/run-all.js  -> All 24 automated suites passed (test-css.js 142 assertions)
+npm run test:browser  -> 4 Playwright suites passed
+tsc --noEmit          -> exit 0
+npm run benchmark     -> no regression against the static renderers
+```

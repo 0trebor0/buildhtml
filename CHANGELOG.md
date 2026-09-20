@@ -95,6 +95,20 @@ rather than complete records.
   a row that flattened differently from its server rendering would recreate the
   inconsistency the compiler exists to prevent.
 
+- **`Element.pseudoClass(name, rules)`** — styles for any pseudo-class, and the
+  primitive the six named helpers are built from:
+
+  ```javascript
+  el.pseudoClass('focus-visible', { outline: '2px solid' });
+  el.pseudoClass('nth-of-type(2n+1)', { background: '#eee' });
+  el.pseudoClass('not(.disabled)', { cursor: 'pointer' });
+  ```
+
+  It exists so the API stops needing a new method per pseudo-class. `:checked`,
+  `:focus-visible`, `:nth-of-type()` and `:is()` were previously unreachable
+  without adding a seventh named helper, an eighth and a ninth. The name goes
+  through the same validation the named helpers already used.
+
 - **`@supports`, `@container` and `@layer`**, at both document and element level:
 
   - `doc.supports(condition, selectorRules)` / `el.supports(condition, rules)`
@@ -151,13 +165,21 @@ rather than complete records.
   one, so `{ marginTop, margin }` and `{ margin, marginTop }` stay distinct —
   reordering those would invert which declaration wins the cascade.
 
-- **The scoped class hash is now two FNV-1a lanes instead of one.** The single
-  32-bit lane collided at the rate the birthday bound predicts — 4 collisions
-  over 150,000 distinct declaration blocks, 17 over 400,000 — and a collision
-  here is two different rules sharing a class name, which renders as silently
-  wrong styling with nothing to log. Class names gain six characters; there are
-  no collisions at 1,000,000 rules. **Generated class names differ from 2.0.x.**
-  They were never stable API, but a snapshot test asserting on one needs updating.
+- **The scoped class hash is wider: one FNV-1a lane plus three low digits of a
+  second, about 47 bits.** A single 32-bit lane collided at the rate the birthday
+  bound predicts — 4 collisions over 150,000 distinct declaration blocks, 17 over
+  400,000 — and a collision here is two different rules sharing a class name,
+  which renders as silently wrong styling with nothing to log.
+
+  The width was chosen by measurement. Cost scales with the number of *distinct*
+  rules on a page, and two full lanes (six extra characters) proved too expensive
+  at the scale real pages occupy — **+10.1% gzipped at 20 distinct rules, +17.9%
+  at 100** — to close a risk near one in a million there. Three digits halve that
+  (+4.5% and +7.5%) while keeping collisions at zero through 400,000 rules, where
+  a single lane was already failing.
+
+  **Generated class names differ from 2.0.x.** They were never stable API, but a
+  snapshot test asserting on one needs updating.
 
 - **A tree too deep to render now reports why.** `renderNode()` recursion
   exhausting the stack surfaced as a bare "Maximum call stack size exceeded"
@@ -189,6 +211,20 @@ mode. All are scheduled for removal in the next major version.
 - `Document.defineClass()` → `Document.sharedClass()` for a class name, or
   `Document.globalCss()` for a raw selector
 - `Element.attribute()` → `Element.attr()`
+- `renderJSON()` → `renderFromJSON()` — an exact alias, and the only pair in the
+  export surface where two names named one function with nothing to tell them
+  apart
+- `Element.opacity()`, `zIndex()`, `cursor()`, `overflow()`, `display()` and
+  `position()` → `Element.style(prop, value)`. Each was a one-property alias that
+  saved nothing over the primitive it called, and each stood as an invitation to
+  add a seventh for the next property someone wanted. `style()` and `css()`
+  already cover every property, including the many these never got around to.
+
+  `size()`, `transition()`, `transform()` and `animate()` are **not** deprecated:
+  each builds a composite value or sets more than one property, so they do work
+  rather than rename it. `hover()`, `focusCss()`, `active()`, `firstChild()`,
+  `lastChild()` and `nthChild()` are also staying — they cover the states most
+  pages use, and they now delegate to `pseudoClass()`.
 
 ### Internal
 
