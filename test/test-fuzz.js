@@ -513,5 +513,111 @@ property('a fuzzed build() definition never throws or emits a script', Math.min(
   }
 });
 
+/* ---- 2.1.0 CSS surfaces ----
+ *
+ * `pseudoClass()`, `supports()`, `containerQuery()`, `layer()` and the nested
+ * `css()` keys each take caller text that is written into the stylesheet ahead
+ * of a `{`. They are the newest places a value reaches CSS, and until now the
+ * only ones in the compiler with no fuzz behind them.
+ */
+
+/** No stylesheet the library emits may contain a "<", whatever went in. */
+function assertStylesheetIntact(html, what, input) {
+  const contents = (html.match(/<style[^>]*>([\s\S]*?)<\/style>/g) || [])
+    .map(block => block.replace(/^<style[^>]*>/, '').replace(/<\/style>$/, ''))
+    .join('');
+  assert.ok(!contents.includes('<'),
+    `${what} let "<" into the stylesheet for ${JSON.stringify(input)}`);
+  assert.strictEqual((html.match(/<script\b/gi) || []).length, 0,
+    `${what} produced a script element for ${JSON.stringify(input)}`);
+}
+
+property('a fuzzed pseudo-class name cannot escape its rule', Math.min(ITERATIONS, 500), (input) => {
+  const doc = new Document();
+  doc.create('div').pseudoClass(input, { color: 'red' });
+  assertStylesheetIntact(doc.render(), 'pseudoClass()', input);
+});
+
+property('a fuzzed at-rule prelude cannot escape its block', Math.min(ITERATIONS, 500), (input) => {
+  const doc = new Document();
+  doc.supports(input, { '.a': { color: 'red' } });
+  doc.containerQuery(input, { '.a': { color: 'red' } });
+  doc.mediaQuery(input, { '.a': { color: 'red' } });
+  doc.create('div').supports(input, { color: 'red' });
+  doc.create('div').containerQuery(input, { color: 'red' });
+  doc.create('div').media(input, { color: 'red' });
+  assertStylesheetIntact(doc.render(), 'an at-rule prelude', input);
+});
+
+property('a fuzzed layer name cannot escape its block', Math.min(ITERATIONS, 500), (input) => {
+  const doc = new Document();
+  doc.layer(input, { '.a': { color: 'red' } });
+  doc.layerOrder(input, 'valid');
+  assertStylesheetIntact(doc.render(), 'layer()', input);
+});
+
+property('a fuzzed nested css() key cannot escape its rule', Math.min(ITERATIONS, 500), (input) => {
+  const doc = new Document();
+  doc.create('div').css({
+    color: 'red',
+    ['&' + input]: { color: 'blue' },
+    ['@media ' + input]: { color: 'green' },
+    [input]: { color: 'teal' },
+  });
+  assertStylesheetIntact(doc.render(), 'a nested css() key', input);
+});
+
+/* ---- Deep trees ----
+ *
+ * The render walk is recursive, so depth is bounded by the JS stack rather than
+ * by anything the library chooses. What must hold is that a tree either renders
+ * correctly or fails with the reported RangeError — never silently truncates and
+ * never emits unbalanced markup.
+ */
+
+property('a deep tree renders fully or reports why, never truncates', 12, () => {
+  const depth = 50 + int(400);
+  const doc = new Document();
+  let el = doc.create('div');
+  for (let i = 0; i < depth; i++) el = el.child('div').attr('data-d', String(i));
+  el.text('LEAF');
+
+  let html;
+  try {
+    html = doc.render();
+  } catch (error) {
+    assert.ok(error instanceof RangeError && /nested too deeply/.test(error.message),
+      `a depth failure must be the reported RangeError, got: ${error.message}`);
+    return;
+  }
+  const opens = (html.match(/<div\b/g) || []).length;
+  const closes = (html.match(/<\/div>/g) || []).length;
+  assert.strictEqual(opens, closes, `unbalanced div tags at depth ${depth}`);
+  assert.ok(html.includes('LEAF'), `the deepest node was dropped at depth ${depth}`);
+  assert.ok(html.includes(`data-d="${depth - 1}"`), `the deepest attribute was dropped at depth ${depth}`);
+});
+
+property('a deep fuzzed NodeDef tree never emits a script', 12, (input) => {
+  const depth = 20 + int(120);
+  let def = { tag: 'span', text: input };
+  for (let i = 0; i < depth; i++) {
+    def = { tag: 'div', attrs: { 'data-x': input }, css: { color: 'red' }, children: [def] };
+  }
+  const doc = new Document();
+  try {
+    doc.build(def);
+  } catch (error) {
+    if (/Invalid element tag|tag must be a non-empty string|nested too deeply/.test(error.message)) return;
+    throw error;
+  }
+  let html;
+  try { html = doc.render(); } catch (error) {
+    if (error instanceof RangeError) return;
+    throw error;
+  }
+  assert.strictEqual((html.match(/<script\b/gi) || []).length, 0,
+    `a deep NodeDef tree produced a script element for ${JSON.stringify(input)}`);
+});
+
 console.log(`\nResults: ${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);

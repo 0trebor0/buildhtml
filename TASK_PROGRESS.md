@@ -688,3 +688,95 @@ npm run test:browser  -> 4 Playwright suites passed
 tsc --noEmit          -> exit 0
 npm run benchmark     -> no regression against the static renderers
 ```
+
+---
+
+# Task: Release hardening — closing the last gaps
+
+## Objective
+
+A third handoff listed eight release-hardening items. Regression testing, the API
+audit and the package audit were already done; memory testing, TypeScript parity
+and the fresh-install test were run and passed. This closes the three that
+remained: scaling benchmarks, in-browser Unicode, and the unfuzzed surfaces.
+
+Note on the handoff's premise: it lists "Architecture cleanup" as done. It is
+not, and never was — `Document`/`Element` responsibilities, `Head` storing
+compiled CSS as strings, and `live.js`'s own client node representation are all
+untouched. That item is still open.
+
+## The finding: renderStream() is far less incremental than documented
+
+`renderStream()` was documented, in three places, as rendering "only as much as
+the consumer has room for, so <head> reaches the socket before the body is
+built". Measured, that is true only for a document shape almost nobody writes.
+
+`renderNode()` renders a subtree in one recursive call, so the stream can only
+stop at TOP-LEVEL BODY NODE boundaries. 20,000 paragraphs:
+
+| Shape | Chunks | First chunk at |
+|-------|--------|----------------|
+| wrapped in one root `<div>` | 3 | 93.3% of total |
+| 20,000 top-level body nodes | 20,002 | 6.0% of total |
+
+A page assembled under a single root element — the usual shape — emits its whole
+body as one chunk, so streaming buys almost nothing over `render()`. Corrected in
+`lib/document.js`, `README.md` and `docs/index.html`, and the scaling benchmark
+now measures both shapes side by side so the limitation cannot be rediscovered
+the hard way.
+
+Making it incremental *within* a subtree needs a generator-based `renderNode()`.
+That is a real change, not a doc fix, and it belongs after the release rather
+than during a hardening phase.
+
+This was nearly missed twice: the first benchmark timed tree construction as part
+of "time to first chunk", and the second defaulted the shape argument in a way
+that silently measured only the flat case. Both looked plausible.
+
+## What was added
+
+- `benchmark/scaling.js` (`npm run benchmark:scaling`) — breadth, depth, CSS by
+  distinct-rule count, reactive lists, repeated renders with pool occupancy, and
+  streaming across both document shapes.
+- Six fuzz properties for surfaces added in 2.1.0 and never fuzzed:
+  `pseudoClass()` names, at-rule preludes across all six entry points, layer
+  names, nested `css()` keys, deep element trees, and deep NodeDef trees.
+- Browser Unicode coverage: astral plane, combining marks, RTL, bidi override,
+  ZWJ, fullwidth forms, NBSP and U+2028/U+2029 — asserted through SSR, a reactive
+  binding, and a liveList client rebuild, compared by code point rather than by
+  UTF-16 length so a split surrogate pair cannot pass.
+
+Correcting an earlier claim: selectors, templates and NodeDefs were **already**
+fuzzed, and the generator already emits astral characters, lone surrogates and
+fullwidth forms. The genuine gaps were deep trees and the 2.1.0 CSS surfaces.
+
+## Measurements worth keeping
+
+| Scenario | Result |
+|----------|--------|
+| Breadth, 500 -> 50,000 elements | 1.45-1.62 us/element, flat |
+| Depth, 100 -> 3,000 levels | 1.06 -> 5.42 us/level, degrades with depth |
+| CSS, 5,000 elements, 1 -> 5,000 distinct rules | ~15 ms throughout — cost tracks distinct rules, not elements |
+| Reactive list, 100 -> 20,000 rows | 2.6-3.9 us/row, flat |
+| Repeated renders, 1 -> 5,000 | 0.383-0.386 ms/render, pools stable at 151/6 |
+
+No pooling regression, no drift in per-render cost, and de-duplication holding
+flat across three orders of magnitude of rule count.
+
+## Tests run
+
+```
+node test/run-all.js       -> All 24 automated suites passed
+node test/test-fuzz.js     -> 31 properties passed (6 new)
+npm run test:browser       -> 4 Playwright suites passed, Unicode included
+tsc --noEmit               -> exit 0
+npm run benchmark:scaling  -> no regression; streaming finding above
+```
+
+## Still open
+
+- Architecture review: `Document`/`Element` responsibilities, `Head` storing CSS
+  as strings, `live.js`'s own node representation.
+- Generator-based `renderNode()` for genuinely incremental streaming.
+- Depth cost grows super-linearly past ~1,500 levels; not investigated, and not
+  a shape real documents take.

@@ -325,6 +325,51 @@ async function run() {
       assert.match(row.inline, /font-style:\s*italic/, 'style is still inline after rebuild');
     }
 
+    /* ---- Unicode survives every stage, as the browser sees it ---- */
+
+    // The reference value is read from the page's own JS state, so the
+    // comparison is against what the author wrote, not a second copy in this
+    // file that could drift from the fixture.
+    const expectedText = await page.evaluate(() => window.State.unicodeText);
+    assert.match(expectedText, /\u{1F600}/u, 'the fixture really does carry astral characters');
+    assert.match(expectedText, /\u2028/, 'and the separators that end a JS string literal');
+
+    assert.equal(await page.locator('#unicode-ssr').textContent(), expectedText,
+      'server-rendered text round-trips through HTML parsing byte for byte');
+    assert.equal(await page.locator('#unicode-bound').textContent(), expectedText,
+      'a reactive binding reproduces it after hydration');
+
+    // Code points, not UTF-16 units: an emoji that lost a surrogate half would
+    // still compare equal by length in a careless check.
+    const codePoints = await page.locator('#unicode-ssr').evaluate(el => [...el.textContent].length);
+    assert.equal(codePoints, [...expectedText].length, 'no surrogate pair was split');
+
+    // Through the client runtime: a liveList row is rebuilt from the compiled
+    // itemFn, so its text passes through a JS string literal in the page source.
+    const unicodeSsrRows = await page.evaluate(() =>
+      [...document.querySelectorAll('#unicode-list [data-u]')].map(el => el.textContent));
+    assert.equal(unicodeSsrRows.length, 3, 'unicode rows rendered on the server');
+
+    await page.locator('#add-unicode-row').click();
+    await page.waitForFunction(() => document.querySelectorAll('#unicode-list [data-u]').length === 4);
+    const unicodeRebuilt = await page.evaluate(() =>
+      [...document.querySelectorAll('#unicode-list [data-u]')].map(el => el.textContent));
+    assert.deepEqual(unicodeRebuilt.slice(0, 3), unicodeSsrRows,
+      'a client rebuild reproduces every row unchanged');
+    assert.match(unicodeRebuilt[3], /\u{1F680}/u, 'the newly added row keeps its astral characters');
+    assert.match(unicodeRebuilt[3], /\u05D3\u05D4/, 'and its RTL characters');
+
+    // U+2028/U+2029 inside a row would terminate the string literal they are
+    // compiled into if they were not escaped — the page would not parse at all.
+    assert.ok(unicodeRebuilt.some(t => t.includes('\u2028') && t.includes('\u2029')),
+      'the line separators survived being compiled into client JavaScript');
+
+    // A quoted font-family in a row's css must keep its quotes through the
+    // client-minted rule, which is where a hand-copied sanitiser once ate them.
+    assert.match(
+      await page.locator('#unicode-list [data-u="1"]').evaluate(el => getComputedStyle(el).fontFamily),
+      /Fira Code/, 'a quoted font-family survives the client rebuild');
+
     await page.locator('#remove-lifecycle').click();
     await page.waitForFunction(() =>
       !document.getElementById('lifecycle-target') &&

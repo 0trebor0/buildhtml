@@ -30,6 +30,7 @@ runtime dependency, and the published package still has zero.
 | `npm run test:browser` | Real Chromium (needs `npx playwright install chromium` once) |
 | `npm run benchmark` | Render throughput and output size |
 | `npm run benchmark:size` | Client JavaScript compiled per feature |
+| `npm run benchmark:scaling` | How cost scales with tree size, CSS rules, repeated renders and streaming |
 
 CI runs all three test commands plus `npm pack --dry-run`. Run at least
 `npm test` before opening a pull request.

@@ -906,7 +906,9 @@ The complete [routing example](example/routing.js) serves API and static routes 
 
 ### Stream a document
 
-`renderStream()` renders on demand: each read produces only as much as the consumer has room for, so the head reaches the socket before the body is built and a slow client applies backpressure instead of forcing the whole page into memory.
+`renderStream()` renders on demand and applies real backpressure, but at **top-level body node granularity**: the head goes out first, then one chunk per node in the document body.
+
+That distinction decides whether streaming helps you. A subtree renders in a single call, so a page assembled under one root element emits its whole body as one chunk and streaming gains little over `render()`. Measured on 20,000 paragraphs: wrapped in a root `<div>`, 3 chunks with the first arriving at 81% of total render time; as 20,000 top-level nodes, 20,002 chunks with the first at 10%. Put several top-level nodes in the body if you want incremental delivery.
 
 ```javascript
 app.get('/', (req, res) => {

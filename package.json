@@ -55,6 +55,7 @@
     "test:browser": "node test/test-browser.js && node test/test-dashboard-browser.js && node test/test-routing-browser.js && node test/test-auth-interface-browser.js",
     "test:types": "tsc --project typescript/tsconfig.json --noEmit",
     "benchmark": "node benchmark/render.js",
+    "benchmark:scaling": "node benchmark/scaling.js",
     "benchmark:size": "node benchmark/runtime-size.js"
   },
   "devDependencies": {

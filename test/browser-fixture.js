@@ -4,6 +4,12 @@ const http = require('http');
 const { Document } = require('../index');
 const PORT = Number(process.env.BUILDHTML_BROWSER_PORT) || 3344;
 
+// Unicode that browsers, not string comparisons, have opinions about: astral
+// plane, combining marks, RTL, bidi override, zero-width joiner, fullwidth
+// forms, and the two separators that terminate a JS string literal if they
+// reach one unescaped.
+const UNICODE_TEXT = 'astral \u{1F600} combining e\u0301 rtl \u05D0\u05D1 bidi \u202Eevil\u202C zwj \u200D fullwidth \uFF21\uFF22 sep \u2028\u2029 nbsp \u00A0 end';
+
 function buildPage() {
   const doc = new Document();
   doc.title('buildhtml browser integration');
@@ -29,6 +35,12 @@ function buildPage() {
     repeatCount: 0,
     preventedCount: 0,
     cssRows: [{ id: 1, label: 'First' }],
+    unicodeText: UNICODE_TEXT,
+    unicodeRows: [
+      { id: 1, label: 'emoji \u{1F600}\u{1F1EC}\u{1F1E7}' },
+      { id: 2, label: 'combining a\u0301e\u0300 rtl \u05D0\u05D1\u05D2' },
+      { id: 3, label: 'sep \u2028 and \u2029 and zwj \u200D done' },
+    ],
   });
 
   doc.div().id('portal-source').text('Portaled').portal('portal-target');
@@ -148,6 +160,21 @@ function buildPage() {
   }));
   doc.button('Add styled row').id('add-css-row').onClick(function () {
     State.cssRows.push({ id: 2, label: 'Second' });
+  });
+
+  // ---- Unicode through the whole pipeline ----
+  //
+  // Escaping is asserted on strings elsewhere; only a browser shows whether the
+  // bytes survive HTML parsing, JS string parsing, a reactive binding, and a
+  // liveList rebuild that reconstructs the text through the client runtime.
+  doc.div().id('unicode-ssr').text(UNICODE_TEXT);
+  doc.span().id('unicode-bound').bind('unicodeText', value => value);
+  doc.div().id('unicode-list').liveList('unicodeRows', item => ({
+    tag: 'span', text: item.label, attrs: { 'data-u': item.id },
+    css: { fontFamily: '"Fira Code", monospace' },
+  }));
+  doc.button('Add unicode row').id('add-unicode-row').onClick(function () {
+    State.unicodeRows.push({ id: 4, label: 'added \u{1F680} \u05D3\u05D4 \u200D' });
   });
 
   doc.a('#done', 'Done route').id('done-route');
