@@ -77,7 +77,7 @@ A static page stays static. Add `.states()`, `.bind()`, or `.onClick()` and the 
 | Module formats | CommonJS and ESM, plus six subpath exports |
 | TypeScript | declarations bundled (`typescript/*.d.ts`) |
 | Node.js | 18+; CI runs 18, 20, 22, 24 |
-| Testing | 23 suites, 4 Playwright browser suites, 24 fuzz properties |
+| Testing | 24 suites, 4 Playwright browser suites, 31 fuzz properties |
 | Escaping | text, attributes, CSS values, and JSON context |
 | CSP | nonce support for generated `<script>`/`<style>`; no inline `on*` attributes |
 | Client runtime | generated per page; 0 bytes when no reactive API is used |
@@ -638,9 +638,9 @@ doc.build({
 Render a complete JSON page directly:
 
 ```javascript
-const { renderJSON } = require('@trebor/buildhtml');
+const { renderFromJSON } = require('@trebor/buildhtml');
 
-const html = renderJSON({
+const html = renderFromJSON({
   title: 'Report',
   resetCss: true,
   cssVars: { primary: '#2563eb' },
@@ -650,6 +650,8 @@ const html = renderJSON({
   }
 });
 ```
+
+`renderJSON()` is a deprecated alias for `renderFromJSON()` and behaves identically.
 
 Use `doc.toJSON()` and `doc.fromJSON()` for document serialization and restoration.
 
@@ -1291,9 +1293,10 @@ Style:
 
 ```text
 css · style · hover · focusCss · active · pseudo · media
-transition · transform · animate · pseudoClass
-display · position · size · overflow · cursor
+transition · transform · animate · pseudoClass · size
 ```
+
+`opacity()`, `zIndex()`, `cursor()`, `overflow()`, `display()` and `position()` are deprecated one-property aliases over `style()` — use `style(prop, value)` instead. They still work and warn once in development.
 
 Tree operations:
 

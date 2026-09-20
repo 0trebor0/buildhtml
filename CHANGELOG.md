@@ -13,6 +13,21 @@ rather than complete records.
 
 ## [Unreleased]
 
+### Fixed (documentation)
+
+- The README no longer presents deprecated methods as current API. Its style
+  reference listed `display()`, `position()`, `overflow()` and `cursor()`
+  alongside live methods, and its JSON example imported and called
+  `renderJSON()` — the deprecated alias — while `renderFromJSON()`, the name it
+  aliases, appeared nowhere in the file. Both now name the supported call and
+  state what is deprecated.
+- The HTML guide named `renderJSON()` as the entry point in its document
+  definition prose, its JSON API table and its package-exports list, and paired
+  it with `renderFromJSON` as an equal in the quick reference. All four now name
+  `renderFromJSON()` and mark `renderJSON` as a deprecated alias.
+- Corrected the README "At a glance" test counts, which were stale: 24 automated
+  suites and 31 fuzz properties, not 23 and 24.
+
 ## [2.1.0] - 2026-09-10
 
 > **Security hardening and CSS foundations.** Adds a markup-sink guard for

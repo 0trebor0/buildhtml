@@ -1267,7 +1267,7 @@ card.build([
           </tbody>
         </table></div>
         <h3>Document definition keys</h3>
-        <p>The top level of <code>renderJSON()</code> and <code>fromJSON()</code>:</p>
+        <p>The top level of <code>renderFromJSON()</code> and <code>fromJSON()</code>:</p>
         <div class="table-wrap"><table>
           <thead><tr><th>Key</th><th>Type</th><th>Purpose</th></tr></thead>
           <tbody>
@@ -1310,7 +1310,7 @@ card.build([
             <tr><td><code>element.build</code></td><td><code>node | node[]</code></td><td>The element.</td></tr>
             <tr><td><code>doc.fromJSON</code></td><td><code>pageDefinition</code></td><td>Populates the document.</td></tr>
             <tr><td><code>doc.toJSON</code></td><td>none</td><td>A serializable document definition.</td></tr>
-            <tr><td><code>renderJSON</code></td><td><code>definition, setup?, options?</code></td><td>Complete HTML string.</td></tr>
+            <tr><td><code>renderFromJSON</code></td><td><code>definition, setup?, options?</code></td><td>Complete HTML string. <code>renderJSON</code> is a deprecated alias.</td></tr>
           </tbody>
         </table></div>
       </section>
@@ -1765,12 +1765,12 @@ jobCode.input.addClass('field-input').css({ width: '100%' });</code></pre>
 
         <div class="api-group" data-search="exports configure metrics cache components template">
           <h3>Package exports</h3>
-          <p><code>Document</code>, <code>Element</code>, <code>Head</code>, <code>page</code>, <code>components</code>, <code>configure</code>, <code>CONFIG</code>, <code>Metrics</code>, <code>metrics</code>, <code>renderJSON</code>, template functions, SPA compilers, caching middleware, cache controls, health checks, and pool controls are exported from the package root.</p>
+          <p><code>Document</code>, <code>Element</code>, <code>Head</code>, <code>page</code>, <code>components</code>, <code>configure</code>, <code>CONFIG</code>, <code>Metrics</code>, <code>metrics</code>, <code>renderFromJSON</code>, template functions, SPA compilers, caching middleware, cache controls, health checks, and pool controls are exported from the package root.</p>
           <div class="table-wrap"><table>
             <thead><tr><th>Export</th><th>Purpose</th></tr></thead>
             <tbody>
               <tr><td><code>page</code>, <code>Document</code>, <code>Element</code>, <code>Head</code></td><td>Page and node constructors. <code>page(title, options?)</code> preconfigures charset, viewport, reset CSS, and language.</td></tr>
-              <tr><td><code>renderFromJSON</code>, <code>renderJSON</code></td><td>Render a page from a plain definition: <code>renderFromJSON({ title, body }, setup?)</code>.</td></tr>
+              <tr><td><code>renderFromJSON</code></td><td>Render a page from a plain definition: <code>renderFromJSON({ title, body }, setup?)</code>. <code>renderJSON</code> is a deprecated alias.</td></tr>
               <tr><td><code>compileTemplate</code>, <code>compileFile</code></td><td>Compile <code>.bhtml</code> source or a file → a <code>Document</code>, <strong>not</strong> a render function.</td></tr>
               <tr><td><code>renderTemplate</code>, <code>renderFile</code></td><td>Compile and render in one step → HTML string.</td></tr>
               <tr><td><code>parseTemplate</code>, <code>TemplateParser</code></td><td>The parser behind the template functions, for tooling that needs the AST.</td></tr>

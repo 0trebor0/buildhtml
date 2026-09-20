@@ -842,3 +842,118 @@ sections above it. No syntax or build check applies to a Markdown edit.
   `example/`, `benchmark/`, `scripts/` and `typescript/` were not read, so any
   claim here about library behaviour rests on the source and the README, not on
   the tests that prove it.
+
+---
+
+# Task: Bring README and the HTML guide back in line with the API
+
+## Objective
+
+Audit `README.md` and `docs/index.html` against the API the library actually
+exposes, and correct what has drifted.
+
+## Status
+
+Complete for the defects the audit found. The audit method and its blind spots
+are recorded below so the next pass does not have to rediscover them.
+
+## Method
+
+The API surface was taken from the runtime, not from a reading: every
+non-underscore own property of `Document.prototype`, `Element.prototype` and
+the package exports — 315 names — checked for a word-boundary mention in each
+document, then the reverse direction for names the docs present that the
+runtime does not have.
+
+Two earlier versions of that script produced wrong answers that looked right,
+and both were caught only because the result was implausible:
+
+- A `<<'EOF'` heredoc collapsed `\\b` into a literal backspace, so every
+  word-boundary regex silently matched nothing and the report claimed all 315
+  names were missing from all three files.
+- The rewritten script was saved to the scratchpad but run from an older copy
+  of the same name on `$TEMP`, so the corrected logic never executed.
+
+Both files use CRLF line endings, which also broke a fence-matching regex until
+the input was normalised. Scripts that edit them assert an exact match count of
+1 per replacement and re-check for lone LF afterwards.
+
+## Findings and disposition
+
+- `docs/index.html` and `typescript/index.d.ts` mention all 315 names. The
+  README omits 61, which is not a defect on its own — it is a summary that
+  defers to the guide — so the omissions were left alone.
+- Neither document names an API that does not exist.
+- **Fixed.** The README style list presented `display()`, `position()`,
+  `overflow()` and `cursor()` as current API; all four are deprecated. `size()`
+  is not deprecated and stays.
+- **Fixed.** The README JSON example imported and called the deprecated
+  `renderJSON()`, and `renderFromJSON()` appeared nowhere in the file.
+- **Fixed.** The guide named `renderJSON()` as the entry point in four places.
+- **Fixed.** README "At a glance" claimed 23 suites and 24 fuzz properties;
+  measured values are 24 and 31.
+
+## Verified as already correct
+
+Checked against the sources rather than assumed: the 461-byte static page (also
+asserted by `test/test-readme-examples.js`), the counter page at 5,042 bytes of
+HTML and 4,538 of inline JS against the quoted ~5.0 KB and ~4.5 KB, the CI
+matrix of Node 18/20/22/24 against `.github/workflows/ci.yml`, six subpath
+exports against `package.json`, and the tag-shortcut signature table against
+`TEXT_TAGS`.
+
+## Files created, modified, or deleted
+
+- Modified: `README.md` — five corrections (test counts, style list, the JSON
+  example import and call, a deprecation note).
+- Modified: `docs/index.html` — four corrections, all `renderJSON` to
+  `renderFromJSON` with the alias marked deprecated.
+- Modified: `CHANGELOG.md` — `Fixed (documentation)` entry under `[Unreleased]`.
+- Modified: `TASK_PROGRESS.md` — this section, and a whole-file CRLF
+  normalisation (the previous session appended LF lines into a CRLF file;
+  `core.autocrlf=true` means git shows no diff for it).
+
+## Tests added or updated
+
+None. No library behaviour changed, and the existing documentation tests
+already cover what changed.
+
+## Tests run
+
+```
+npm test                      -> All 24 automated suites passed
+node test/test-fuzz.js        -> 31 properties passed
+node test/test-readme-examples.js
+                              -> 55 README and 62 guide JavaScript blocks parse,
+                                 2 quick starts execute, 14 local links resolve,
+                                 49 runtime shortcuts documented
+node test/test-tutorial.js    -> 41 javascript blocks execute, 23 behaviours hold
+```
+
+Tag balance in `docs/index.html` was checked after editing (tr 322/322, td
+842/842, th 84/84, table 27/27, section 39/39, code 1389/1389, p 167/167). The
+repository configures no linter, formatter or HTML validator, so that plus the
+suite above is the available verification.
+
+## Not done
+
+- The 61 README omissions were not added. Several are whole features the README
+  never mentions — `slot()`/`fillSlot()`, `renderFragment()`/`stamp()`,
+  `template()`/`useTemplate()`, `portal()` — and the guide documents all of
+  them. Adding them is an editorial decision about how much the README should
+  carry, not a correctness fix.
+- `Element.attribute()` is deprecated and absent from the guide. Absent is
+  defensible for a deprecated alias; the other twelve are marked, so marking it
+  would be more consistent. Not changed without a decision.
+- The benchmark tables are labelled "measured against the published 2.0.0
+  release". 2.1.0 halved the scoped-class hash width, which changes HTML bytes,
+  so those figures are historical rather than current. Re-measuring is a
+  benchmark run, not a doc edit.
+
+## Risks
+
+The coverage check matches names on word boundaries, so a name that appears as
+an ordinary English word counts as documented. `display`, `position`, `cursor`
+and `overflow` all passed the guide check that way while the *methods* are
+absent from it — which is how the README defect survived a passing check. A
+name-level audit cannot see whether a mention is a definition or a coincidence.
