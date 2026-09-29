@@ -1246,6 +1246,91 @@ test('the scoped class hash resists collision at scale', () => {
 
 /* ==================================================================== */
 
+/* ==================================================================== */
+/* Failure reporting parity                                             */
+/* ==================================================================== */
+
+test('an unserialisable state value is rejected at the call site, not at render', () => {
+  // A bad CALLBACK has always been rejected where it was registered and recorded
+  // against its element. A bad state VALUE was stored happily and then took the
+  // whole render down with a bare JSON.stringify TypeError naming neither the
+  // key nor the element. Same failure, two standards.
+  const circular = { a: 1 };
+  circular.self = circular;
+
+  const doc = new Document();
+  quiet(() => {
+    doc.state('bad', circular);
+    doc.state('good', { ok: 1 });
+    doc.states({ alsoBad: { big: 10n }, alsoGood: 2 });
+  });
+
+  const errors = doc._registrationErrors;
+  assert(errors.length === 2, `both bad values are recorded (got ${errors.length})`);
+  assert(errors.every(e => e.callbackType.startsWith('state:')), 'each record names the key');
+  assert(errors.some(e => e.callbackType === 'state:bad'), 'the circular value is attributed to its key');
+  assert(errors.some(e => /BigInt/.test(e.reason)), 'the BigInt reason is preserved');
+
+  let html = null;
+  try { html = doc.render(); } catch { /* asserted below */ }
+  assert(html !== null, 'render() no longer throws');
+  const decoded = html.replace(/\\"/g, '"');
+  assert(/"good":\{"ok":1\}/.test(decoded), 'a valid key is still serialised');
+  assert(!/"bad"/.test(decoded), 'the rejected key is absent');
+});
+
+test('an unserialisable element state value is attributed to its element', () => {
+  const circular = {};
+  circular.self = circular;
+  const doc = new Document();
+  quiet(() => doc.create('section').state(circular));
+  const errors = doc._registrationErrors;
+  assert(errors.length === 1, 'the failure is recorded once');
+  assert(errors[0].tag === 'section', 'the record names the element that carried it');
+  assert(errors[0].callbackType === 'state', 'and names what failed');
+  let html = null;
+  try { html = doc.render(); } catch { /* asserted below */ }
+  assert(html !== null, 'render() still succeeds');
+});
+
+test('clone() survives a state value it cannot deep-copy', () => {
+  // state() refuses such a value now, but _state can still arrive through
+  // fromJSON() or a direct assignment, so clone() handles it rather than
+  // assuming it away.
+  const circular = {};
+  circular.self = circular;
+  const doc = new Document();
+  const el = doc.create('div');
+  el._state = circular;
+
+  let clone = null;
+  quiet(() => { clone = el.clone(); });
+  assert(clone !== null, 'clone() does not throw');
+  assert(clone._state === circular, 'the clone falls back to sharing the reference');
+  assert(doc._registrationErrors.some(e => e.callbackType === 'clone:state'),
+    'the failed deep copy is recorded rather than silent');
+});
+
+test('applyShortcuts refuses to overwrite a method the class already defines', () => {
+  // This shipped once: containerQuery() was first written as container(), which
+  // shortcuts.js also defines, and the class method was replaced with no error.
+  const { applyShortcuts } = require('../lib/shortcuts');
+
+  class Colliding { container(query, rules) { return 'class method'; } }
+  let threw = null;
+  try { applyShortcuts(Colliding.prototype, 'create'); } catch (e) { threw = e; }
+  assert(threw !== null, 'a collision throws at module load rather than winning silently');
+  assert(threw && /container/.test(threw.message), 'the message names the clobbered method');
+
+  class Clean { unrelated() {} }
+  let clean = true;
+  try { applyShortcuts(Clean.prototype, 'create'); } catch { clean = false; }
+  assert(clean, 'a prototype with no collision applies normally');
+  assert(typeof Clean.prototype.div === 'function', 'and still receives the shortcuts');
+});
+
+/* ==================================================================== */
+
 (async () => {
   for (const run of pending) await run();
   console.log(`\n${'='.repeat(40)}`);

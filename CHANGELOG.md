@@ -13,6 +13,39 @@ rather than complete records.
 
 ## [Unreleased]
 
+### Fixed
+
+- **An unserialisable state value failed late, and unattributably.** Every state
+  value is serialised into the page, so a circular structure or a `BigInt` can
+  never be delivered — but `state()` and `states()` stored one anyway, and
+  `render()` then threw a bare `TypeError: Converting circular structure to JSON`
+  from inside `JSON.stringify`, naming neither the key nor the element. An
+  invalid *callback* on the same document had always been rejected where it was
+  registered and recorded against its element.
+
+  Both now behave the same way: the value is refused at the call site, the
+  failure is recorded on `validate()`'s registration errors with the key or
+  element that carried it, and the render succeeds with that key absent. Each key
+  in `states()` is judged on its own, so one bad value no longer costs the rest
+  of the object.
+
+- **`Element.clone()` threw on state it could not deep-copy.** The same root
+  cause — an unguarded `JSON.parse(JSON.stringify(...))`. `state()` now refuses
+  such a value, but `_state` can still arrive through `fromJSON()` or a direct
+  assignment, so the copy is handled rather than assumed safe: the clone falls
+  back to sharing the reference and records the failure. Sharing the object is a
+  lesser wrong than throwing out of a tree operation.
+
+- **`applyShortcuts()` could silently replace a method the class defined.** It
+  runs after the class body, so any name collision was won by the shortcut with
+  no error. That shipped once: `containerQuery()` was first written as
+  `container()`, which `shortcuts.js` also defines, and the class method was
+  replaced — surfacing only as a stylesheet rule reading
+  `max-width:[object Object]`, because the layout helper had been handed the
+  query's arguments. A collision now throws at module load, naming the method.
+
+- Removed an unused `sanitizeFunctionSource` import from `lib/renderer.js`.
+
 ### Fixed (documentation)
 
 - The README no longer presents deprecated methods as current API. Its style

@@ -957,3 +957,182 @@ an ordinary English word counts as documented. `display`, `position`, `cursor`
 and `overflow` all passed the guide check that way while the *methods* are
 absent from it — which is how the README defect survived a passing check. A
 name-level audit cannot see whether a mention is a definition or a coincidence.
+
+---
+
+# Task: lib/ review — fix what the review found
+
+## Objective
+
+Review every file in `lib/`, then fix what genuinely needed fixing. The review
+produced eleven observations; only four were defects or missing guards. The rest
+were either strengths or architecture debt, and are recorded as such rather than
+acted on.
+
+## Fixed
+
+1. **State values failed late and unattributably.** `state()` / `states()` /
+   `Element.state()` accepted values that cannot be serialised into the page;
+   `render()` then threw a bare `JSON.stringify` TypeError naming neither key nor
+   element — while an invalid *callback* on the same document was rejected at the
+   call site and recorded against its element. Added `_acceptStateValue()`, which
+   validates with the same `safeJsonStringify()` the render path uses and records
+   through the existing `_recordCallbackFailure()` machinery. `_recordCallbackFailure()`
+   gained a `guidance` parameter so the remediation sentence fits the failure;
+   its default is the previous text, so callback records are unchanged.
+
+2. **`Element.clone()` threw on state it could not deep-copy** — same root cause,
+   unguarded `JSON.parse(JSON.stringify(...))`. Now falls back to sharing the
+   reference and records `clone:state`. Kept even though (1) closes the usual
+   path, because `_state` can still arrive via `fromJSON()` or direct assignment.
+
+3. **`applyShortcuts()` could silently replace a class method.** It runs after the
+   class body, so a collision was won by the shortcut with no error — which
+   already happened once with `container()`. It now snapshots function-valued own
+   properties before assigning and throws if any changed. Reading only data
+   descriptors matters: `proto[name]` on an accessor would invoke `Element`'s
+   `cssText` getter with `this` bound to the prototype, which has no instance state.
+
+4. Removed the unused `sanitizeFunctionSource` import from `lib/renderer.js`
+   (pre-existing; in scope this time because it was a review finding).
+
+## Deliberately not fixed
+
+- **`compileClient()` — 333 lines building a program by string concatenation,
+  with no direct unit tests.** Real risk, but it is likely to change shape in the
+  architecture work, so focused tests written now would be written twice.
+- **Three representations of the same concepts**: `Element` vs `NodeDef`,
+  `RuleSet` vs `Head`'s string arrays, `renderNode()` vs `nodeDefToHtml()`.
+  Architecture work, and one job rather than three — a generator-based renderer
+  would address `compileClient`'s size, the renderer duplication *and* the
+  streaming-granularity finding together.
+- **`document.js` cohesion** (1,263 lines, ~139 public methods). Same bucket.
+- **`applyShortcuts` building 120 closures instead of 60.** Micro-optimisation.
+- **Same-name-different-meaning methods** (`doc.title()` sets the page title,
+  `el.title()` sets an attribute; `doc.state(k,v)` vs `el.state(v)`). Renaming
+  would break a documented public API for a naming preference. The guard added in
+  (3) prevents the dangerous version — a silent overwrite — which is the part
+  that actually caused a bug.
+
+## Measurements behind the review
+
+| Signal | Finding |
+|--------|---------|
+| Largest functions | `compileClient` 333, `applyShortcuts` 312, `buildNodeInner` 239, `validate` 155 |
+| Direct test references | `utils` and `live` 6 files each; `renderer`, `head`, `element` zero (covered through the public API) |
+| Shared prototype methods | 78 names on both prototypes, 0 sharing a function object — `applyShortcuts` builds a separate closure per prototype |
+
+A first attempt at measuring function size used brace counting and reported
+nonsense (843 lines for a 30-line function) because the parser and CSS compiler
+hold `{` and `}` inside string literals. Measuring the gap to the next
+declaration instead gave usable numbers.
+
+## Tests added
+
+Four regression tests in `test/test-security.js`, all failing before the fix:
+state rejection attributed to its key, element state attributed to its element,
+`clone()` surviving an uncopyable state, and `applyShortcuts` refusing a
+collision while still applying to a clean prototype.
+
+## Tests run
+
+```
+node --check lib/*.js test/*.js  -> every file parses
+node test/run-all.js             -> All 24 automated suites passed
+                                    (test-security.js 440 assertions, was 422)
+npm run test:browser             -> 4 Playwright suites passed
+tsc --noEmit                     -> exit 0
+```
+
+## Readability pass
+
+`AGENTS.md` gained a "Write Code People Can Read" section, and re-reading the
+diff against it found two places where the new code did not meet it:
+
+- `Element.state()` had a three-part condition mixing an existence check, a
+  `typeof` guard and the actual rejection call, so the clause doing the real work
+  was the hardest to see. The `typeof doc._acceptStateValue === 'function'` guard
+  also had no identified failure case — `_document` is only ever set by
+  `_poolElement()` — so it went, leaving `if (doc && !doc._acceptStateValue(...))`.
+  The `doc &&` check stays: an element built with `new Element()` has no document.
+- `clone()` repeated `el._state = this._state` in both its catch and its else
+  branch. Rewritten as "default to sharing, upgrade to a deep copy when one is
+  possible", which removes the duplicate assignment and the else entirely.
+
+Both are behaviour-neutral. The full suite was re-run after them.
+
+## Risk
+
+`state()` now drops a value it previously stored. Nothing that worked before
+changes: the only values affected are those that made `render()` throw outright.
+
+---
+
+# Task: Document the silent catch blocks in emitted client code
+
+## Objective
+
+An audit of `lib/` against `AGENTS.md` found five `catch(e){}` blocks, all inside
+emitted client-side source. Rule 50 forbids swallowing an error silently; four of
+the five carried no explanation. Each looked defensible, so the fix is to say why
+rather than to change behaviour.
+
+## Changed — comments only, no behaviour
+
+| Site | Why the error is swallowed |
+|------|---------------------------|
+| `lib/css.js` `_bhRuleText` | Runs inside a list re-render; throwing would abandon the remaining rows over a rule that did not apply. Fails only on a read-only stylesheet or a document torn down mid-render, and the rule is already marked seen so a retry would not help. |
+| `lib/live.js` route matcher | `decodeURIComponent` throws on a malformed percent-escape, which mistyped URLs supply routinely. The raw segment still matches a literal route and still populates a named parameter. |
+| `lib/live.js` nav matching | `act` staying false is the correct answer, not a hidden failure: an anchor the browser cannot resolve is not the active route. Runs per link per navigation, so reporting would be per-link noise. |
+| `lib/renderer.js` `reportClientError` | This IS the error reporter. Rethrowing replaces the caller's error with the reporter's; re-reporting recurses on a hook that always throws. |
+
+The comments sit in the server source beside the string that carries the catch,
+never inside it: a `//` inside these concatenated ES5 strings would comment out
+the rest of the emitted line.
+
+`lib/css.js` `_bhStyle` already explained its swallow and was left alone.
+
+## A comment corrected before it shipped
+
+The first version of the `reportClientError` note claimed "the original error
+still reaches the dev console below". It does not — the console fallback is an
+`else if`, so a hook that exists and throws loses BOTH its own report and the
+caller's. The comment now states that cost explicitly. A comment asserting the
+opposite of what the code does is worse than no comment.
+
+## Verification
+
+Comments cannot change emitted output, but that was checked rather than assumed.
+Rendered page length was 12,461 bytes before and after. Raw hashes differ between
+any two renders because the client namespace and element ids are randomised by
+design; normalised, two renders are byte-identical.
+
+Each of the four sites was then exercised directly:
+
+```
+_bhRuleText mints a class and inserts both rules      ok
+a throwing stylesheet does not abort the row          ok   <- the documented reason
+decodeURIComponent guard emitted intact               ok
+new URL guard emitted intact                          ok
+a valid escape decodes to "alice smith"               ok
+a malformed escape falls back to the raw segment      ok
+a throwing reportClientError hook is swallowed        ok
+```
+
+## Tests run
+
+```
+node --version                   -> v22.23.2 (engines: >=18.0.0)
+node --check lib/*.js            -> all files parse
+node test/run-all.js             -> All 24 automated suites passed
+npm run test:browser             -> 4 Playwright suites passed
+tsc --noEmit                     -> exit 0
+```
+
+No tests were added: behaviour is unchanged, and the existing browser suites
+already cover three of the four sites end to end (list CSS injection, a
+percent-encoded route parameter, and client error reporting).
+
+## Not changed
+
+`CHANGELOG.md` has no entry — comments in source are not a user-facing change.
