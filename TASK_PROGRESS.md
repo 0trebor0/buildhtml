@@ -98,3 +98,102 @@ in the example's own header, because each fails quietly.
 
 Promotion to `lib/` remains a decision, not a plan — if it happens, the two lines
 to hold are: never a server, only a handler, and never file watching.
+
+---
+
+# Task: Bring the documentation in line with lib/
+
+## Objective
+
+Audit `README.md` and `docs/index.html` against what `lib/` actually exposes and
+does, and fix what has drifted. Documentation only — no `lib/` change.
+
+## Method
+
+Name coverage was checked mechanically rather than by reading: enumerate every
+non-underscore method on `Document`, `Element` and `Head`, plus every package
+export, and search both documents for each.
+
+```
+API surface: 318 public names
+mentioned nowhere:             0
+in README, absent from guide:  0
+in guide, absent from README: 62   (README is a summary; the guide is the reference)
+```
+
+So nothing is missing by name. The drift was in behaviour, found by reading the
+2.1.0 and Unreleased changelog entries back against both documents.
+
+## Found and fixed
+
+- **`fromJSON(def, { callbacks: false })` was undocumented.** A security control
+  added in 2.1.0 — it drops every serialized callback in a payload instead of
+  screening it — and neither document mentioned the option existed. Now in both,
+  with the list of fields it drops verified against `lib/builder.js`.
+- **`renderFromJSON()` does not forward that option** (see Risks). Documented
+  explicitly in both files so nobody reaches for the convenience wrapper when
+  restoring untrusted JSON.
+- **The state-value refusal was undocumented.** Both documents said state "must
+  be JSON-serializable" without saying that this is now enforced at the call
+  site, that the key is left unset, or that the failure surfaces on `validate()`.
+  Added to the README state section and the guide's state section, and the two
+  `E_CALLBACK_REGISTRATION` descriptions now list state values among the causes.
+- **README "At a glance" said 24 suites**; `test/run-all.js` runs 25 since the
+  dev-reload suite was added. The other two counts in that row were re-checked
+  and are correct: 4 Playwright suites, 31 fuzz properties (verified by running
+  the suite, not by counting source lines).
+- Guide `data-search` terms extended for the two edited sections, since that
+  index is hand-authored and new prose is otherwise unsearchable.
+
+## Checked and found correct — no change
+
+- No deprecated method is taught as current API in either file. The four
+  mentions of `createElement`, `renderJSON` and `defineClass` are all explicit
+  deprecation notices.
+- The `2.0.0` strings in both files are historical and correctly labelled —
+  benchmark results measured against that release, and "Since 2.0.0" notes about
+  helpers that stopped injecting design values.
+
+## Files
+
+- Modified: `README.md`, `docs/index.html`, `TASK_PROGRESS.md`, `CHANGELOG.md`
+- `lib/` unchanged.
+
+## Tests
+
+```
+node test/run-all.js            -> All 25 automated suites passed
+node test/test-fuzz.js          -> 31 passed, 0 failed
+docs/index.html tag balance     -> 3030 open / 3030 close; 39 <section> / 39 </section>
+git diff --stat                 -> README.md 14 +/-, docs/index.html 14 +/-
+```
+
+`test-readme-examples.js` parses every JavaScript block in the README, so the
+added `fromJSON` snippet is covered by the existing suite. The `callbacks: false`
+behaviour itself is already asserted in `test/test-security.js`.
+
+The `renderFromJSON` caveat was verified rather than assumed, against a real
+`toJSON()` payload:
+
+```
+control (no option):               handler present: true
+renderFromJSON + callbacks:false:  handler present: true   <- option ignored
+doc.fromJSON   + callbacks:false:  handler present: false
+```
+
+Not tested: the rendered appearance of the guide (HTML was checked for tag
+balance and reviewed, not opened in every browser).
+
+## Risks / open
+
+- **`renderFromJSON(def, setup, options)` silently ignores `callbacks: false`.**
+  Its `options` go to the `Document` constructor and are never passed to
+  `fromJSON`, so a caller who reads the new documentation for `fromJSON` and
+  reaches for the one-shot helper gets callbacks anyway, with no error. This is a
+  code gap, not a documentation gap; it is documented as a caveat here and in
+  both files rather than fixed, because fixing it changes `lib/` behaviour and is
+  outside a documentation task. Flagged for a decision.
+- The published benchmark numbers in the README are labelled as measured against
+  2.0.0. They are honest as written but have not been re-measured for 2.1.0.
+- The README's npm-provenance line still says "1.2.5 yes; 2.0.0 no". Whether
+  2.1.0 published with provenance is unverified — `gh` is unavailable here.

@@ -79,6 +79,22 @@ rather than complete records.
 - Corrected the README "At a glance" test counts, which were stale: 24 automated
   suites and 31 fuzz properties, not 23 and 24.
 
+- Documented `fromJSON(def, { callbacks: false })`, the option added in 2.1.0 that
+  drops every serialized callback in a payload instead of screening it. Neither
+  the README nor the guide mentioned it existed, so the safer way to restore JSON
+  you did not produce was undiscoverable. Both now also state that
+  `renderFromJSON()` does **not** accept it — its third argument configures the
+  `Document` — so untrusted JSON must be restored through `doc.fromJSON()`.
+
+- Documented what happens to a state value that cannot be serialised. Both
+  documents said state must be JSON-serializable without saying that this is
+  enforced when you set it, that the key is simply left unset, or that the
+  failure is retained as an `E_CALLBACK_REGISTRATION` error on `validate()`. The
+  two descriptions of that error code now list state values among its causes.
+
+- The README "At a glance" suite count is 25, not 24; the dev-reload suite was
+  added after that row was last corrected.
+
 ## [2.1.0] - 2026-09-10
 
 > **Security hardening and CSS foundations.** Adds a markup-sink guard for

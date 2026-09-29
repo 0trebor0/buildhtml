@@ -1203,7 +1203,7 @@ doc.component('Card', { title: 'Hello', body: 'Reusable server UI.' });</code></
         <p>Components execute on the server and produce ordinary elements. They do not independently hydrate or hold browser component state.</p>
       </section>
 
-      <section id="builder" data-search="builder build json node def renderJSON fromJSON">
+      <section id="builder" data-search="builder build json node def renderJSON renderFromJSON fromJSON toJSON untrusted trustedCss callbacks drop serialized">
         <h2>Declarative builder and JSON</h2>
         <pre><code>doc.build({
   tag: 'section',
@@ -1303,12 +1303,16 @@ card.build([
         <div class="callout warning"><p><code>styles</code>, <code>globalStyles</code> (array form), <code>classStyles</code>, and a node's <code>cssText</code> are <strong>already-compiled CSS</strong> written into the <code>&lt;style&gt;</code> block verbatim — the same trust level as <code>appendUnsafe()</code>.</p></div>
         <p>Because a JSON payload may come from anywhere, <code>fromJSON()</code> rejects any of them containing markup, and re-validates serialized <code>events</code>, <code>computed</code>, <code>lifecycle</code>, and <code>oncreateCallbacks</code> sources against the same rules a live function passes through. Rejected entries are dropped and recorded; they never reach the page.</p>
         <p>Set <code>trustedCss: true</code> to skip the CSS markup check when restoring your own snapshot. The decision is made once at the top level and applies to every nested node, so a payload cannot grant itself the exemption. Leave it off for anything you did not produce.</p>
+        <p><code>fromJSON()</code> takes a second options argument. Pass <code>{ callbacks: false }</code> to <strong>drop</strong> every serialized callback in the payload — <code>events</code>, <code>on</code>, <code>bind</code>, <code>stateBindings</code>, <code>computed</code>, <code>lifecycle</code>, <code>onMount</code>/<code>onUpdate</code>/<code>onDestroy</code>, <code>liveList</code>, and <code>oncreateCallbacks</code> — rather than screening them:</p>
+        <pre><code class="language-javascript">doc.fromJSON(untrustedDefinition, { callbacks: false });</code></pre>
+        <p>Screening rejects what it recognises as unsafe; dropping means no callback from that payload reaches the page at all. Like <code>trustedCss</code>, the decision is made once at the top level, so a nested node cannot re-enable callbacks for itself. Note that <code>trustedCss</code> is a key <em>inside</em> the payload while <code>callbacks</code> is an argument <em>you</em> pass, which is why a payload cannot set it.</p>
+        <div class="callout warning"><p><code>renderFromJSON()</code> does not accept this option — its third argument configures the <code>Document</code>. To restore untrusted JSON, call <code>doc.fromJSON(def, { callbacks: false })</code> and render the document yourself.</p></div>
         <div class="table-wrap"><table>
           <thead><tr><th>Function</th><th>Parameters</th><th>Returns</th></tr></thead>
           <tbody>
             <tr><td><code>doc.build</code></td><td><code>node | node[]</code></td><td>The document.</td></tr>
             <tr><td><code>element.build</code></td><td><code>node | node[]</code></td><td>The element.</td></tr>
-            <tr><td><code>doc.fromJSON</code></td><td><code>pageDefinition</code></td><td>Populates the document.</td></tr>
+            <tr><td><code>doc.fromJSON</code></td><td><code>pageDefinition, options?</code>. <code>{ callbacks: false }</code> drops every serialized callback in the payload.</td><td>Populates the document.</td></tr>
             <tr><td><code>doc.toJSON</code></td><td>none</td><td>A serializable document definition.</td></tr>
             <tr><td><code>renderFromJSON</code></td><td><code>definition, setup?, options?</code></td><td>Complete HTML string. <code>renderJSON</code> is a deprecated alias.</td></tr>
           </tbody>
@@ -1350,7 +1354,7 @@ div[userId=#{user.id}]</code></pre>
         <p>Tag names are lower-case. An uppercase or otherwise invalid tag drops that one line and leaves the rest of the template intact.</p>
 </section>
 
-      <section id="state" data-search="state events binding bind show class attr style prop input lifecycle oncreate">
+      <section id="state" data-search="state events binding bind show class attr style prop input lifecycle oncreate serializable circular bigint validate registration">
         <h2>Reactive state, bindings, and events</h2>
         <pre><code>doc.states({ count: 0, open: false, name: '' });
 
@@ -1399,7 +1403,7 @@ doc.button('Once').onClick(function () { State.n++; }, undefined, { once: true }
         <div class="callout"><p>Unknown keys are dropped and every value is coerced to a boolean, so nothing a caller passes is written into the page as code — the compiler only ever emits the literal <code>true</code>. Options restored from <code>fromJSON()</code> are re-normalised the same way. Omitting the argument compiles byte-identical output to a page that never used options.</p></div>
         <p>Only own properties are read, so a flag inherited from a polluted <code>Object.prototype</code> cannot switch an option on for listeners that never asked for it.</p>
         <p>While an event listener runs synchronously, <code>event.currentTarget</code>, <code>element</code>, and <code>this</code> refer to its element. Arguments and <code>this</code> persist across <code>await</code>; because <code>currentTarget</code> belongs to the browser event-dispatch lifecycle, use the explicit element argument after awaiting. State is passed explicitly and also remains available as <code>window.State</code>. Returning <code>false</code> has no special meaning; call <code>preventDefault()</code> or <code>stopPropagation()</code> explicitly, or set them as <a href="#event-options">event options</a>.</p>
-        <p>Nested objects and arrays remain reactive. Assignments, deletions, and mutating array methods notify watchers for the root state key. State must remain JSON-serializable.</p>
+        <p>Nested objects and arrays remain reactive. Assignments, deletions, and mutating array methods notify watchers for the root state key. State must remain JSON-serializable, and that is enforced rather than assumed: a value that cannot survive <code>JSON.stringify</code> — a circular structure, a <code>BigInt</code> — is refused by <code>state()</code>, <code>states()</code> and <code>element.state()</code> when you set it, not at render time. The key is left unset, the page still renders, and the failure is kept as an <code>E_CALLBACK_REGISTRATION</code> error on <code>validate()</code> naming the key. Each key passed to <code>states()</code> is judged on its own.</p>
         <h3>Typed application state</h3>
         <p>In TypeScript, pass a state shape to <code>page&lt;State&gt;()</code>. Keys and values are then inferred across nested elements, bindings, events, lifecycle hooks, live lists, routers, and views.</p>
         <pre><code>type AppState = {
@@ -1683,7 +1687,7 @@ doc.historyRouter({
               <tr><td>Style shortcuts</td><td><code>size</code>, <code>tooltip</code>, <code>animate</code>, <code>firstChild</code>, <code>lastChild</code>, <code>nthChild</code>. <code>display</code>, <code>position</code>, <code>overflow</code> and <code>cursor</code> are <strong>deprecated</strong> — use <code>style(prop, value)</code>.</td></tr>
               <tr><td><code>pseudoClass</code></td><td><code>name, rules</code> — styles for any pseudo-class (<code>:checked</code>, <code>:focus-visible</code>, <code>:nth-of-type()</code>). The primitive the named helpers are built from.</td></tr>
               <tr><td><code>show</code>, <code>hide</code>, <code>enable</code>, <code>disable</code>, <code>focus</code></td><td>No parameters. These set or remove the rendered attribute — <code>hidden</code>, <code>disabled</code>, <code>autofocus</code> — at build time. For runtime toggling driven by state, use <code>bindShow</code> or <code>bindAttr</code>.</td></tr>
-              <tr><td><code>validate</code></td><td>No parameters. Returns <code>{ valid, errors, warnings }</code> with stable codes for callback captures, rejected callback registration, duplicate IDs, accessibility, URLs, nesting, state, ineffective document caching, History fallback requirements, and validation attempted after <code>render()</code> already cleared the body. <code>E_CALLBACK_REGISTRATION</code> retains oversized, unsafe, invalid, or context-serialization failures with callback and element context.</td></tr>
+              <tr><td><code>validate</code></td><td>No parameters. Returns <code>{ valid, errors, warnings }</code> with stable codes for callback captures, rejected callback registration, duplicate IDs, accessibility, URLs, nesting, state, ineffective document caching, History fallback requirements, and validation attempted after <code>render()</code> already cleared the body. <code>E_CALLBACK_REGISTRATION</code> retains oversized, unsafe, invalid, context-serialization, and non-serializable state-value failures with callback and element context.</td></tr>
             </tbody>
           </table></div>
         </div>

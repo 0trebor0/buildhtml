@@ -77,7 +77,7 @@ A static page stays static. Add `.states()`, `.bind()`, or `.onClick()` and the 
 | Module formats | CommonJS and ESM, plus six subpath exports |
 | TypeScript | declarations bundled (`typescript/*.d.ts`) |
 | Node.js | 18+; CI runs 18, 20, 22, 24 |
-| Testing | 24 suites, 4 Playwright browser suites, 31 fuzz properties |
+| Testing | 25 suites, 4 Playwright browser suites, 31 fuzz properties |
 | Escaping | text, attributes, CSS values, and JSON context |
 | CSP | nonce support for generated `<script>`/`<style>`; no inline `on*` attributes |
 | Client runtime | generated per page; 0 bytes when no reactive API is used |
@@ -394,6 +394,8 @@ doc.states({
 });
 ```
 
+"JSON-serializable" is enforced, not just advised. A value that cannot survive `JSON.stringify` — a circular structure, a `BigInt` — is refused by `state()`, `states()` and `Element.state()` at the call site rather than at render time. The key is left unset, the page still renders, and the failure is retained as an `E_CALLBACK_REGISTRATION` error on `validate()` naming the key. Each key in `states()` is judged on its own, so one bad value does not cost you the rest of the object.
+
 Bind elements to that state:
 
 ```javascript
@@ -654,6 +656,14 @@ const html = renderFromJSON({
 `renderJSON()` is a deprecated alias for `renderFromJSON()` and behaves identically.
 
 Use `doc.toJSON()` and `doc.fromJSON()` for document serialization and restoration.
+
+`fromJSON()` takes a second options argument. `{ callbacks: false }` drops every serialized callback in the payload — events, bindings, computed, lifecycle, `liveList` and `oncreateCallbacks` — instead of screening them:
+
+```javascript
+doc.fromJSON(untrustedDefinition, { callbacks: false });
+```
+
+Screening rejects what it recognises as unsafe; dropping means no callback from that payload can reach the page at all. Use it for definitions you did not produce. The decision is made once at the top level and applies to every nested node, so a payload cannot re-enable callbacks for itself. `renderFromJSON()` does not accept this option — its third argument configures the `Document` — so restore untrusted JSON through `doc.fromJSON()` and render the document yourself.
 
 The docs site carries the complete reference: every [node definition key](https://0trebor0.github.io/buildhtml/docs/#builder), every document-level key, which keys `toJSON()` emits versus the ones you author, and the `trustedCss` rule for restoring JSON you did not produce.
 
@@ -1225,7 +1235,7 @@ It detects duplicate IDs and reports warnings for callback captures, empty or sk
 
 `W_VALIDATE_AFTER_RENDER` means `validate()` ran after `render()` had already cleared the body, so it inspected an empty document — call it before rendering. `W_HISTORY_FALLBACK` is a deployment reminder rather than proof that the fallback is missing: a document cannot inspect the HTTP server around it. `W_CACHE_KEY` is emitted only when document caching is enabled but no key was supplied. BuildHTML cannot determine whether a supplied shared key is safe for personalized output, so identity and authorization inputs remain the application’s responsibility.
 
-Callbacks rejected while being registered are retained as `E_CALLBACK_REGISTRATION` errors instead of disappearing after a console message. This includes oversized sources, blocked `eval`/`new Function` patterns, invalid function source, and non-serializable callback context. The diagnostic identifies the callback family, element tag and ID when available, original reason, and the corrective action:
+Callbacks rejected while being registered are retained as `E_CALLBACK_REGISTRATION` errors instead of disappearing after a console message. This includes oversized sources, blocked `eval`/`new Function` patterns, invalid function source, non-serializable callback context, and non-serializable state values (recorded with the callback type `state:<key>`). The diagnostic identifies the callback family, element tag and ID when available, original reason, and the corrective action:
 
 ```javascript
 doc.button('Unsafe').onClick(function () {
