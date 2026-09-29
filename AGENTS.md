@@ -60,6 +60,15 @@
 * Remove any proposed change that cannot be directly tied to a requirement, bug, test, or verified behavior.
 * Comments should explain why something is necessary, not restate what the code does. Do not strip out pre-existing comments that already follow this rule.
 
+## Write Code People Can Read
+
+* Write code so another developer can understand the change without reconstructing your thought process.
+* Use descriptive, consistent names for variables, functions, and types. Avoid abbreviations unless they are already standard in the project.
+* Keep control flow straightforward. Use small, focused blocks and functions when they make the required behavior easier to follow; do not split code into helpers solely to reduce line count.
+* Format changed code consistently with the project's conventions. Use clear indentation, spacing, and line breaks, and avoid dense one-line expressions or deeply nested logic when a simpler form conveys the same behavior.
+* Make assumptions and non-obvious decisions clear at the point where they matter. Add brief comments for the reason behind a choice, while letting clear code explain what it does.
+* Prefer the simplest implementation that fully meets the task. Avoid clever shortcuts, unnecessary indirection, and duplicated logic that makes the change harder to maintain.
+
 ## Syntax and Build Verification
 
 * After every edit, the affected file(s) must be parsed, linted, or compiled before the change is considered complete — visual inspection of a diff is not sufficient.
