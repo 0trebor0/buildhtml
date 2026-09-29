@@ -13,6 +13,24 @@ rather than complete records.
 
 ## [Unreleased]
 
+### Added
+
+- **A dev auto-reload recipe**, as `example/dev-reload.js` and a README section —
+  deliberately an example rather than library API. buildhtml renders HTML and
+  does not run your server, so keeping that boundary means the reload recipe is
+  code you copy and own rather than an endpoint the library serves.
+
+  It uses no file watcher and no dependencies. The page carries the id of the
+  process that rendered it and holds an `EventSource` open; whatever restarts
+  your process drops the connection, the browser reconnects, sees a different
+  id, and reloads. It is off unless `BUILDHTML_DEV_RELOAD=1` is set, and the
+  endpoint returns `404` when off.
+
+  Documented limits: it does not work behind more than one process (throttled to
+  a console warning rather than a reload loop), each open tab holds one of the
+  ~6 connections a browser allows per origin, and a CSP restricting `connect-src`
+  blocks it silently.
+
 ### Fixed
 
 - **An unserialisable state value failed late, and unattributably.** Every state

@@ -974,6 +974,20 @@ node example/production-patterns.js
 
 Open `http://127.0.0.1:3003/personalized?user=alice&locale=en` for identity-, permission-, and locale-aware caching, or `http://127.0.0.1:3003/csp` for a fresh nonce shared by the CSP header and generated HTML. The complete [production patterns example](example/production-patterns.js) is exercised by HTTP tests that prove cache isolation and prevent nonce reuse.
 
+### Auto-reloading the browser during development
+
+buildhtml renders HTML; it does not run your server, so browser refresh on save is not something it can do for you. The [dev auto-reload example](example/dev-reload.js) is a recipe to copy into your own dev server — ordinary code on the public API and the Node standard library, with nothing to install:
+
+```bash
+BUILDHTML_DEV_RELOAD=1 node --watch example/dev-reload.js
+```
+
+There is no file watcher. The page carries the id of the process that rendered it and holds an `EventSource` open to the server. Whatever restarts your process — `node --watch`, nodemon, a container restart — drops that connection; the browser reconnects, sees a different id, and reloads. The restart is the signal, so nothing reads the filesystem and nothing needs to know which files matter to you.
+
+Three limits are worth knowing before you copy it. Reload will not work correctly behind more than one process, because each mints its own id — the example throttles that into a single console warning rather than a reload loop. Each open tab holds one connection, and HTTP/1.1 browsers allow about six per origin. And a Content-Security-Policy that restricts `connect-src` blocks the connection silently.
+
+It is off unless `BUILDHTML_DEV_RELOAD=1` is set, and the endpoint returns `404` when it is off. Never enable it in production.
+
 ## Styling
 
 Use scoped element styles:

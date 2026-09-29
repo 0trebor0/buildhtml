@@ -28,6 +28,7 @@ const suites = [
   'test-routing-example.js',
   'test-production-patterns-example.js',
   'test-auth-interface-example.js',
+  'test-dev-reload-example.js',
 ];
 
 for (const suite of suites) {
