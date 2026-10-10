@@ -13,6 +13,17 @@ rather than complete records.
 
 ## [Unreleased]
 
+### Security
+
+- Head styles now render only own class definitions, preventing an enumerable
+  property on a polluted `Object.prototype` from injecting CSS or script markup.
+- Reactive list URL attributes are guarded regardless of attribute-name casing,
+  both in server HTML and during browser rebuilds. Uppercase and mixed-case
+  `href`, `src`, and the other supported URL attributes no longer bypass checks.
+- Cached rendering middleware no longer caches or shares a nonce-bearing
+  `Document` returned by its builder. Concurrent waiters rebuild with their own
+  request, so a builder-supplied CSP nonce cannot leak into another response.
+
 ### Added
 
 - **A dev auto-reload recipe**, as `example/dev-reload.js` and a README section —

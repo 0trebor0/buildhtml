@@ -972,7 +972,10 @@ app.get('/dashboard', createCachedRenderer(
 
 Concurrent misses for the same key share one build. Include every value that changes the response in the cache key—especially identity, permissions, and locale.
 
-Nonce-enabled responses are deliberately rendered for every request. Reusing cached HTML would reuse its nonce and break the per-response CSP guarantee.
+Nonce-enabled responses are deliberately rendered for every request, including
+when the builder supplies `new Document({ nonce })` rather than `options.nonce`.
+Concurrent requests rebuild separately once a builder-supplied nonce is detected.
+Reusing cached HTML would reuse its nonce and break the per-response CSP guarantee.
 
 Cache helpers include `clearCache(pattern?)`, `getCacheStats()`, `healthCheck()`, and `resetPools()`.
 

@@ -1113,6 +1113,65 @@ test('a polluted Object.prototype cannot leak into rendered output', () => {
   assert(!/color:red/.test(html), 'no inherited CSS declaration is compiled');
 });
 
+test('head styles never render inherited class names or declarations', () => {
+  const key = 'inherited}</style><script>alert(1)</script><style>.inherited';
+  Object.defineProperty(Object.prototype, key, {
+    value: 'color:red', enumerable: true, configurable: true,
+  });
+  let html;
+  try {
+    const doc = new Document();
+    doc.globalCss('body', { margin: '0' });
+    doc.sharedClass('own-class', { padding: '4px' });
+    html = doc.render();
+  } finally {
+    delete Object.prototype[key];
+  }
+  assert(!hasInjectedScript(html), 'inherited CSS cannot create a script element');
+  assert(!html.includes('inherited'), 'no inherited class name or declaration reaches the head');
+  assert(html.includes('.own-class{padding:4px;}'), 'own shared classes still render');
+  assert(html.includes('body{margin:0;}'), 'global rules still render');
+});
+
+test('live-list URL guards cover every attribute casing on server and client', () => {
+  const { nodeDefToHtml, MK_EL_SRC } = require('../lib/live');
+  const { URL_ATTRS, sanitizeUrl } = require('../lib/utils');
+  const sandbox = {
+    window: {},
+    document: {
+      createElement() {
+        return {
+          attrs: {},
+          setAttribute(name, value) { this.attrs[name] = value; },
+        };
+      },
+    },
+  };
+  require('vm').runInNewContext(MK_EL_SRC, sandbox);
+  const urls = [
+    'javascript:alert(1)', 'java\tscript:alert(1)', 'vbscript:x',
+    'data:text/html,x', '/safe', 'https://example.test/a?b=c',
+  ];
+  for (const attribute of URL_ATTRS) {
+    const spellings = [
+      attribute, attribute.toUpperCase(), attribute[0].toUpperCase() + attribute.slice(1),
+    ];
+    for (const name of spellings) {
+      for (const url of urls) {
+        const def = { tag: 'a', attrs: { [name]: url } };
+        const expected = sanitizeUrl(url);
+        const ssr = nodeDefToHtml(def);
+        const client = sandbox.window._mkEl(def);
+        assert(ssr.includes(' ' + name + '="' + expected + '"'), name + ' SSR guards ' + JSON.stringify(url));
+        assert(client.attrs[name] === expected, name + ' client guards ' + JSON.stringify(url));
+      }
+    }
+  }
+  const ordinary = { tag: 'div', attrs: { 'data-HREF': 'javascript:plain-text' } };
+  assert(nodeDefToHtml(ordinary).includes('data-HREF="javascript:plain-text"'), 'ordinary attribute values remain unchanged');
+  assert(sandbox.window._mkEl(ordinary).attrs['data-HREF'] === 'javascript:plain-text', 'client preserves ordinary attribute values');
+});
+
 test('bindStyle validates property names and sanitises values like style()', () => {
   // The compiled binding did `for (var k in obj) el.style[k] = obj[k]` — no name
   // validation, no value sanitisation, and a prototype-chain walk — while the

@@ -255,3 +255,40 @@ P1 = address promptly. P2 = correctness, contract, documentation, or verificatio
 - CHANGELOG.md inspected and unchanged: review/progress notes do not alter user-visible behavior. No changelog entry required.
 - Completed: repository overlap checks, tracked-file review, focused defect reproductions, available automated/syntax checks, findings and limitations.
 - Outstanding: remediate findings if authorized; run compiler and real-browser verification with the declared development tooling available. None of the defects was fixed during this review.
+
+---
+
+# Task: Fix the three P1 review findings (2026-10-10)
+
+- Objective: Prevent inherited head CSS injection, mixed-case live-list URL bypasses, and middleware reuse of builder-supplied CSP nonces.
+- Status: Regression tests added; head class enumeration restricted to own keys. Remaining implementation changes and verification in progress.
+- Inspected: lib/{head,live,middleware,utils,document}.js; test/{security,middleware,fuzz,browser,run-all}.js; package.json, AGENTS.md, README.md, docs/index.html, CHANGELOG.md, TASK_PROGRESS.md and related declarations. Existing review context supplies the surrounding source/tests.
+- Repository: Clean main at start, no other local branches, public open-PR query returned 0. Existing review record preserved.
+- Runtime: Node v22.23.2, npm 11.12.1, compatible with Node >=18. No formatter configured.
+- Changed so far: lib/head.js, test/test-security.js, test/test-middleware.js, TASK_PROGRESS.md.
+- Tests added: inherited head CSS breakout with real head styles; all seven URL attributes across lowercase/uppercase/mixed casing on SSR and generated DOM runtime; sequential/concurrent builder nonces and waiter rebuild failures.
+- Checks after edits: node --check on the three edited JS files -> no output/errors, exit 0.
+- Remaining: Verify regressions fail before fixes; fix live-list guards and middleware concurrency; document behavior, update changelog; run focused and full available checks. Keep any test fixtures inside the repository.
+
+## Fix checkpoint
+
+- Implemented: own-key Head.classStyles enumeration; case-insensitive URL classification in live-list SSR and client; in-flight result tracks whether Document has a nonce, excludes nonce output from cache, and rebuilds waiting requests independently.
+- Regression baseline verified without file resets: module compilation used git HEAD source in memory. Security suite -> exit 1, 584 passed / 114 failed (head breakout and mixed-case URLs). Middleware -> exit 1, 53 passed / 12 failed (sequential/concurrent nonce reuse and rebuild-error delivery).
+- After fixes: test/test-security.js -> 698 passed / 0 failed, exit 0. test/test-middleware.js -> 65 passed / 0 failed, exit 0. New waiter failure is caught by the existing middleware error handler; original non-nonce coalescing and failed-render tests pass.
+- Syntax: node --check lib/{head,live,middleware}.js and test/{security,middleware}.js -> no errors, exit 0.
+- Documentation: README.md and docs/index.html explain builder-supplied nonce bypass and concurrent rebuilds; CHANGELOG.md has three completed Unreleased Security entries. Initial documentation patch matched the wrong HTML wrapper and was rejected without edits; corrected to the actual div wrapper.
+- Changed files: lib/head.js, lib/live.js, lib/middleware.js, test/test-security.js, test/test-middleware.js, README.md, docs/index.html, CHANGELOG.md, TASK_PROGRESS.md.
+- Remaining: full automated suite with TEMP/TMP pointed inside the repository, documentation syntax checks, final diff review. Compiler/browser tooling remains absent from the initial review environment.
+
+## Final verification and status
+
+- Complete: all three requested P1 fixes and focused regressions. Remaining 14 review findings are outside this request and unchanged. Changes remain uncommitted on main.
+- Full regression command: node test/run-all.js (the configured npm test runner), with child TEMP/TMP explicitly verified as C:\Users\rober\Documents\Github\buildhtml. Exit 0: All 25 automated suites passed. Includes security 698 passed / 0 failed; middleware 65 passed / 0 failed; fuzz 31 passed / 0 failed. Temporary fixture files were created inside the repository and cleaned by the existing suites.
+- Documentation suite: 56 README and 62 guide JavaScript blocks parse; 2 complete quick starts execute; 15 local links resolve; 49 shortcuts documented. Tutorial: 41 JavaScript blocks execute and 23 documented behaviors hold.
+- Final node --check on all 5 changed JS files -> passed. Guide inline script -> 1 parsed; HTML tags balanced and correctly nested. Changed Markdown code fences balanced.
+- Final diff verification: mixed CRLF/LF in the new test block caused git diff --check to report CR characters as trailing whitespace. Normalized only that newly added block; repeated syntax and diff checks passed. Original file content/line endings outside the block preserved.
+- Browser and TypeScript checks unavailable: local node_modules/playwright and node_modules/typescript are absent (also confirmed during review). No tooling/dependency installs or lockfile changes. Generated browser URL guards are tested by executing _mkEl with a DOM stub; real Chromium/CSP execution and other Node versions were not tested.
+- Scope: exactly 9 files modified: lib/head.js, lib/live.js, lib/middleware.js, test/test-security.js, test/test-middleware.js, README.md, docs/index.html, CHANGELOG.md, TASK_PROGRESS.md. No files created/deleted, public signatures changed, helpers/exported symbols added, or dependencies changed. No formatter configured.
+- Error handling: nonce waiter rebuilds run inside the existing middleware try/catch; the new thrown-builder regression proves next receives the error and another request's nonce is never sent. Existing non-nonce cache/coalescing, cache invalidation, and failed-render recovery tests pass.
+- TASK_PROGRESS.md current. CHANGELOG.md updated under Unreleased/Security; README and guide describe the expanded nonce behavior.
+- Operational assumption follows the documented cache contract: a cache key must include every response-changing input; builders produce fresh Documents per request. Nonce callbacks supplied through options.nonce continue to bypass cache-key evaluation entirely.

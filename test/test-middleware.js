@@ -202,6 +202,82 @@ const p7 = test('nonce option injects a fresh nonce and bypasses rendered HTML c
   assert(!responseCache.has('page-nonce-test'), 'nonce-enabled HTML is not placed in the response cache');
 });
 
+const constructorNonces = test('Document-supplied nonces bypass caching for sequential requests', async () => {
+  resetCache();
+  let builds = 0;
+  const key = 'document-nonce-sequential';
+  const middleware = createCachedRenderer(req => {
+    builds++;
+    const doc = new Document({ nonce: req.nonce });
+    doc.state('n', 1);
+    doc.span().bind('n');
+    return doc;
+  }, key);
+  for (const nonce of ['sequential-A', 'sequential-B']) {
+    const res = mockRes();
+    await middleware({ nonce }, res, error => { if (error) throw error; });
+    assert(res._sent.includes('nonce="' + nonce + '"'), 'response uses its own ' + nonce);
+    assert(!responseCache.has(key), 'Document-supplied nonce is never cached');
+  }
+  assert(builds === 2, 'sequential nonce requests both build');
+});
+
+const concurrentNonces = test('concurrent requests do not share a Document-supplied nonce', async () => {
+  resetCache();
+  let builds = 0;
+  let release;
+  const pending = new Promise(resolve => { release = resolve; });
+  const key = 'document-nonce-concurrent';
+  const middleware = createCachedRenderer(async req => {
+    builds++;
+    await pending;
+    const doc = new Document({ nonce: req.nonce });
+    doc.state('n', 1);
+    doc.span().bind('n');
+    return doc;
+  }, key);
+  const responses = [mockRes(), mockRes(), mockRes()];
+  const nonces = ['concurrent-A', 'concurrent-B', 'concurrent-C'];
+  const requests = responses.map((res, index) => middleware(
+    { nonce: nonces[index] }, res, error => { if (error) throw error; }
+  ));
+  release();
+  await Promise.all(requests);
+  assert(builds === 3, 'each concurrent nonce response gets a separate build');
+  for (let index = 0; index < responses.length; index++) {
+    assert(responses[index]._sent.includes('nonce="' + nonces[index] + '"'), 'concurrent response uses its own nonce');
+    assert(!responses[index]._sent.includes('nonce="' + nonces[(index + 1) % nonces.length] + '"'), 'concurrent response never contains another nonce');
+  }
+  assert(!responseCache.has(key), 'no concurrent nonce output is cached');
+  await Promise.resolve();
+  assert(!inFlightCache.has(key), 'nonce render leaves no in-flight entry');
+});
+
+const nonceRebuildFailure = test('a nonce waiter rebuild failure reaches next without caching shared output', async () => {
+  resetCache();
+  let release;
+  const pending = new Promise(resolve => { release = resolve; });
+  const key = 'document-nonce-rebuild-failure';
+  const middleware = createCachedRenderer(async req => {
+    if (req.fail) throw new Error('nonce rebuild failed');
+    await pending;
+    const doc = new Document({ nonce: 'first-only' });
+    doc.state('n', 1);
+    return doc;
+  }, key);
+  const first = mockRes();
+  const second = mockRes();
+  let caught = null;
+  const a = middleware({}, first, error => { if (error) throw error; });
+  const b = middleware({ fail: true }, second, error => { caught = error; });
+  release();
+  await Promise.all([a, b]);
+  assert(first._sent.includes('nonce="first-only"'), 'owner still receives its valid response');
+  assert(caught && caught.message === 'nonce rebuild failed', 'waiter rebuild error is forwarded');
+  assert(second._sent === null, 'failed waiter is never sent the owner nonce');
+  assert(!responseCache.has(key), 'shared nonce is not cached after a rebuild failure');
+});
+
 /* ---- clearCache removes entries ---- */
 const p8 = test('clearCache() removes all cached entries', async () => {
   resetCache();
@@ -302,7 +378,10 @@ const p11 = test('concurrent requests sharing a failing render all receive the e
   assert(!inFlightCache.has(key), 'in-flight entry cleaned up');
 });
 
-Promise.all([p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, p11]).then(() => test(
+Promise.all([
+  p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, p11,
+  constructorNonces, concurrentNonces, nonceRebuildFailure,
+]).then(() => test(
   'clearCache(pattern) invalidates a matching in-flight render',
   async () => {
     resetCache();

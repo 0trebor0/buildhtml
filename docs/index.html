@@ -1553,7 +1553,7 @@ doc.historyRouter({
           </tbody>
         </table></div>
         <p>Concurrent misses for one key share a build. Include every response-changing value in the key—especially user identity, locale, and permissions. Use <code>clearCache(pattern?)</code>, <code>getCacheStats()</code>, <code>healthCheck()</code>, and <code>resetPools()</code> for operations.</p>
-        <div class="callout warning"><strong>Nonce responses are not cached:</strong> reusing rendered HTML would also reuse its nonce. When <code>options.nonce</code> is configured, BuildHTML renders every response so the CSP header and HTML can use a fresh matching value.</div>
+        <div class="callout warning"><strong>Nonce responses are not cached:</strong> reusing rendered HTML would also reuse its nonce. When <code>options.nonce</code> is configured or the builder supplies <code>new Document({ nonce })</code>, BuildHTML renders every response so the CSP header and HTML can use a fresh matching value. Concurrent requests rebuild separately once a builder-supplied nonce is detected.</div>
         <h3>Complete caching and CSP example</h3>
         <pre><code>node example/production-patterns.js
 # Personalized cache: http://127.0.0.1:3003/personalized?user=alice&amp;locale=en
