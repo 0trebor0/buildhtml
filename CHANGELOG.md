@@ -15,6 +15,12 @@ rather than complete records.
 
 ### Security
 
+- Restored attribute bindings now reject markup and inline-event attributes,
+  record refusals in validation, and sanitize URL values regardless of name
+  casing. The compiler also checks names independently of restoration.
+- Reactive list styles created in the browser retain the response nonce,
+  allowing later state-driven CSS rules under a nonce-only Content Security Policy.
+
 - Head styles now render only own class definitions, preventing an enumerable
   property on a polluted `Object.prototype` from injecting CSS or script markup.
 - Reactive list URL attributes are guarded regardless of attribute-name casing,
@@ -25,6 +31,22 @@ rather than complete records.
   request, so a builder-supplied CSP nonce cannot leak into another response.
 
 ### Added
+
+- `Document.compile()` produces HTML or a standalone browser ES module class
+  without consuming the source tree or using response caching. Browser classes
+  mount native DOM into isolated shadow trees, keep independent reactive state,
+  and support explicit destruction/remounting with listener/lifecycle cleanup.
+  Class output includes existing bindings, computed text, lists, views, local
+  portals, scoped CSS and CSP nonces, with clear errors for unsupported
+  document-wide features. Type declarations and browser regressions are included.
+
+- Optional `liveList(..., { key: 'id' })` updates reuse rows and compatible
+  descendants, preserving editable inputs while updating content and handlers.
+  Missing or duplicate keys are rejected instead of associating state with the
+  wrong row. Declarative lists and TypeScript options support the same field.
+
+- Documented class-based pages using `class HomePage extends Document`, with
+  ESM/CommonJS imports, constructor options, and a fresh instance per render.
 
 - **A dev auto-reload recipe**, as `example/dev-reload.js` and a README section —
   deliberately an example rather than library API. buildhtml renders HTML and
@@ -43,6 +65,21 @@ rather than complete records.
   blocks it silently.
 
 ### Fixed
+
+- Generated browser classes preserve native constructor identities, static
+  methods and prototypes instead of binding constructors such as Array/Event.
+  Tag/class document lookups and contains now stay within the instance, with
+  live collections and a consistent scoped defaultView. Native template
+  children now populate template.content for cloning and insertion.
+
+- JSON snapshots retain binding and lifecycle descriptors after the original
+  document renders, so restoring a saved page keeps its interactivity.
+- Fixed a test regex that counted zero script/style tags, restoring the affected
+  fuzz checks and adding known-tag assertions to prevent vacuous results.
+
+- `computed()` text now updates when the `State` keys it reads change, including
+  nested mutations and conditional dependencies. Failures use the existing
+  reporter and remain recoverable; removed elements release their watchers.
 
 - **An unserialisable state value failed late, and unattributably.** Every state
   value is serialised into the page, so a circular structure or a `BigInt` can

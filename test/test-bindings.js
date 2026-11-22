@@ -329,6 +329,87 @@ test('prototype-named root state remains isolated and reactive', () => {
   assert(Object.prototype.value === undefined, 'global object prototype is not polluted');
 });
 
+/* ---- reactive computed values ---- */
+test('computed tracks multiple roots, nested values, and conditional dependencies', () => {
+  const doc = new Document();
+  doc.states({ price: 10, cart: { quantity: 3 }, discounted: false, sale: 5, unrelated: 0 });
+  const output = doc.span().computed(() => (State.discounted ? State.sale : State.price) * State.cart.quantity);
+  const outputId = output.attrs.id;
+  const element = { textContent: '', tagName: 'SPAN' };
+  let lookups = 0;
+  const context = runClient(doc, id => {
+    if (id !== outputId) return null;
+    lookups++;
+    return element;
+  });
+
+  assert(String(element.textContent) === '30', 'computed initializes from global state');
+  context.State.cart.quantity = 4;
+  assert(String(element.textContent) === '40', 'nested mutation recomputes the result');
+  context.State.discounted = true;
+  assert(String(element.textContent) === '20', 'conditional dependency changes are tracked');
+  const beforeUnrelated = lookups;
+  context.State.price = 100;
+  context.State.unrelated = 1;
+  assert(lookups === beforeUnrelated, 'inactive and unrelated dependencies do not recompute');
+  context.State.sale = 6;
+  assert(String(element.textContent) === '24', 'new conditional dependency stays reactive');
+  delete context.State.sale;
+  assert(Number.isNaN(Number(element.textContent)), 'root deletion recomputes the result');
+});
+
+test('computed reports errors and recovers when a read dependency changes', () => {
+  const doc = new Document();
+  doc.states({ divisor: 0 });
+  const output = doc.span().computed(function () {
+    if (!State.divisor) throw new Error('divisor must be nonzero');
+    return 12 / State.divisor;
+  });
+  const element = { textContent: 'previous', tagName: 'SPAN' };
+  const errors = [];
+  const context = runClient(doc, { [output.attrs.id]: element }, {
+    BuildHTML: { reportClientError: (error, info) => errors.push({ error, info }) },
+  });
+  assert(errors.length === 1 && errors[0].info.type === 'computed', 'computed failure reaches the existing reporter');
+  assert(element.textContent === 'previous', 'failed calculation retains the previous text');
+  context.State.divisor = 3;
+  assert(String(element.textContent) === '4', 'failed calculation retains dependencies for recovery');
+});
+
+test('computed preserves legacy state arguments and works without global state', () => {
+  const doc = new Document();
+  const output = doc.span().id('legacy-computed').state({ total: 7 });
+  output.computed(state => state['legacy-computed'].total);
+  const element = { textContent: '', tagName: 'SPAN' };
+  runClient(doc, { 'legacy-computed': element });
+  assert(String(element.textContent) === '7', 'legacy per-element state argument is preserved');
+});
+
+test('computed watchers stop after the target is removed', () => {
+  const doc = new Document();
+  doc.states({ count: 1 });
+  const output = doc.span().computed(() => State.count * 2);
+  const outputId = output.attrs.id;
+  let element = { textContent: '', tagName: 'SPAN' };
+  let lookups = 0;
+  let observer;
+  class TestMutationObserver {
+    constructor(callback) { this.callback = callback; observer = this; }
+    observe() {}
+    disconnect() {}
+  }
+  const context = runClient(doc, id => {
+    if (id !== outputId) return null;
+    lookups++;
+    return element;
+  }, { MutationObserver: TestMutationObserver });
+  element = null;
+  if (observer) observer.callback();
+  const afterRemoval = lookups;
+  context.State.count = 2;
+  assert(observer && lookups === afterRemoval, 'removed computed target disposes dependency watchers');
+});
+
 /* ---- watcher lifecycle and cleanup ---- */
 test('watchState returns an idempotent unsubscribe function', () => {
   const doc = new Document();
@@ -680,6 +761,160 @@ test('liveList sorting and empty states match the initial server state', () => {
   assert(empty.render().includes('<p role="status">Nothing here</p>'), 'SSR renders the declarative empty state');
 });
 
+test('keyed liveList retains SSR rows, nested inputs, current events, and ordering', () => {
+  // A small DOM model exercises the emitted code without a browser dependency.
+  // Real focus and selection behavior is additionally covered by the browser suite.
+  class ListNode {
+    constructor(name, value = null) {
+      this.nodeName = name.toUpperCase();
+      this.nodeType = name === '#text' ? 3 : 1;
+      this.nodeValue = value;
+      this.childNodes = [];
+      this.parentNode = null;
+      this.attrs = new Map();
+      this.listeners = new Map();
+      if (name === 'input') this.value = '';
+    }
+    get attributes() { return Array.from(this.attrs, ([name, value]) => ({ name, value })); }
+    get firstChild() { return this.childNodes[0] || null; }
+    get lastChild() { return this.childNodes[this.childNodes.length - 1] || null; }
+    get textContent() { return this.nodeType === 3 ? this.nodeValue : this.childNodes.map(child => child.textContent).join(''); }
+    set textContent(value) {
+      while (this.firstChild) this.removeChild(this.firstChild);
+      if (String(value)) this.appendChild(new ListNode('#text', String(value)));
+    }
+    setAttribute(name, value) { this.attrs.set(name, String(value)); }
+    getAttribute(name) { return this.attrs.has(name) ? this.attrs.get(name) : null; }
+    hasAttribute(name) { return this.attrs.has(name); }
+    removeAttribute(name) { this.attrs.delete(name); }
+    addEventListener(name, fn) {
+      if (!this.listeners.has(name)) this.listeners.set(name, new Set());
+      this.listeners.get(name).add(fn);
+    }
+    removeEventListener(name, fn) { if (this.listeners.has(name)) this.listeners.get(name).delete(fn); }
+    appendChild(child) { return this.insertBefore(child, null); }
+    insertBefore(child, before) {
+      if (child.parentNode) child.parentNode.removeChild(child);
+      this.childNodes.splice(before ? this.childNodes.indexOf(before) : this.childNodes.length, 0, child);
+      child.parentNode = this;
+      return child;
+    }
+    removeChild(child) {
+      this.childNodes.splice(this.childNodes.indexOf(child), 1);
+      child.parentNode = null;
+      return child;
+    }
+    replaceChild(child, old) {
+      this.insertBefore(child, old);
+      this.removeChild(old);
+      return old;
+    }
+    contains(node) { return this === node || this.childNodes.some(child => child.contains(node)); }
+  }
+
+  const doc = new Document();
+  doc.states({ items: [{ id: 'a', label: 'One' }, { id: 'b', label: 'Two' }], selected: '', reverse: false });
+  const list = doc.liveList('items', function (item) {
+    return {
+      tag: 'section',
+      attrs: { title: item.label },
+      children: [
+        { tag: 'span', text: item.label },
+        { tag: 'input', attrs: { 'aria-label': 'Edit task' } },
+        { tag: 'button', text: 'Select', on: item.disabled ? {} : { click: function () { State.selected = item.label; } } },
+        { tag: 'a', text: 'Details', attrs: { HREF: item.url || '/safe' } },
+      ],
+    };
+  }, {
+    key: 'id',
+    sort: (a, b, state) => state.reverse ? b.id.localeCompare(a.id) : a.id.localeCompare(b.id),
+    sortKeys: ['reverse'],
+    empty: { tag: 'p', text: 'Nothing here' },
+  });
+  const listId = list.attrs.id;
+  const container = new ListNode('div');
+  // The first row represents markup already produced by SSR, before hydration.
+  const first = new ListNode('section');
+  const input = new ListNode('input');
+  first.appendChild(new ListNode('span'));
+  first.appendChild(input);
+  first.appendChild(new ListNode('button'));
+  const second = new ListNode('section');
+  container.appendChild(first);
+  container.appendChild(second);
+  input.value = 'unsaved edit';
+  const errors = [];
+  const context = runClient(doc, { [listId]: container }, {
+    BuildHTML: { reportClientError: (error, info) => errors.push({ error, info }) },
+    document: {
+      createElement: name => new ListNode(name),
+      createTextNode: value => new ListNode('#text', value),
+    },
+  }, true);
+
+  assert(errors.length === 0, 'keyed hydration reports no error');
+  assert(container.firstChild === first && first.childNodes[1] === input, 'hydration adopts server rows and descendants');
+  assert(input.value === 'unsaved edit', 'hydration preserves an uncontrolled input value');
+  context.State.items[0].label = '<Updated>';
+  assert(container.firstChild === first && first.childNodes[0].textContent === '<Updated>', 'editing patches text without replacing its row');
+  assert(first.getAttribute('title') === '<Updated>', 'editing patches sanitized attributes');
+  const button = first.childNodes[2];
+  assert(button.listeners.get('click').size === 1, 'event handlers are replaced without duplicates');
+  for (const handler of button.listeners.get('click')) handler();
+  assert(context.State.selected === '<Updated>', 'retained event handlers capture the current item');
+  context.State.items[0].disabled = true;
+  assert(button.listeners.get('click').size === 0, 'removed event definitions remove the previous listener');
+  context.State.items[0].disabled = false;
+  context.State.items[0].url = 'javascript:alert(1)';
+  assert(first.childNodes[3].getAttribute('HREF') === '#', 'keyed attribute patches preserve mixed-case URL sanitization');
+  context.State.reverse = true;
+  assert(container.childNodes[0] === second && container.childNodes[1] === first, 'sorting moves existing keyed rows');
+  assert(first.childNodes[1] === input && input.value === 'unsaved edit', 'sorting preserves the edited input');
+  context.State.items = [{ id: 'a', label: 'Replacement object' }, { id: 'c', label: 'Three' }];
+  assert(container.childNodes[1] === first && !container.contains(second), 'replacement objects retain matching keys and remove missing rows');
+  for (const handler of button.listeners.get('click')) handler();
+  assert(context.State.selected === 'Replacement object', 'events capture a replacement object rather than stale state');
+  const beforeInvalid = container.childNodes.slice();
+  context.State.items = [{ id: 'a' }, { id: 'a' }];
+  assert(errors.length === 1 && errors[0].info.type === 'liveList:key', 'duplicate browser keys report a clear error');
+  assert(container.childNodes.every((node, i) => node === beforeInvalid[i]), 'invalid keys leave the displayed rows intact');
+  context.State.items = [{ label: 'missing key' }];
+  assert(errors.length === 2, 'missing browser keys are reported');
+  context.State.items = [];
+  assert(container.childNodes.length === 1 && container.textContent === 'Nothing here', 'empty keyed lists replace old rows with the empty state');
+  context.State.items = [{ id: 0, label: 'Zero' }];
+  assert(container.childNodes.length === 1 && container.firstChild.nodeName === 'SECTION', 'a keyed list recovers from errors and an empty state');
+  container.firstChild.setAttribute = function () { throw new Error('attribute update failed'); };
+  context.State.items[0].label = 'Failure';
+  const patchError = errors[errors.length - 1];
+  assert(patchError.info.type === 'liveList:item' && patchError.error.message.includes('Unable to update keyed list node'),
+    'DOM patch failures are caught and reported with keyed list context');
+  context.State.items[0].label = 'Recovered';
+  assert(container.textContent.includes('Recovered'), 'a later state update recovers after a failed node patch');
+});
+
+test('declarative liveList forwards its key option', () => {
+  const doc = new Document();
+  doc.states({ items: [{ id: 1 }] });
+  doc.build({ liveList: { stateKey: 'items', key: 'id', itemFn: item => ({ tag: 'p', text: item.id }) } });
+  assert(doc.render().includes('var _keyField="id"'), 'declarative builders compile the requested keyed updates');
+});
+
+test('keyed liveList rejects invalid server keys and accepts prototype-named keys', () => {
+  for (const items of [[{ id: 'same' }, { id: 'same' }], [{}], [{ id: null }], [{ id: {} }], [{ id: Infinity }]]) {
+    const doc = new Document();
+    doc.states({ items });
+    let rejected = false;
+    try { doc.liveList('items', item => ({ tag: 'p', text: 'row' }), { key: 'id' }); }
+    catch (error) { rejected = error instanceof TypeError && error.message.includes('[liveList] Invalid key'); }
+    assert(rejected, 'invalid or duplicate server key is rejected before rendering');
+  }
+  const doc = new Document();
+  doc.states({ items: [{ id: '__proto__' }, { id: 'constructor' }, { id: 0 }, { id: '0' }] });
+  doc.liveList('items', item => ({ tag: 'p', text: item.id }), { key: 'id' });
+  assert(doc.render().includes('<p>__proto__</p>'), 'string and numeric keys retain their types and prototype names are ordinary keys');
+});
+
 /* ---- clear() resets inline script state ---- */
 test('clear() resets inline scripts, live compilation, callbacks, and router diagnostics', () => {
   const { compileLiveList } = require('../lib/live');
@@ -779,6 +1014,43 @@ test('bindAttr rejects inline event attributes', () => {
   assert(el._stateBindings.length === 0, 'onclick binding not registered');
   const html = doc.render();
   assert(!html.includes('setAttribute("onclick"'), 'onclick setter not compiled');
+});
+
+test('restored attribute bindings reject markup and event sinks and sanitize mixed-case URLs', () => {
+  for (const attrName of ['srcdoc', 'SRCDOC', 'onclick', 'on-Click']) {
+    const doc = new Document().fromJSON({
+      globalState: { payload: '<b>unsafe markup</b>' },
+      body: [{ tag: 'iframe', attrs: { id: 'restored-target' }, stateBindings: [{
+        id: 'restored-target', stateKey: 'payload', bindType: 'attr', attrName, templateFn: 'value => value',
+      }] }],
+    });
+    assert(doc.body[0]._stateBindings.length === 0, `restored ${attrName} binding is refused`);
+    assert(doc.validate().errors.some(error => error.code === 'E_CALLBACK_REGISTRATION'), 'refusal is reported by validation');
+    const html = doc.render();
+    assert(!html.includes(`setAttribute("${attrName}"`), 'unsafe restored setter is never compiled');
+  }
+
+  const doc = new Document().fromJSON({
+    globalState: { link: 'javascript:alert(1)' },
+    body: [{ tag: 'a', attrs: { id: 'restored-link' }, stateBindings: [{
+      id: 'restored-link', stateKey: 'link', bindType: 'attr', attrName: 'HREF', templateFn: 'value => value',
+    }] }],
+  });
+  const attrs = {};
+  const context = runClient(doc, { 'restored-link': {
+    tagName: 'A', setAttribute: (name, value) => { attrs[name.toLowerCase()] = value; },
+  } });
+  assert(attrs.href === '#', 'restored uppercase URL binding blocks executable schemes');
+  context.State.link = '/safe';
+  assert(attrs.href === '/safe', 'restored URL binding preserves safe values');
+});
+
+test('compiler independently rejects unsafe attribute binding descriptors', () => {
+  const doc = new Document();
+  doc.states({ payload: '<b>unsafe</b>' });
+  const el = doc.div().id('direct-target');
+  el._stateBindings.push({ id: 'direct-target', stateKey: 'payload', bindType: 'attr', attrName: 'srcdoc', templateFn: 'value => value' });
+  assert(!doc.render().includes('setAttribute("srcdoc"'), 'compiler guards descriptors that bypass restoration');
 });
 
 test('bindAttr sanitizes reactive URL values', () => {

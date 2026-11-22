@@ -344,7 +344,12 @@ roundTripProperty('toJSON -> fromJSON reproduces the rendered document', Math.mi
  * but never more.
  */
 const countTags = (html) => (html.match(/<[a-zA-Z][^>]*>/g) || []).length;
-const countEl = (html, tag) => (html.match(new RegExp('<' + tag + '\b', 'gi')) || []).length;
+const countEl = (html, tag) => (html.match(new RegExp('<' + tag + '\\b', 'gi')) || []).length;
+
+assert.strictEqual(countEl('<script>x</script><scripture></scripture>', 'script'), 1,
+  'the element counter must detect real script tags without matching longer names');
+assert.strictEqual(countEl('<STYLE nonce="test">x</STYLE>', 'style'), 1,
+  'the element counter must detect styled tags with attributes and mixed casing');
 
 property('a fuzzed CSS property name adds no element to the page', Math.min(ITERATIONS, 500), (input) => {
   const controlDoc = new Document();

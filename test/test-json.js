@@ -1,6 +1,6 @@
 'use strict';
 
-const { Document, renderFromJSON } = require('../index');
+const { Document, renderFromJSON, resetPools } = require('../index');
 
 let passed = 0;
 let failed = 0;
@@ -287,6 +287,27 @@ test('text at document level is escaped', () => {
   const html = doc.render();
   assert(!html.includes('<script>alert(1)'), 'a script payload is not emitted raw');
   assert(html.includes('&lt;script&gt;'), 'it is escaped instead');
+});
+
+test('JSON snapshots retain independent bindings and lifecycle hooks after rendering', () => {
+  resetPools();
+  const doc = new Document();
+  doc.states({ count: 1 });
+  const output = doc.span().bind('count', value => String(value)).onMount(function () {
+    this.dataset.snapshot = 'mounted';
+  });
+  const snapshot = doc.toJSON();
+  assert(snapshot.body[0].stateBindings !== output._stateBindings, 'snapshot owns its binding array');
+  assert(snapshot.body[0].lifecycle !== output._lifecycle, 'snapshot owns its lifecycle array');
+  assert(snapshot.body[0].stateBindings[0] !== output._stateBindings[0], 'snapshot owns its binding descriptors');
+  assert(snapshot.body[0].lifecycle[0] !== output._lifecycle[0], 'snapshot owns its lifecycle descriptors');
+  doc.render();
+  assert(snapshot.body[0].stateBindings.length === 1, 'rendering does not clear saved bindings');
+  assert(snapshot.body[0].lifecycle.length === 1, 'rendering does not clear saved lifecycle hooks');
+  const restored = new Document().fromJSON(snapshot);
+  const html = restored.render();
+  assert(html.includes('initBindings()'), 'restored snapshot compiles its binding');
+  assert(html.includes("dataset.snapshot = 'mounted'"), 'restored snapshot compiles its lifecycle callback');
 });
 
 /* ---- summary ---- */

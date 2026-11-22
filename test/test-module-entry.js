@@ -130,6 +130,37 @@ const asyncTests = (async () => {
     assert(viaFactory.includes('<title>Factory page</title>'));
   });
 
+  await testAsync('package import supports class-based pages with independent instances', async () => {
+    const { Document } = await import('@trebor/buildhtml');
+
+    class HomePage extends Document {
+      constructor() {
+        super();
+        this.title('Home');
+        this.h1('Hello world');
+        this.p('Built with a JavaScript class.');
+      }
+    }
+
+    const first = new HomePage();
+    const second = new HomePage();
+    assert(first instanceof Document);
+    first.p('<first instance only>');
+
+    const html = first.render();
+    assert(html.startsWith('<!DOCTYPE html>'));
+    assert(html.includes('<title>Home</title>'));
+    assert(html.includes('<h1>Hello world</h1>'));
+    assert(html.includes('<p>Built with a JavaScript class.</p>'));
+    assert(html.includes('&lt;first instance only&gt;'));
+    assert(!html.includes('<script'));
+    assert.strictEqual(first.body.length, 0, 'successful render consumes the first tree');
+
+    const secondHtml = second.render();
+    assert(secondHtml.includes('<h1>Hello world</h1>'));
+    assert(!secondHtml.includes('first instance only'));
+  });
+
   await testAsync('subpath modules are importable as ESM with named exports', async () => {
     const template = await import(pathToFileURL(path.join(ROOT, 'lib/template.js')).href);
     assert.strictEqual(typeof template.renderTemplate, 'function');

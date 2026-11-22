@@ -15,6 +15,8 @@ function buildPage() {
   doc.title('buildhtml browser integration');
   doc.states({
     count: 0,
+    keyedItems: [{ id: 'a', label: 'One' }, { id: 'b', label: 'Two' }],
+    keyedSelection: '',
     name: 'Initial',
     visible: true,
     theme: 'light',
@@ -47,6 +49,7 @@ function buildPage() {
   doc.div().id('portal-target');
 
   doc.span().id('count-output').bind('count', value => String(value));
+  doc.span().id('computed-count').computed(() => State.count * 2);
   doc.button('Increment').id('increment').onClick(function () { State.count += 1; });
   doc.button('Use context').id('use-context').onClick(function (event, state, element, context) {
     state.contextResult = element.id + ':' + context.page;
@@ -87,6 +90,19 @@ function buildPage() {
 
   doc.a('/safe', 'Reactive link').id('link-output').bindAttr('link', 'href', value => value);
   doc.button('Unsafe link').id('unsafe-link').onClick(function () { State.link = 'javascript:alert(1)'; });
+
+  doc.div().id('keyed-list').liveList('keyedItems', function (item) {
+    return {
+      tag: 'section',
+      attrs: { 'data-key': item.id },
+      children: [
+        { tag: 'span', text: item.label },
+        { tag: 'input', attrs: { 'aria-label': 'Edit ' + item.id } },
+        { tag: 'button', text: 'Select', on: { click: function () { State.keyedSelection = item.label; } } },
+        { tag: 'small', html: '<!--keyed row marker-->' },
+      ],
+    };
+  }, { key: 'id', empty: { tag: 'p', text: 'No keyed items' } });
 
   doc.div().id('list').liveList('items', item => ({
     tag: 'span', text: item.label, attrs: { 'data-item': item.id },
@@ -211,6 +227,81 @@ function buildPage() {
 }
 
 const server = http.createServer((_req, res) => {
+  if (_req.url === '/compiled-stateless.js') {
+    const doc = new Document();
+    doc.button('Local state').onClick(function () { State.count = (State.count || 0) + 1; });
+    res.writeHead(200, { 'Content-Type': 'text/javascript; charset=utf-8' });
+    return res.end(doc.compile({ output: 'class', className: 'StatelessPage' }));
+  }
+  if (_req.url === '/compiled.js' || _req.url === '/compiled-object.js') {
+    const doc = new Document();
+    doc.title('Local class title').bodyCss({ color: 'rgb(10, 20, 30)' });
+    doc.cssVars({ accent: 'rgb(0, 128, 0)' });
+    doc.states({ count: 0, name: 'Initial', ready: false, items: [{ id: 1, title: 'One' }] });
+    doc.h1('Compiled page').css({ color: 'var(--accent)' });
+    doc.span().id('compiled-count').bind('count');
+    doc.span().id('compiled-double').computed(() => State.count * 2);
+    doc.button('Increment').id('compiled-increment').onClick(function () { State.count++; });
+    doc.input('text').id('compiled-input').addClass('scoped-input').attr('name', 'scoped-name').bindInput('name');
+    doc.create('template').id('compiled-template').span('Template content');
+    doc.div().id('compiled-platform').onMount(function () {
+      const input = document.getElementById('compiled-input');
+      this.dataset.array = String(window.Array === Array && typeof window.Array.isArray === 'function' && window.Array.isArray([]));
+      this.dataset.event = String(window.Event.prototype === Event.prototype);
+      this.dataset.promise = String(typeof window.Promise.resolve === 'function');
+      this.dataset.view = String(document.defaultView === window);
+      this.dataset.contains = String(document.contains(input));
+      this.dataset.method = String(window.getComputedStyle(input).color === getComputedStyle(input).color);
+      this.dataset.tag = String(document.getElementsByTagName('input')[0] === input);
+      this.dataset.class = String(document.getElementsByClassName('scoped-input')[0] === input);
+      const inputs = document.getElementsByTagName('input');
+      const extra = document.createElement('input');
+      document.body.appendChild(extra);
+      this.dataset.live = String(inputs.length === 2);
+      extra.remove();
+    });
+    doc.span().id('compiled-name').bind('name');
+    doc.div().id('compiled-lifecycle')
+      .onMount(function () {
+        this.dataset.mounted = 'true';
+        document.addEventListener('custom-event', function () { State.count++; });
+        return () => { this.dataset.cleaned = 'true'; };
+      })
+      .onDestroy(function () { this.dataset.destroyed = 'true'; });
+    doc.oncreate(function () { State.ready = true; });
+    doc.button('Overview').data({ viewNav: 'overview' });
+    doc.button('Details').data({ viewNav: 'details' });
+    doc.section('Overview content').id('compiled-overview').data({ view: 'overview' });
+    doc.section('Details content').id('compiled-details').data({ view: 'details' });
+    doc.views({ stateKey: 'activeView', default: 'overview' });
+    doc.p('Local portal').id('compiled-portal').portal('compiled-portal-target');
+    doc.div().id('compiled-portal-target');
+    doc.div().id('compiled-list').liveList('items', item => ({
+      tag: 'button', text: item.title, css: { color: item.id === 1 ? 'red' : 'blue' },
+      on: { click: function () { State.name = item.title; } },
+    }), { key: 'id' });
+    res.writeHead(200, { 'Content-Type': 'text/javascript; charset=utf-8' });
+    return res.end(doc.compile({ output: 'class', className: _req.url === '/compiled-object.js' ? 'Object' : 'CompiledPage' }));
+  }
+  if (_req.url === '/class-host') {
+    res.writeHead(200, {
+      'Content-Type': 'text/html; charset=utf-8',
+      'Content-Security-Policy': "script-src 'self' 'nonce-test-class-nonce'; style-src 'nonce-test-class-nonce'",
+    });
+    return res.end('<!DOCTYPE html><title>Host title</title><div id="class-target"></div><p id="compiled-count">Host count</p><input class="scoped-input" name="scoped-name" value="Host input">');
+  }
+  if (_req.url === '/csp') {
+    const doc = new Document({ nonce: 'test-csp-nonce' });
+    doc.states({ colors: [{ color: 'rgb(255, 0, 0)' }] });
+    doc.div().id('csp-list').liveList('colors', item => ({
+      tag: 'p', text: 'Styled row', css: { color: item.color },
+    }));
+    res.writeHead(200, {
+      'Content-Type': 'text/html; charset=utf-8',
+      'Content-Security-Policy': "script-src 'nonce-test-csp-nonce'; style-src 'nonce-test-csp-nonce'",
+    });
+    return res.end(doc.render());
+  }
   res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
   res.end(buildPage());
 });

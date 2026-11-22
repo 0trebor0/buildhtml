@@ -588,7 +588,9 @@ export declare class Element<S extends StateShape = StateShape> implements Share
   /**
    * Derives this element's text from `State`. The callback takes **no
    * arguments** — read state through the `State` global — and re-runs when the
-   * keys it reads change.
+   * root keys it reads synchronously change, including nested mutations.
+   * Conditional dependencies are refreshed after each call. Keep callbacks pure
+   * and synchronous; watchers are disposed when the target element is removed.
    */
   computed(fn: () => any): this;
   on<C = any>(event: string, fn: ClientEventHandler<Event, C, S>, context?: C, options?: EventOptions): Element<S>;
@@ -804,6 +806,7 @@ export interface BindDescriptor {
 export interface LiveListNodeDef {
   stateKey: string;
   itemFn: (item: any, index: number) => NodeDef;
+  key?: string;
   filter?: (item: any, state: Record<string, any>) => boolean;
   filterKeys?: string[];
   sort?: (a: any, b: any, state: Record<string, any>) => number;
@@ -871,6 +874,10 @@ export interface PageDef {
   state?: Record<string, any>;
   body?: NodeDef | NodeDef[];
 }
+
+export type CompileOptions =
+  | { output?: 'html' }
+  | { output: 'class'; className?: string };
 
 export declare class Document<S extends StateShape = StateShape> implements SharedShortcuts<Document<S>, S> {
   body: Array<Element<S> | string>;
@@ -1030,6 +1037,15 @@ export declare class Document<S extends StateShape = StateShape> implements Shar
   toJSON(): object;
 
   // Rendering
+  /**
+   * Compile HTML (default) or a standalone named ES module class without
+   * consuming the source tree, updating output(), or using the response cache.
+   * Class instances expose mount(target), createElement(tagNameOrNode), destroy(),
+   * root (an isolated ShadowRoot), and state. Pass { nonce } to their constructor
+   * for the host page's CSP. Routers, authored scripts, external head resources,
+   * rawHead(), and native SVG/MathML trees are refused for class output.
+   */
+  compile(options?: CompileOptions): string;
   /**
    * Renders the complete HTML document.
    *
@@ -1284,6 +1300,8 @@ export declare function healthCheck(): HealthCheckResult;
 // ─── SPA Compilation ─────────────────────────────────────────────────────────
 
 export interface LiveListOptions<S extends StateShape = StateShape, Item = any> {
+  /** Own item field holding a unique string or finite number. Enables row reuse. */
+  key?: keyof Item & string;
   /** Client-side filter: (item, State) => boolean. Also applied server-side for initial render. */
   filter?: (item: Item, state: S) => boolean;
   /** Extra state keys that trigger a re-render when they change (e.g. ['view']). */

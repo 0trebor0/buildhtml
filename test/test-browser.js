@@ -80,11 +80,13 @@ async function run() {
     await page.goto(ORIGIN, { waitUntil: 'domcontentloaded' });
 
     assert.equal(await page.locator('#count-output').textContent(), '0');
+    assert.equal(await page.locator('#computed-count').textContent(), '0');
     assert.equal(await page.locator('#portal-source').evaluate(element => element.parentElement.id), 'portal-target');
     assert.equal(await page.locator('#lifecycle-target').getAttribute('data-mounted'), 'true');
 
     await page.locator('#increment').click();
     assert.equal(await page.locator('#count-output').textContent(), '1');
+    assert.equal(await page.locator('#computed-count').textContent(), '2');
     assert.equal(await page.locator('#lifecycle-target').getAttribute('data-last-count'), '1');
 
     await page.locator('#use-context').click();
@@ -205,6 +207,29 @@ async function run() {
       );
     }
     await page.evaluate(() => { window.State.link = '/safe'; });
+
+    const keyedInput = page.locator('#keyed-list [data-key="a"] input');
+    await keyedInput.fill('unsaved edit');
+    await keyedInput.evaluate(element => {
+      window.keyedInputBefore = element;
+      window.keyedRowBefore = element.parentNode;
+      element.setSelectionRange(2, 7, 'forward');
+      window.State.keyedItems = [{ id: 'b', label: 'Two' }, { id: 'a', label: 'Updated' }];
+    });
+    assert.equal(await page.locator('#keyed-list [data-key]').first().getAttribute('data-key'), 'b');
+    assert.deepEqual(await keyedInput.evaluate(element => ({
+      sameInput: element === window.keyedInputBefore,
+      sameRow: element.parentNode === window.keyedRowBefore,
+      focused: document.activeElement === element,
+      value: element.value,
+      start: element.selectionStart,
+      end: element.selectionEnd,
+    })), { sameInput: true, sameRow: true, focused: true, value: 'unsaved edit', start: 2, end: 7 });
+    assert.equal(await page.locator('#keyed-list [data-key="a"] span').textContent(), 'Updated');
+    await page.locator('#keyed-list [data-key="a"] button').click();
+    assert.equal(await page.evaluate(() => window.State.keyedSelection), 'Updated');
+    await page.evaluate(() => { window.State.keyedItems = []; });
+    assert.equal(await page.locator('#keyed-list').textContent(), 'No keyed items');
 
     await page.locator('#add-item').click();
     assert.deepEqual(await page.locator('#list [data-item]').allTextContents(), ['One', 'Two']);
@@ -378,7 +403,135 @@ async function run() {
     assert.equal(await page.locator('#lifecycle-destroyed').textContent(), 'true');
     assert.deepEqual(browserErrors, []);
 
-    console.log('Browser integration passed: bindings, deep state, lists, portals, routing, sanitization, and lifecycle.');
+    await page.goto(`${ORIGIN}/csp`, { waitUntil: 'domcontentloaded' });
+    assert.equal(await page.locator('#csp-list p').evaluate(el => getComputedStyle(el).color), 'rgb(255, 0, 0)');
+    await page.evaluate(() => { window.State.colors[0].color = 'rgb(0, 0, 255)'; });
+    assert.equal(await page.locator('#csp-list p').evaluate(el => getComputedStyle(el).color), 'rgb(0, 0, 255)');
+    assert.equal(await page.locator('#_bh-live-css').evaluate(el => el.nonce), 'test-csp-nonce');
+    assert.deepEqual(browserErrors, [], 'strict CSP accepts initial and later generated list styles');
+
+    await page.goto(`${ORIGIN}/class-host`, { waitUntil: 'domcontentloaded' });
+    await page.evaluate(async () => {
+      const { CompiledPage } = await import('/compiled.js');
+      window.hostState = { sentinel: true };
+      window.State = window.hostState;
+      const target = document.getElementById('class-target');
+      window.firstPage = new CompiledPage({ nonce: 'test-class-nonce' }).mount(target);
+      window.secondPage = new CompiledPage({ nonce: 'test-class-nonce' }).mount(target);
+    });
+    assert.deepEqual(await page.evaluate(() => ({
+      first: window.firstPage.root.getElementById('compiled-count').textContent,
+      second: window.secondPage.root.getElementById('compiled-count').textContent,
+      ready: window.firstPage.state.ready && window.secondPage.state.ready,
+      hostState: window.State === window.hostState,
+      title: document.title,
+      hostCount: document.getElementById('compiled-count').textContent,
+      color: getComputedStyle(window.firstPage.root.querySelector('h1')).color,
+    })), { first: '0', second: '0', ready: true, hostState: true, title: 'Host title', hostCount: 'Host count', color: 'rgb(0, 128, 0)' });
+    assert.deepEqual(await page.evaluate(() => {
+      const root = window.firstPage.root;
+      const probe = root.getElementById('compiled-platform');
+      return { ...probe.dataset, template: root.getElementById('compiled-template').content.textContent };
+    }), { array: 'true', event: 'true', promise: 'true', view: 'true', contains: 'true', method: 'true', tag: 'true', class: 'true', live: 'true', template: 'Template content' },
+    'scoped browser APIs retain constructor properties, local live lookups and template content');
+    assert.equal(await page.evaluate(() => {
+      const root = window.firstPage.root;
+      const template = root.getElementById('compiled-template');
+      const clone = template.content.cloneNode(true);
+      const text = clone.textContent;
+      root.querySelector('body').appendChild(clone);
+      return template.childNodes.length === 0 && text === 'Template content';
+    }), true, 'compiled template fragments can be cloned and inserted using native DOM APIs');
+    await page.evaluate(() => window.firstPage.root.getElementById('compiled-increment').click());
+    assert.deepEqual(await page.evaluate(() => [window.firstPage.state.count, window.secondPage.state.count,
+      window.firstPage.root.getElementById('compiled-double').textContent]), [1, 0, '2']);
+    await page.evaluate(() => {
+      const input = window.firstPage.root.getElementById('compiled-input');
+      input.value = 'Typed';
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    assert.equal(await page.evaluate(() => window.firstPage.root.getElementById('compiled-name').textContent), 'Typed');
+    assert.equal(await page.evaluate(() => window.firstPage.root.getElementById('compiled-portal').parentElement.id), 'compiled-portal-target');
+    assert.deepEqual(await page.evaluate(() => {
+      window.firstPage.state.activeView = 'details';
+      return [window.firstPage.root.getElementById('compiled-details').hidden,
+        window.secondPage.root.getElementById('compiled-details').hidden];
+    }), [false, true], 'view switching stays within the instance');
+    await page.evaluate(() => {
+      window.firstPage.state.items.push({ id: 2, title: 'Two' });
+      window.classRow = window.firstPage.root.querySelector('#compiled-list button:last-child');
+      window.classRow.click();
+    });
+    assert.equal(await page.evaluate(() => window.firstPage.state.name), 'Two');
+    assert.equal(await page.evaluate(() => getComputedStyle(window.classRow).color), 'rgb(0, 0, 255)');
+    await page.evaluate(() => {
+      const instance = window.firstPage;
+      const node = instance.createElement('aside');
+      node.textContent = 'Native appended child';
+      if (instance.createElement(node) !== node) throw new Error('Existing node was not reused');
+      instance.root.querySelector('body').appendChild(node);
+      window.savedLifecycle = instance.root.getElementById('compiled-lifecycle');
+      window.savedButton = instance.root.getElementById('compiled-increment');
+      window.savedRoot = instance.root;
+      window.savedDetails = instance.root.getElementById('compiled-details');
+      instance.destroy();
+      instance.state.activeView = 'overview';
+      window.savedButton.click();
+      window.classRow.click();
+      window.savedRoot.dispatchEvent(new Event('custom-event'));
+    });
+    assert.deepEqual(await page.evaluate(() => ({
+      count: window.firstPage.state.count,
+      name: window.firstPage.state.name,
+      cleaned: window.savedLifecycle.dataset.cleaned,
+      destroyed: window.savedLifecycle.dataset.destroyed,
+      hosts: document.getElementById('class-target').children.length,
+      root: window.firstPage.root,
+      detailsHidden: window.savedDetails.hidden,
+    })), { count: 1, name: 'Two', cleaned: 'true', destroyed: 'true', hosts: 1, root: null, detailsHidden: false });
+    await page.evaluate(() => window.firstPage.mount(document.getElementById('class-target')));
+    assert.equal(await page.evaluate(() => window.firstPage.state.count), 0, 'remount starts with independent initial state');
+    assert.deepEqual(await page.evaluate(async () => {
+      const { CompiledPage } = await import('/compiled.js');
+      const instance = new CompiledPage({ nonce: 'test-class-nonce' });
+      const target = document.getElementById('class-target');
+      const hosts = target.children.length;
+      let invalidTarget = false, invalidNode = false, failedBuild = false, duplicateMount = false;
+      try { instance.mount(null); } catch (error) { invalidTarget = error.message.includes('Mount target'); }
+      const create = instance.createElement;
+      instance.createElement = function (tag) {
+        if (tag === 'h1') throw new Error('expected DOM build failure');
+        return create.call(this, tag);
+      };
+      try { instance.mount(target); } catch (error) { failedBuild = error.message.includes('expected DOM build failure'); }
+      const cleaned = instance.root === null && target.children.length === hosts;
+      instance.createElement = create;
+      instance.mount(target);
+      try { instance.createElement({}); } catch (error) { invalidNode = error.message.includes('Expected a tag name or DOM node'); }
+      try { instance.mount(target); } catch (error) { duplicateMount = error.message.includes('already mounted'); }
+      instance.destroy();
+      instance.destroy();
+      return { invalidTarget, invalidNode, failedBuild, cleaned, duplicateMount, hostsRestored: target.children.length === hosts };
+    }), { invalidTarget: true, invalidNode: true, failedBuild: true, cleaned: true, duplicateMount: true, hostsRestored: true });
+    assert.deepEqual(await page.evaluate(async () => {
+      const { StatelessPage } = await import('/compiled-stateless.js');
+      const instance = new StatelessPage().mount(document.getElementById('class-target'));
+      instance.root.querySelector('button').click();
+      const count = instance.state.count;
+      instance.destroy();
+      return { count, hostUntouched: window.State === window.hostState && !('count' in window.hostState) };
+    }), { count: 1, hostUntouched: true });
+    assert.equal(await page.evaluate(async () => {
+      const { Object: ObjectPage } = await import('/compiled-object.js');
+      const instance = new ObjectPage({ nonce: 'test-class-nonce' }).mount(document.getElementById('class-target'));
+      instance.root.getElementById('compiled-increment').click();
+      const valid = instance.state.count === 1 && instance.constructor.name === 'Object';
+      instance.destroy();
+      return valid;
+    }), true, 'export names that match browser globals do not shadow runtime helpers');
+    assert.deepEqual(browserErrors, [], 'compiled modules mount and update without CSP or runtime errors');
+
+    console.log('Browser integration passed: bindings, lists, routing, lifecycle, CSP, compiled modules, isolation, and destroy/remount.');
   } finally {
     if (browser) await browser.close();
     await stopFixture(fixture);

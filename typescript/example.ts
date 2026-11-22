@@ -58,6 +58,7 @@ typedStateDoc.main(main => {
     this.dataset.count = String(count + state.count);
   });
   main.liveList('projects', project => ({ tag: 'p', text: project.name }), {
+    key: 'id',
     sort: (a, b, state) => state.sidebarOpen ? b.name.localeCompare(a.name) : a.name.localeCompare(b.name),
     sortKeys: ['sidebarOpen'],
     empty: { tag: 'p', text: 'No projects' },
@@ -83,6 +84,8 @@ typedStateDoc.state('count', 'one');
 typedStateDoc.views({ stateKey: 'activePage', default: 'missing' });
 // @ts-expect-error field bindings use declared state keys
 typedStateDoc.field('Unknown', { bind: 'missing' });
+// @ts-expect-error keyed lists must name an item field
+typedStateDoc.liveList('projects', project => ({ tag: 'p', text: project.name }), { key: 'missing' });
 
 const doc: Document = page('Home', { lang: 'en' });
 const typedHead: Head = new Head().setTitle('Typed head').setCharset('UTF-8');
@@ -99,6 +102,13 @@ hero.button('Typed context').onClick(function (_event, state, _element, context)
 }, { page: 'overview' });
 hero.p('Built with full type safety.');
 
+const compiledHtml: string = doc.compile({ output: 'html' });
+const browserClass: string = doc.compile({ output: 'class', className: 'HomePage' });
+console.log(compiledHtml.length, browserClass.length);
+if (false) {
+  // @ts-expect-error unsupported compilation targets are rejected
+  doc.compile({ output: 'unknown' });
+}
 const html: string = doc.render();
 console.log('--- Basic page ---');
 console.log(html.slice(0, 200) + '...\n');

@@ -17,6 +17,7 @@ const suites = [
   'test-debug.js',
   'test-public-api.js',
   'test-module-entry.js',
+  'test-compile.js',
   'test-internal-functions.js',
   'test-fuzz.js',
   'test-security.js',

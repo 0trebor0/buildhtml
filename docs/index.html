@@ -162,6 +162,7 @@
         <a href="#concepts">How it works</a>
         <a href="#server">Server & static HTML</a>
         <a href="#document">Document</a>
+        <a href="#compilation">HTML and browser classes</a>
         <a href="#elements">Elements</a>
         <a href="#components">Components</a>
         <a href="#builder">Builder & JSON</a>
@@ -807,6 +808,7 @@ doc.oncreate(function () {
 });
 
 const html = doc.render();</code></pre>
+        <p><code>computed()</code> tracks the root <code>State</code> keys read synchronously by its callback, including nested mutations, and recomputes when they change. Conditional dependencies are refreshed after each calculation. Keep callbacks synchronous and free of state writes. Errors use the client error reporter, retain the previous text, and can recover on the next dependency change. Removing the target disposes its watchers. The legacy per-element state argument remains available; dependency tracking uses the <code>State</code> global.</p>
         <p><code>onMount</code> runs when the element enters the DOM and may return a cleanup function. <code>onUpdate(stateKey, fn)</code> runs when that key changes. Inside all of them <code>this</code> is the element.</p>
       </section>
 
@@ -994,6 +996,7 @@ doc.states({ n: 0 });
 doc.button('+1').onClick(function () { State.n++; });
 
 const html = doc.render();</code></pre>
+        <p>Styles created later by reactive list updates retain the response nonce. Restored attribute bindings use the same attribute-name restrictions and case-insensitive URL guards as ordinary bindings; refused restored names are reported by <code>validate()</code>. Callback screening remains a denylist, not a sandbox; use <code>fromJSON(def, { callbacks: false })</code> for definitions you did not produce.</p>
         <p>What remains yours: choosing and sending the CSP header, authentication, authorization, input validation, and keeping secrets out of <code>states()</code>.</p>
       </section>
 
@@ -1153,6 +1156,35 @@ doc.sharedClass('card', { padding: '16px', borderRadius: '8px' });</code></pre>
         <p><code>render()</code> returns the complete HTML string. <code>renderStream()</code> returns a stream that renders on demand and applies real backpressure, but at <strong>top-level body node granularity</strong>: the head first, then one chunk per node in the body. A subtree renders in a single call, so a page assembled under one root element emits its whole body as one chunk and gains little over <code>render()</code> — put several top-level nodes in the body for incremental delivery. Streaming applies no production minification and does not use the response cache, and scoped <code>&lt;style&gt;</code> follows the body because the head has already been sent. <code>clear()</code> resets body content and per-render state but intentionally keeps head configuration.</p>
       </section>
 
+      <section id="compilation" data-search="compile output html class browser frontend module native createelement appendchild mount destroy shadowroot nonce state">
+        <h2>HTML and browser-class compilation</h2>
+        <p><code>compile()</code> returns HTML by default. Choose <code>output: 'class'</code> for a standalone ES module exporting a browser class. Both targets preserve the source tree, bypass response caching, and leave <code>output()</code> unchanged. Compile before <code>render()</code>, which still consumes the tree.</p>
+        <pre><code>const { Document } = require('@trebor/buildhtml');
+
+const doc = new Document();
+doc.states({ count: 0 });
+doc.h1('Hello');
+doc.span().bind('count');
+doc.button('+1').onClick(function () { State.count++; });
+
+const html = doc.compile({ output: 'html' });
+const javascript = doc.compile({ output: 'class', className: 'HomePage' });</code></pre>
+        <p>Save the generated source as <code>home-page.js</code> and serve it as a JavaScript module:</p>
+        <pre><code>import { HomePage } from './home-page.js';
+
+const page = new HomePage();
+page.mount(document.getElementById('app'));
+const note = page.createElement('p');
+note.textContent = 'Native DOM content';
+page.root.querySelector('body').appendChild(note);
+// Call page.destroy() when finished.</code></pre>
+        <p>The class uses native <code>createElement</code>, <code>createTextNode</code>, <code>setAttribute</code> and <code>appendChild</code>, with no package import, eval or runtime compilation. <code>createElement(tagNameOrNode)</code> creates a tag or returns an existing DOM node, which native insertion moves. Explicit raw markup uses template fragments; scripts in those fragments are refused on mount.</p>
+        <p>Each instance owns an open shadow root (<code>root</code>), local HTML/head/body nodes, styles and <code>state</code>. Bindings, events, computed text, lists, views, local portals and lifecycle hooks retain the existing callback serialization rules. <code>State</code>, <code>window.State</code> and supported document lookups refer to the instance. Metadata stays local and does not change the host title. This is DOM/state isolation, not a JavaScript sandbox.</p>
+        <p>Scoped lookups include <code>getElementById</code>, <code>querySelector(All)</code>, <code>getElementsByTagName(NS)</code>, <code>getElementsByClassName</code> and <code>contains</code>. Tag/class collections stay live and <code>document.defaultView</code> returns the scoped window. Browser constructors keep their native identities, static methods and prototypes. Native template children populate <code>template.content</code> for cloning and insertion. The facade is not a complete virtual Document; other document APIs can still refer to the host.</p>
+        <p><code>destroy()</code> disposes generated listeners and watchers, runs lifecycle cleanup, and removes owned DOM/styles. It is idempotent; destroy before mounting the same instance again. Remounting resets state. Timers and manually managed resources still need mount cleanup. Pass <code>{ nonce: 'host-response-nonce' }</code> to the generated constructor under nonce-based CSP; the module URL must also be allowed. Root variables declared with <code>cssVars()</code> are scoped to the host.</p>
+        <p>When <code>className</code> is omitted, the named export is <code>GeneratedPage</code>. <code>className</code> accepts valid ASCII JavaScript class identifiers. Class output rejects URL routers, authored inline scripts, external head resources/links, raw head markup, native SVG/MathML trees and arbitrary <code>:root</code> selectors in head CSS. HTML output retains existing behavior. Generated classes require modern browsers with Shadow DOM, Proxy and abortable event listeners.</p>
+      </section>
+
       <section id="elements" data-search="element text html attr css class children events forms layout">
         <h2>Elements</h2>
         <pre><code>const card = doc.section()
@@ -1247,7 +1279,7 @@ card.build([
             <tr><td><code>itemTemplate</code></td><td><code>(item, index) =&gt; NodeDef</code></td><td>Per-item template used with <code>each</code>.</td></tr>
             <tr><td><code>bind</code></td><td>object</td><td>State binding, <code>{ key: 'counter', fn: (val) =&gt; ... }</code>.</td></tr>
             <tr><td><code>state</code></td><td>any</td><td>Element-local state value.</td></tr>
-            <tr><td><code>liveList</code></td><td>object</td><td><code>{ stateKey, itemFn, filter?, filterKeys?, sort?, sortKeys?, empty? }</code>.</td></tr>
+            <tr><td><code>liveList</code></td><td>object</td><td><code>{ stateKey, itemFn, key?, filter?, filterKeys?, sort?, sortKeys?, empty? }</code>.</td></tr>
             <tr><td><code>onMount</code></td><td>function</td><td>Client mount hook.</td></tr>
             <tr><td><code>onUpdate</code></td><td>object or array</td><td>State update hook, <code>{ key, fn }</code>.</td></tr>
             <tr><td><code>onDestroy</code></td><td>function</td><td>Client destroy hook.</td></tr>
@@ -1468,12 +1500,15 @@ doc.button('Load').onClick(async function () {
             <tr><td><code>stateKey</code></td><td>string</td><td>State array to render and watch.</td></tr>
             <tr><td><code>itemFn</code></td><td><code>(item, index) =&gt; NodeDef</code></td><td>Creates each item on the server and browser.</td></tr>
             <tr><td><code>filter</code></td><td><code>(item, State) =&gt; boolean</code></td><td>Optional filter used during SSR and browser updates.</td></tr>
+            <tr><td><code>key</code></td><td>string</td><td>Own item field containing a unique string or finite number; enables row reuse.</td></tr>
             <tr><td><code>filterKeys</code></td><td>string[]</td><td>Extra state keys that change filtering.</td></tr>
             <tr><td><code>sort</code></td><td><code>(a, b, State) =&gt; number</code></td><td>Optional comparator used during SSR and browser updates.</td></tr>
             <tr><td><code>sortKeys</code></td><td>string[]</td><td>Extra state keys that change ordering.</td></tr>
             <tr><td><code>empty</code></td><td>NodeDef or string</td><td>Declarative content shown when no items remain.</td></tr>
           </tbody>
         </table></div>
+        <p>Pass <code>{ key: 'id' }</code> to adopt server-rendered rows and reuse matching rows during editing and sorting. Descendants are patched by position and tag, so unchanged inputs retain user-entered values; changed event handlers receive current item data. Reordering restores focus and text selection if moving a node loses them. Changed tags or child structures may replace descendants; removed or filtered rows are discarded. Omit <code>key</code> for the existing full rebuild behavior. Keys must be own fields with unique string or finite number values among visible items. Invalid keys throw on the server; browser updates report <code>liveList:key</code> and keep the displayed rows until valid data arrives. Numeric <code>0</code> and string <code>'0'</code> are distinct keys.</p>
+        <p>State notifications are synchronous. Reorder by assigning a copy, such as <code>State.tasks = State.tasks.slice().reverse()</code>, or by using the list's <code>sort</code> option. In-place array reordering can expose temporary duplicate keys while entries move.</p>
         <h3>Dashboard views without URL routing</h3>
         <pre><code>doc.button('Overview').data({ viewNav: 'overview' });
 doc.button('Projects').data({ viewNav: 'projects' });
@@ -1599,6 +1634,7 @@ doc.historyRouter({
           <div class="table-wrap"><table>
             <thead><tr><th>Methods</th><th>Parameters / result</th></tr></thead>
             <tbody>
+              <tr><td><code>compile</code></td><td><code>{ output?: 'html' | 'class', className? }</code> → HTML or ES module source. Preserves the source tree; no response-cache access.</td></tr>
               <tr><td><code>render</code></td><td>No parameters → complete HTML string. <strong>Consumes the document</strong>: it clears the body and releases pooled elements, so call it once and build a fresh document per request.</td></tr>
               <tr><td><code>renderStream</code></td><td>No parameters → readable HTML stream.</td></tr>
               <tr><td><code>clear</code></td><td>Resets body, state, and per-render scripts; preserves head.</td></tr>
@@ -1634,7 +1670,7 @@ doc.historyRouter({
         </div>
 
         <div class="api-group" data-search="element attr class css tree lifecycle bind event">
-          <h3>Element</h3>
+        <h3>Element</h3>
           <div class="table-wrap"><table>
             <thead><tr><th>Methods</th><th>Parameters / result</th></tr></thead>
             <tbody>

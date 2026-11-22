@@ -679,6 +679,22 @@ test('a deprecation notice is dev-only and announced once per name', () => {
   assert(quiet.length === 0, 'production says nothing');
 });
 
+test('dynamic CSS captures its script nonce before deferred rule insertion', () => {
+  const styleNode = { nonce: '', appendChild() {} };
+  const sandbox = { document: {
+    currentScript: { nonce: 'response-nonce' },
+    getElementById: () => null,
+    createElement: () => styleNode,
+    createTextNode: text => ({ text }),
+    head: { appendChild() {} },
+  } };
+  vm.createContext(sandbox);
+  vm.runInContext(clientCssRuntimeSource(), sandbox);
+  sandbox.document.currentScript = null;
+  vm.runInContext('_bhCssClass({ color: "blue" })', sandbox);
+  assert(styleNode.nonce === 'response-nonce', 'deferred styles retain the response nonce after currentScript is cleared');
+});
+
 /* ---- Summary ---- */
 console.log(`\n${'='.repeat(40)}`);
 console.log(`Results: ${passed} passed, ${failed} failed`);

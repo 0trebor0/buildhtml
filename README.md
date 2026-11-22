@@ -77,7 +77,7 @@ A static page stays static. Add `.states()`, `.bind()`, or `.onClick()` and the 
 | Module formats | CommonJS and ESM, plus six subpath exports |
 | TypeScript | declarations bundled (`typescript/*.d.ts`) |
 | Node.js | 18+; CI runs 18, 20, 22, 24 |
-| Testing | 25 suites, 4 Playwright browser suites, 31 fuzz properties |
+| Testing | 26 suites, 4 Playwright browser suites, 31 fuzz properties |
 | Escaping | text, attributes, CSS values, and JSON context |
 | CSP | nonce support for generated `<script>`/`<style>`; no inline `on*` attributes |
 | Client runtime | generated per page; 0 bytes when no reactive API is used |
@@ -106,6 +106,7 @@ This is the part that surprises people, so here it is directly.
 ## Quick navigation
 
 - [Create pages and elements](#create-pages-and-elements)
+- [Compile HTML or a browser class](#compile-html-or-a-browser-class)
 - [Serve HTML with Express](#serve-html-with-express)
 - [Generate static files](#generate-static-files)
 - [Accessible form fields](#accessible-form-fields)
@@ -160,6 +161,108 @@ const { Document } = require('@trebor/buildhtml');
 const doc = new Document();
 doc.title('Custom setup').viewport().resetCss().lang('en');
 ```
+
+### Class-based pages
+
+Extend `Document` to define a page as a class. Call `super()` before using the
+inherited page-building methods:
+
+```javascript
+import { Document } from '@trebor/buildhtml';
+
+class HomePage extends Document {
+  constructor() {
+    super();
+    this.title('Home');
+    this.h1('Hello world');
+    this.p('Built with a JavaScript class.');
+  }
+}
+
+const html = new HomePage().render();
+```
+
+Use this import in an `.mjs` file or a project with `"type": "module"`. CommonJS
+users can replace it with `const { Document } = require('@trebor/buildhtml');`.
+Pass document options to `super(options)` when needed. Each instance owns its
+page tree; create a fresh instance for each render because a successful
+`render()` consumes that tree. This pattern uses the existing `Document` API.
+
+### Compile HTML or a browser class
+
+Build once, then choose an output without consuming the document:
+
+```javascript
+const { Document } = require('@trebor/buildhtml');
+
+const doc = new Document();
+doc.title('Home');
+doc.states({ count: 0 });
+doc.h1('Hello world');
+doc.span().bind('count');
+doc.button('+1').onClick(function () { State.count++; });
+
+const html = doc.compile({ output: 'html' });
+const javascript = doc.compile({ output: 'class', className: 'HomePage' });
+```
+
+`compile()` defaults to HTML. Both targets preserve the source tree, bypass the
+response cache, and leave `output()` unchanged. Existing `render()` still consumes
+the tree. Compile before calling `render()`.
+
+Save `javascript` as `home-page.js` and serve it as an ES module. In the browser:
+
+```javascript
+import { HomePage } from './home-page.js';
+
+const page = new HomePage();
+page.mount(document.getElementById('app'));
+
+const note = page.createElement('p');
+note.textContent = 'Created with native DOM methods.';
+page.root.querySelector('body').appendChild(note);
+
+// page.createElement(note) returns that same DOM node.
+// Call page.destroy() when removing the page.
+```
+
+The generated module has no package imports, `eval`, or `new Function`. Ordinary
+content uses `createElement`, `createTextNode`, `setAttribute`, and `appendChild`.
+Explicit raw HTML paths use a template fragment; script elements in those
+fragments are refused at mount time.
+
+Each instance owns an open shadow root (`page.root`), local HTML/head/body nodes,
+styles, and reactive `page.state`. Multiple instances can use the same IDs without
+sharing state. Bindings, events, computed text, live lists, views, portals within
+the instance, and lifecycle hooks use the existing runtime. `State`, `window.State`
+and supported document lookups in serialized callbacks refer to that instance; callback
+closure restrictions still apply. This is DOM/state isolation, not a JavaScript
+sandbox. Local title/meta nodes do not change the host page's title or metadata.
+CSS stays in the shadow tree; use `cssVars()` for root variables.
+
+Scoped lookups include `getElementById`, `querySelector(All)`,
+`getElementsByTagName(NS)`, `getElementsByClassName`, and `contains`.
+Tag/class collections remain live; `document.defaultView` returns the scoped
+window. Browser constructors retain their native identity, static methods and
+prototypes. Native `<template>` children are placed in the template's `.content`.
+The document facade is not a complete virtual Document; other APIs can still
+refer to the host document.
+
+`destroy()` runs lifecycle cleanup, disposes watchers/listeners, and removes owned
+nodes and styles. It is safe to call twice. Call it before mounting that instance
+again; remounting resets its state. Timers and manually managed resources still
+need the cleanup function returned by `onMount()`.
+
+For a nonce-based host CSP, use `new HomePage({ nonce: 'host-response-nonce' })`.
+The generated class uses this nonce for its styles, including later list styles;
+it does not embed the server document's nonce. The host must allow the module URL.
+
+Class names default to `GeneratedPage` and must be valid ASCII JavaScript class
+identifiers. Class output currently rejects URL routers, authored `inlineScript`,
+external head scripts/stylesheets/links, `rawHead`, native SVG/MathML trees, and
+arbitrary `:root` selectors in head CSS. HTML output retains the existing support
+for those features. Generated classes require modern browsers with Shadow DOM,
+Proxy, and abortable event listeners.
 
 ### Document options
 
@@ -424,6 +527,26 @@ doc.button('Add task').onClick(function () {
 });
 ```
 
+### Computed text
+
+Use `computed()` when text depends on several state keys:
+
+```javascript
+doc.states({ price: 10, quantity: 3 });
+doc.span().computed(function () {
+  return State.price * State.quantity;
+});
+```
+
+The callback runs in the browser initially and again when a `State` root key it
+reads changes, including mutations inside nested objects or arrays. Dependencies
+are refreshed after every call, so conditional calculations watch only the keys
+they currently read. Keep calculations synchronous and free of state writes.
+Errors go to the existing client error reporter; the previous text remains and
+a later dependency change can retry. Watchers stop when the element is removed.
+The existing callback argument containing per-element state remains available;
+reactive dependency tracking uses reads through the `State` global.
+
 ### Binding parameters
 
 | Method | Parameters | Result |
@@ -656,6 +779,8 @@ const html = renderFromJSON({
 `renderJSON()` is a deprecated alias for `renderFromJSON()` and behaves identically.
 
 Use `doc.toJSON()` and `doc.fromJSON()` for document serialization and restoration.
+Take the snapshot before rendering consumes the tree. Its binding and lifecycle
+descriptors remain intact when the source document is rendered afterwards.
 
 `fromJSON()` takes a second options argument. `{ callbacks: false }` drops every serialized callback in the payload — events, bindings, computed, lifecycle, `liveList` and `oncreateCallbacks` — instead of screening them:
 
@@ -739,6 +864,7 @@ const list = doc.liveList('tasks', function (task) {
     ]
   };
 }, {
+  key: 'id',
   filter: function (task, state) {
     if (state.view === 'active') return !task.done;
     if (state.view === 'done') return task.done;
@@ -756,6 +882,7 @@ list.addClass('task-list');
 |-----------|------|---------|
 | `stateKey` | string | State array to render and watch |
 | `itemFn` | `(item, index) => NodeDef` | Produces each item on the server and browser |
+| `options.key` | string | Item field with a unique string or finite number; enables keyed row updates |
 | `options.filter` | `(item, State) => boolean` | Optional filter used during SSR and browser updates |
 | `options.filterKeys` | string[] | Extra state keys that change filtering |
 | `options.sort` | `(a, b, State) => number` | Optional comparator used during SSR and browser updates |
@@ -763,6 +890,27 @@ list.addClass('task-list');
 | `options.empty` | `NodeDef` or string | Declarative content shown when no items remain |
 
 The method returns the list container `Element`.
+
+Pass `{ key: 'id' }` when each item has a stable `id`. Keyed lists adopt the
+server-rendered rows and reuse matching rows during edits and sorting. Their
+descendants are patched by position and tag, preserving unchanged input nodes
+and user-entered values when the definition does not change their `value`
+attribute. Changed event handlers are replaced so they receive current item
+data. Reordering restores focus and text selection when a browser move loses
+them. A changed tag or child structure may replace descendants; removed or
+filtered-out rows are discarded. Without `key`, lists keep the existing full
+rebuild behavior.
+
+Keys must be own item fields, unique among visible items. Missing, duplicate,
+or invalid keys throw during server construction. Browser updates report
+`liveList:key` and retain the displayed rows until valid data arrives. Numeric
+`0` and string `'0'` are different keys. The declarative `liveList` definition
+accepts the same `key` field.
+
+State notifications are synchronous. To reorder keyed items, assign a reordered
+copy (for example, `State.tasks = State.tasks.slice().reverse()`) or use the list's
+`sort` option. In-place reordering can expose temporary duplicate keys while an
+array method moves its entries.
 
 A `NodeDef` treats `css` and `style` exactly as an element does: `css` compiles to a **scoped class** that every row with the same declarations shares, and `style` becomes an inline `style` attribute. The class name is derived from the declarations themselves and computed the same way on the server and in the browser, so a row keeps its class across a re-render. Rules minted in the browser during a rebuild are appended to a `<style id="_bh-live-css">` element.
 
@@ -1139,7 +1287,11 @@ buildhtml is secure by default:
 - URL helpers sanitize executable protocols.
 - Inline `on*` attributes are blocked.
 - Event APIs compile to `addEventListener`.
-- CSP nonces apply to generated inline scripts and styles.
+- CSP nonces apply to generated inline scripts and styles, including styles
+  created later by reactive list updates.
+- Restored attribute bindings use the same attribute-name restrictions and
+  case-insensitive URL guards as ordinary bindings. Refused restored names are
+  reported by `validate()`.
 - State is safely serialized into the document.
 - `new Function()` and `eval` are rejected in serialized callbacks.
 - Unsafe or malformed element tag names are rejected or normalized.
@@ -1290,7 +1442,7 @@ Document and body:
 
 ```text
 lang · htmlAttr · bodyId · bodyClass · bodyAttr · bodyCss
-render · renderStream · validate · clear
+compile · render · renderStream · validate · clear
 ```
 
 CSS:
