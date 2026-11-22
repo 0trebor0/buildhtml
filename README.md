@@ -296,8 +296,19 @@ contains the generated class and mounts it automatically; no handwritten host or
 bootstrap is needed. Serve the folder over HTTP with a JavaScript MIME type for
 `.js` files. Browser module loading requires HTTP rather than opening `file://`.
 
-The filename must end in `.html`; the JavaScript file uses the same stem and
-directory. Both files use UTF-8, and the HTML host declares UTF-8 even if the
+To rename both output files while keeping the directory:
+
+```javascript
+doc.saveBundle('public/index.html', { className: 'HomePage', filename: 'name' });
+// Writes public/name.html and public/name.js.
+```
+
+`filename` is an optional filename stem, without path components or a `.html` or
+`.js` extension. Invalid filename characters, trailing dots/spaces and reserved
+Windows device names are rejected before writing. It replaces both output names;
+`className` controls the JavaScript export name. Without `filename`, names come
+from `htmlPath`, which must end in `.html`. Both files stay in that directory.
+Both files use UTF-8, and the HTML host declares UTF-8 even if the
 source document uses another charset; the source setting remains unchanged.
 Serve the HTML as UTF-8 if your server sends an explicit charset header.
 `className` is optional and defaults to `GeneratedPage`. The method

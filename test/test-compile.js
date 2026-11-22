@@ -107,6 +107,22 @@ try {
   bundle.saveBundle(htmlFile);
   assert.match(fs.readFileSync(jsFile, 'utf8'), /Updated bundle/, 'subsequent exports overwrite the named outputs');
 
+  const renamedDir = path.join(fixture, 'renamed');
+  bundle.saveBundle(path.join(renamedDir, 'index.html'), { className: 'HomePage', filename: 'name #1' });
+  const renamedHtml = path.join(renamedDir, 'name #1.html');
+  const renamedJs = path.join(renamedDir, 'name #1.js');
+  assert(fs.existsSync(renamedHtml) && fs.existsSync(renamedJs), 'filename overrides both output stems');
+  assert(!fs.existsSync(path.join(renamedDir, 'index.html')) && !fs.existsSync(path.join(renamedDir, 'index.js')));
+  assert.match(fs.readFileSync(renamedHtml, 'utf8'), /src="\.\/name%20%231.js"/);
+  assert.match(fs.readFileSync(renamedJs, 'utf8'), /export \{ __buildhtmlPage as HomePage \}/);
+  assert.equal(bundle.body.length, 2, 'renaming outputs preserves the document');
+
+  for (const filename of ['', null, 42, '.', '..', '../escape', '..\\escape', 'bad/name', 'name.html', 'name.js', 'bad:name', 'name.', 'name ', 'CON']) {
+    const invalidDir = path.join(fixture, 'invalid-filename');
+    assert.throws(() => bundle.saveBundle(path.join(invalidDir, 'index.html'), { filename }), /filename/);
+    assert(!fs.existsSync(invalidDir), 'invalid filename is rejected before creating outputs');
+  }
+
   for (const invalidPath of [undefined, 42, '', path.join(fixture, 'invalid.js')]) {
     assert.throws(() => bundle.saveBundle(invalidPath), /output path must end in .html/);
   }

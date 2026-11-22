@@ -32,6 +32,9 @@ rather than complete records.
 
 ### Added
 
+- `Document.saveBundle(htmlPath, { filename: 'name' })` writes `name.html` and
+  `name.js` in the requested directory. Omitting `filename` retains path-derived
+  names; invalid stems are rejected before output is created.
 - `Document.saveBundle('public/index.html')` automatically creates directories,
   writes matching HTML/JavaScript files, and wires the module to mount the page.
   It preserves the source tree and supports a custom class export name. The

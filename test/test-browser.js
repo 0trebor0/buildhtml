@@ -602,7 +602,9 @@ async function run() {
       const doc = new CounterDocument();
       doc.charset('windows-1252').title('Compilation café 😀');
       doc.htmlAttr('id', 'app');
-      doc.saveBundle(htmlFile, { className: 'CounterPage' });
+      const requestedFile = path.join(bundleDir, 'index.html');
+      doc.saveBundle(requestedFile, { className: 'CounterPage', filename: 'home #page' });
+      assert(!fs.existsSync(requestedFile), 'filename replaces the requested HTML stem');
       const files = new Map([['/home #page.html', htmlFile], ['/home #page.js', jsFile]]);
       bundleServer = http.createServer((request, response) => {
         try {

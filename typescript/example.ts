@@ -107,6 +107,9 @@ const browserClass: string = doc.compile({ output: 'class', className: 'HomePage
 console.log(compiledHtml.length, browserClass.length);
 if (false) {
   doc.saveBundle('public/index.html', { className: 'HomePage' });
+  doc.saveBundle('public/index.html', { className: 'HomePage', filename: 'name' });
+  // @ts-expect-error filename must be a string
+  doc.saveBundle('public/index.html', { filename: 123 });
   // @ts-expect-error bundle paths must be strings
   doc.saveBundle(123);
   // @ts-expect-error unsupported compilation targets are rejected
