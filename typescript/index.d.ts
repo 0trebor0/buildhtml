@@ -1047,6 +1047,14 @@ export declare class Document<S extends StateShape = StateShape> implements Shar
    */
   compile(options?: CompileOptions): string;
   /**
+   * Create parent directories and write an HTML host plus a same-stem .js module
+   * that mounts automatically. Both files and the host charset use UTF-8, without
+   * changing the source charset. Preserves the source tree and output(). Existing
+   * output files are overwritten. Uses class-output restrictions; response nonces
+   * are refused for static bundles. Serve the files over HTTP with a JS MIME type.
+   */
+  saveBundle(htmlPath: string, options?: { className?: string }): this;
+  /**
    * Renders the complete HTML document.
    *
    * **Consumes the document**: clears the body and releases pooled elements, so

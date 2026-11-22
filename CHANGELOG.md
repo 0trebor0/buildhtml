@@ -32,6 +32,16 @@ rather than complete records.
 
 ### Added
 
+- `Document.saveBundle('public/index.html')` automatically creates directories,
+  writes matching HTML/JavaScript files, and wires the module to mount the page.
+  It preserves the source tree and supports a custom class export name. The
+  compilation walkthrough also supports `--build public/index.html` for export.
+
+- A runnable compilation walkthrough (`node example/compilation.js`) serves the
+  same definition as HTML and a browser module, demonstrating bindings, computed
+  text, keyed lists, views and destroy/remount. README and guide include commands,
+  URLs, browser API instructions and the current routing limitations.
+
 - `Document.compile()` produces HTML or a standalone browser ES module class
   without consuming the source tree or using response caching. Browser classes
   mount native DOM into isolated shadow trees, keep independent reactive state,
@@ -65,6 +75,14 @@ rather than complete records.
   blocks it silently.
 
 ### Fixed
+
+- Bundle HTML now declares UTF-8 to match the files written, preventing corrupted
+  accented characters and emoji when the source document specifies a legacy
+  charset. The source document's charset remains unchanged.
+
+- Generated class listeners retain caller-provided AbortSignals and native signal
+  validation while still being removed on destroy. Generated inline scripts are
+  separated by semicolons so list/view declaration order cannot break mounting.
 
 - Generated browser classes preserve native constructor identities, static
   methods and prototypes instead of binding constructors such as Array/Event.

@@ -259,12 +259,23 @@ const server = http.createServer((_req, res) => {
       document.body.appendChild(extra);
       this.dataset.live = String(inputs.length === 2);
       extra.remove();
+      const controller = new AbortController();
+      let calls = 0;
+      document.addEventListener('caller-abort', function () { calls++; }, { signal: controller.signal });
+      controller.abort();
+      document.body.dispatchEvent(new Event('caller-abort', { bubbles: true }));
+      this.dataset.signal = String(calls);
+      let invalidSignal = false;
+      try { document.addEventListener('invalid-signal', function () {}, { signal: {} }); }
+      catch (error) { invalidSignal = error.cause instanceof TypeError; }
+      this.dataset.invalidSignal = String(invalidSignal);
     });
     doc.span().id('compiled-name').bind('name');
     doc.div().id('compiled-lifecycle')
       .onMount(function () {
         this.dataset.mounted = 'true';
         document.addEventListener('custom-event', function () { State.count++; });
+        document.addEventListener('caller-signal-event', function () { State.count++; }, { signal: new AbortController().signal });
         return () => { this.dataset.cleaned = 'true'; };
       })
       .onDestroy(function () { this.dataset.destroyed = 'true'; });

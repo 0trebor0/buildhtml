@@ -163,6 +163,8 @@
         <a href="#server">Server & static HTML</a>
         <a href="#document">Document</a>
         <a href="#compilation">HTML and browser classes</a>
+        <a href="#file-bundles">Write HTML + JS files</a>
+        <a href="#compilation-walkthrough">Run the walkthrough</a>
         <a href="#elements">Elements</a>
         <a href="#components">Components</a>
         <a href="#builder">Builder & JSON</a>
@@ -1185,6 +1187,49 @@ page.root.querySelector('body').appendChild(note);
         <p>When <code>className</code> is omitted, the named export is <code>GeneratedPage</code>. <code>className</code> accepts valid ASCII JavaScript class identifiers. Class output rejects URL routers, authored inline scripts, external head resources/links, raw head markup, native SVG/MathML trees and arbitrary <code>:root</code> selectors in head CSS. HTML output retains existing behavior. Generated classes require modern browsers with Shadow DOM, Proxy and abortable event listeners.</p>
       </section>
 
+      <section id="file-bundles" data-search="savebundle write export generate html javascript files automatic public index module bootstrap">
+        <h2>Write HTML and JavaScript files automatically</h2>
+        <pre><code>const { Document } = require('@trebor/buildhtml');
+
+const doc = new Document();
+doc.title('Home').states({ count: 0 });
+doc.h1('Hello world');
+doc.p().bind('count', count =&gt; `Count: ${count}`);
+doc.button('+1').onClick(function () { State.count++; });
+
+doc.saveBundle('public/index.html', { className: 'HomePage' });</code></pre>
+        <p>This creates missing directories and writes <code>public/index.html</code> and <code>public/index.js</code>. The HTML loads the matching module; the module contains the generated class and mounts it automatically. No handwritten host/bootstrap is needed. Serve the folder over HTTP with the correct JavaScript MIME type; file URLs cannot load browser modules normally.</p>
+        <p>Paths must end in <code>.html</code>; the JS file has the same directory/stem. Both files use UTF-8 and the HTML host declares UTF-8, preserving accented characters and emoji even if the source charset differs. The source charset is unchanged; configure any explicit server charset header as UTF-8. <code>className</code> defaults to <code>GeneratedPage</code>. The method returns the document, preserves its tree, leaves <code>output()</code> unchanged, and overwrites its output files. Compilation completes before writes. Filesystem errors name the failed path and can leave partial output; fix the cause and export again.</p>
+        <p>The HTML is a client-rendered host, so class-output restrictions apply. <code>save(path)</code> remains the rendered-HTML writer. Response nonces are refused for static bundles; use manual compile/mount with a fresh host nonce when needed. Title/meta, language and direction are copied to the host; styles and other page attributes remain local to the instance.</p>
+        <p>From the checkout, <code>node example/compilation.js --build public/index.html</code> generates both files and exits. Then serve the output folder with your static HTTP server. The usual command without <code>--build</code> still starts the interactive walkthrough.</p>
+      </section>
+
+      <section id="compilation-walkthrough" data-search="compile walkthrough instructions usage example node server browser class mount destroy state counter computed lists views routes abortsignal">
+        <h2>Run the new-feature walkthrough</h2>
+        <p>From the repository root, run <code>node example/compilation.js</code>. No dependency installation or generated files are needed. These instructions describe the current checkout; npm publication is separate. When copying the example into an installed-package application, replace <code>require('..')</code> with <code>require('@trebor/buildhtml')</code> and use a build containing <code>compile()</code>.</p>
+        <ol>
+          <li>Open <a href="http://127.0.0.1:3006/">http://127.0.0.1:3006/</a>. The host loads the generated <code>CounterPage</code> module over HTTP.</li>
+          <li>Edit <strong>Your name</strong> and click <strong>+1</strong> to exercise two-way input binding, state text and reactive computed text.</li>
+          <li>Open <strong>Tasks</strong> and toggle <strong>Done</strong>. Keyed lists retain their rows; <code>views()</code> switches panels while preserving state.</li>
+          <li>Click <strong>Destroy</strong>, then <strong>Mount</strong>, to verify cleanup and reset.</li>
+          <li>Open <a href="http://127.0.0.1:3006/server">/server</a> for the same definition as HTML, or <a href="http://127.0.0.1:3006/counter-page.js">/counter-page.js</a> for the generated module source.</li>
+        </ol>
+        <p><code>CounterDocument extends Document</code> runs on Node; the generated <code>CounterPage</code> runs in the browser. Both compilation targets preserve the original tree. In the browser console, use <code>window.examplePage.state.count = 5</code> to update state and <code>window.examplePage.root.querySelector('#count')</code> to inspect the result.</p>
+        <div class="table-wrap"><table>
+          <thead><tr><th>Browser instance API</th><th>Use</th></tr></thead>
+          <tbody>
+            <tr><td><code>new CounterPage({ nonce? })</code></td><td>Create an instance with the host response nonce when CSP requires it.</td></tr>
+            <tr><td><code>mount(target)</code></td><td>Mount into an Element or ShadowRoot; returns the instance.</td></tr>
+            <tr><td><code>state</code>, <code>root</code></td><td>Reactive state and the owned shadow root after mounting. State is browser-visible.</td></tr>
+            <tr><td><code>createElement(tagNameOrNode)</code></td><td>Create/reuse a native node after mounting; append it explicitly with native appendChild.</td></tr>
+            <tr><td><code>destroy()</code></td><td>Run cleanup and remove owned DOM/styles/listeners. Root becomes null; remount resets state.</td></tr>
+          </tbody>
+        </table></div>
+        <p>Return cleanup from <code>onMount()</code> for timers/manual resources. Native <code>document.addEventListener</code>/<code>window.addEventListener</code> inside generated callbacks honor caller AbortSignals and still remove those listeners on destroy. Builder <code>on()</code> options are unchanged.</p>
+        <p><strong>Routing:</strong> the example's <code>/server</code> endpoint is ordinary Node HTTP routing. Existing hash/history routers work with HTML output. Generated classes support panel views but reject URL routers. The proposed <code>Router.route()</code>/<code>Router.compile()</code> API is not implemented/exported; host code must currently own browser URLs and class switching.</p>
+        <p>Serve modules over HTTP with a JavaScript content type; avoid file URLs. Query the instance root to reach shadow DOM. Keep server closures out of callbacks and run <code>validate()</code> before compilation. Host CSP must allow the module and supply any required style nonce through the generated constructor.</p>
+      </section>
+
       <section id="elements" data-search="element text html attr css class children events forms layout">
         <h2>Elements</h2>
         <pre><code>const card = doc.section()
@@ -1635,6 +1680,7 @@ doc.historyRouter({
             <thead><tr><th>Methods</th><th>Parameters / result</th></tr></thead>
             <tbody>
               <tr><td><code>compile</code></td><td><code>{ output?: 'html' | 'class', className? }</code> → HTML or ES module source. Preserves the source tree; no response-cache access.</td></tr>
+              <tr><td><code>saveBundle</code></td><td><code>htmlPath, { className? }</code> → this. Writes a matching HTML host and auto-mounting JS module; preserves the source tree.</td></tr>
               <tr><td><code>render</code></td><td>No parameters → complete HTML string. <strong>Consumes the document</strong>: it clears the body and releases pooled elements, so call it once and build a fresh document per request.</td></tr>
               <tr><td><code>renderStream</code></td><td>No parameters → readable HTML stream.</td></tr>
               <tr><td><code>clear</code></td><td>Resets body, state, and per-render scripts; preserves head.</td></tr>

@@ -2,6 +2,9 @@
 
 const assert = require('node:assert/strict');
 const { Script } = require('node:vm');
+const fs = require('node:fs');
+const path = require('node:path');
+const { spawnSync } = require('node:child_process');
 const { Document, page } = require('../index');
 const { pools, resetPools } = require('../lib/pools');
 
@@ -75,6 +78,87 @@ for (const configure of [
   const unsupported = new Document();
   configure(unsupported);
   assert.throws(() => unsupported.compile({ output: 'class' }), /Document.compile/);
+}
+
+const workspace = path.resolve(__dirname, '..');
+const fixtureParent = path.join(workspace, '.baseline');
+fs.mkdirSync(fixtureParent, { recursive: true });
+const fixture = fs.mkdtempSync(path.join(fixtureParent, 'save-bundle-'));
+try {
+  const bundle = page('Bundle <title> café 😀');
+  bundle.charset('windows-1252');
+  bundle.htmlAttr('id', 'app').lang('fr').htmlAttr('dir', 'ltr');
+  bundle.h1('Saved bundle');
+  const htmlFile = path.join(fixture, 'nested', 'home #page.html');
+  const jsFile = path.join(fixture, 'nested', 'home #page.js');
+  assert.equal(bundle.saveBundle(htmlFile, { className: 'SavedPage' }), bundle);
+  assert.match(fs.readFileSync(htmlFile, 'utf8'), /<title>Bundle &lt;title&gt; café 😀<\/title>/);
+  assert.match(fs.readFileSync(htmlFile, 'utf8'), /<meta charset="UTF-8">/, 'bundle host declares the UTF-8 encoding used by file writes');
+  assert.equal(bundle.head.charset, 'windows-1252', 'bundle generation leaves source charset unchanged');
+  assert.match(fs.readFileSync(htmlFile, 'utf8'), /<html lang="fr" dir="ltr">/, 'host metadata does not duplicate the isolated HTML ID');
+  assert.match(fs.readFileSync(htmlFile, 'utf8'), /<script type="module" src="\.\/home%20%23page.js"><\/script>/);
+  const savedJs = fs.readFileSync(jsFile, 'utf8');
+  assert.match(savedJs, /export \{ __buildhtmlPage as SavedPage \}/);
+  assert.match(savedJs, /__buildhtmlInstance.mount/);
+  new Script(savedJs.replace(/^export \{[^}]+\};$/m, ''));
+  assert.equal(bundle.body.length, 1, 'saving a bundle preserves the source tree');
+  assert.equal(bundle.output(), '', 'saving a bundle leaves render output unchanged');
+  bundle.h2('Updated bundle');
+  bundle.saveBundle(htmlFile);
+  assert.match(fs.readFileSync(jsFile, 'utf8'), /Updated bundle/, 'subsequent exports overwrite the named outputs');
+
+  for (const invalidPath of [undefined, 42, '', path.join(fixture, 'invalid.js')]) {
+    assert.throws(() => bundle.saveBundle(invalidPath), /output path must end in .html/);
+  }
+  assert.throws(() => bundle.saveBundle(htmlFile, null), /Expected bundle options/);
+  const unsupported = new Document().rawHead('<meta name="unsupported">');
+  const unsupportedDir = path.join(fixture, 'unsupported');
+  assert.throws(() => unsupported.saveBundle(path.join(unsupportedDir, 'index.html')), /rawHead/);
+  assert(!fs.existsSync(unsupportedDir), 'compilation failures do not create output directories');
+  assert.throws(() => new Document({ nonce: 'test-response-nonce' }).saveBundle(htmlFile), /cannot reuse a response nonce/);
+  const headNonce = new Document();
+  headNonce.head.setNonce('test-response-nonce');
+  assert.throws(() => headNonce.saveBundle(htmlFile), /cannot reuse a response nonce/);
+  assert.throws(() => bundle.saveBundle(path.join(fixture, 'invalid-class', 'index.html'), { className: 'bad-name' }), /className/);
+  assert(!fs.existsSync(path.join(fixture, 'invalid-class')));
+
+  const originalWrite = fs.writeFileSync;
+  for (const extension of ['.js', '.html']) {
+    const failure = Object.assign(new Error('permission denied'), { code: 'EACCES' });
+    const target = path.join(fixture, 'failed-' + extension.slice(1), 'index.html');
+    try {
+      fs.writeFileSync = (file, ...args) => {
+        if (file.endsWith(extension)) throw failure;
+        return originalWrite(file, ...args);
+      };
+      assert.throws(() => bundle.saveBundle(target), error => error.code === 'EACCES'
+        && error.cause === failure && error.message.includes('index' + extension));
+    } finally { fs.writeFileSync = originalWrite; }
+  }
+  assert.equal(bundle.body.length, 2, 'write failures preserve the source tree');
+
+  const originalDirection = Object.getOwnPropertyDescriptor(Object.prototype, 'dir');
+  try {
+    Object.defineProperty(Object.prototype, 'dir', { value: 'rtl', configurable: true, enumerable: true });
+    const cleanHost = path.join(fixture, 'prototype.html');
+    new Document().saveBundle(cleanHost);
+    assert(!fs.readFileSync(cleanHost, 'utf8').includes(' dir='), 'inherited attributes cannot enter the generated host');
+  } finally {
+    if (originalDirection) Object.defineProperty(Object.prototype, 'dir', originalDirection);
+    else delete Object.prototype.dir;
+  }
+
+  const cliFile = path.join(fixture, 'cli', 'index.html');
+  const cli = spawnSync(process.execPath, ['example/compilation.js', '--build', cliFile], { cwd: workspace, encoding: 'utf8' });
+  assert.equal(cli.status, 0, cli.stderr);
+  assert(fs.existsSync(cliFile) && fs.existsSync(cliFile.replace(/\.html$/, '.js')));
+  const invalidCli = spawnSync(process.execPath, ['example/compilation.js', '--build'], { cwd: workspace, encoding: 'utf8' });
+  assert.equal(invalidCli.status, 1);
+  assert.match(invalidCli.stderr, /output path must end in .html/);
+} finally {
+  const relative = path.relative(fs.realpathSync(workspace), fs.realpathSync(fixture));
+  assert(relative && !relative.startsWith('..') && !path.isAbsolute(relative), 'fixture cleanup stays inside the repository');
+  fs.rmSync(fixture, { recursive: true, force: true });
 }
 
 const live = new Document();

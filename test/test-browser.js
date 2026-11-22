@@ -3,8 +3,10 @@
 const assert = require('assert/strict');
 const http = require('http');
 const path = require('path');
+const fs = require('node:fs');
 const { spawn } = require('child_process');
 const { chromium } = require('playwright');
+const { CounterDocument, createCompilationServer } = require('../example/compilation');
 
 const PORT = Number(process.env.BUILDHTML_BROWSER_PORT) || 3417;
 const ORIGIN = `http://127.0.0.1:${PORT}`;
@@ -432,7 +434,7 @@ async function run() {
       const root = window.firstPage.root;
       const probe = root.getElementById('compiled-platform');
       return { ...probe.dataset, template: root.getElementById('compiled-template').content.textContent };
-    }), { array: 'true', event: 'true', promise: 'true', view: 'true', contains: 'true', method: 'true', tag: 'true', class: 'true', live: 'true', template: 'Template content' },
+    }), { array: 'true', event: 'true', promise: 'true', view: 'true', contains: 'true', method: 'true', tag: 'true', class: 'true', live: 'true', signal: '0', invalidSignal: 'true', template: 'Template content' },
     'scoped browser APIs retain constructor properties, local live lookups and template content');
     assert.equal(await page.evaluate(() => {
       const root = window.firstPage.root;
@@ -479,6 +481,7 @@ async function run() {
       window.savedButton.click();
       window.classRow.click();
       window.savedRoot.dispatchEvent(new Event('custom-event'));
+      window.savedRoot.dispatchEvent(new Event('caller-signal-event'));
     });
     assert.deepEqual(await page.evaluate(() => ({
       count: window.firstPage.state.count,
@@ -531,7 +534,112 @@ async function run() {
     }), true, 'export names that match browser globals do not shadow runtime helpers');
     assert.deepEqual(browserErrors, [], 'compiled modules mount and update without CSP or runtime errors');
 
-    console.log('Browser integration passed: bindings, lists, routing, lifecycle, CSP, compiled modules, isolation, and destroy/remount.');
+    const walkthrough = createCompilationServer();
+    await new Promise((resolve, reject) => {
+      walkthrough.once('error', reject);
+      walkthrough.listen(0, '127.0.0.1', resolve);
+    });
+    try {
+      const origin = `http://127.0.0.1:${walkthrough.address().port}`;
+      await page.goto(origin, { waitUntil: 'load' });
+      await page.waitForFunction(() => window.examplePage?.root);
+      assert.equal(await page.locator('#app #greeting').textContent(), 'Hello, Ada');
+      await page.locator('#app #example-name').fill('Grace');
+      assert.equal(await page.locator('#app #greeting').textContent(), 'Hello, Grace');
+      await page.locator('#app #increment').click();
+      assert.equal(await page.locator('#app #count').textContent(), 'Count: 1');
+      assert.equal(await page.locator('#app #double').textContent(), 'Double: 2');
+      await page.locator('#app #tasks-view').click();
+      const task = page.locator('#app [data-task="1"]');
+      await task.evaluate(node => { window.exampleTaskBefore = node; });
+      await task.locator('button').click();
+      assert.equal(await task.locator('button').textContent(), 'Undo');
+      assert.equal(await task.evaluate(node => node === window.exampleTaskBefore), true, 'walkthrough task updates retain keyed rows');
+      await page.locator('#destroy').click();
+      assert.equal(await page.locator('#app').textContent(), '');
+      assert.match(await page.locator('#mount-status').textContent(), /^Destroyed/);
+      await page.locator('#mount').click();
+      assert.equal(await page.locator('#app #count').textContent(), 'Count: 0');
+      assert.equal(await page.locator('#app #greeting').textContent(), 'Hello, Ada');
+
+      await page.locator('#destroy').click();
+      await page.evaluate(() => {
+        window.exampleMount = window.examplePage.mount;
+        window.examplePage.mount = function () { throw new Error('expected mount failure'); };
+      });
+      await page.locator('#mount').click();
+      assert.match(await page.locator('#mount-status').textContent(), /Mount failed: expected mount failure/);
+      await page.evaluate(() => { window.examplePage.mount = window.exampleMount; });
+      await page.locator('#mount').click();
+      await page.evaluate(() => {
+        window.exampleDestroy = window.examplePage.destroy;
+        window.examplePage.destroy = function () { throw new Error('expected destroy failure'); };
+      });
+      await page.locator('#destroy').click();
+      assert.match(await page.locator('#mount-status').textContent(), /Destroy failed: expected destroy failure/);
+      await page.evaluate(() => { window.examplePage.destroy = window.exampleDestroy; });
+      await page.locator('#destroy').click();
+
+      await page.goto(`${origin}/server`, { waitUntil: 'load' });
+      await page.locator('#increment').click();
+      assert.equal(await page.locator('#count').textContent(), 'Count: 1');
+      assert.equal(await page.locator('#double').textContent(), 'Double: 2');
+      await page.locator('#tasks-view').click();
+      await page.locator('[data-task="1"] button').click();
+      assert.equal(await page.locator('[data-task="1"] button').textContent(), 'Undo');
+      assert.deepEqual(browserErrors, [], 'both documented example outputs work without browser errors');
+    } finally {
+      await new Promise((resolve, reject) => walkthrough.close(error => error ? reject(error) : resolve()));
+    }
+
+    const workspace = path.resolve(__dirname, '..');
+    fs.mkdirSync(path.join(workspace, '.baseline'), { recursive: true });
+    const bundleDir = fs.mkdtempSync(path.join(workspace, '.baseline', 'browser-bundle-'));
+    const htmlFile = path.join(bundleDir, 'home #page.html');
+    const jsFile = path.join(bundleDir, 'home #page.js');
+    let bundleServer;
+    try {
+      const doc = new CounterDocument();
+      doc.charset('windows-1252').title('Compilation café 😀');
+      doc.htmlAttr('id', 'app');
+      doc.saveBundle(htmlFile, { className: 'CounterPage' });
+      const files = new Map([['/home #page.html', htmlFile], ['/home #page.js', jsFile]]);
+      bundleServer = http.createServer((request, response) => {
+        try {
+          const pathname = decodeURIComponent(new URL(request.url, 'http://127.0.0.1').pathname);
+          const file = files.get(pathname);
+          if (!file) { response.writeHead(404); response.end('Not found'); return; }
+          const body = fs.readFileSync(file);
+          response.writeHead(200, { 'Content-Type': file === jsFile ? 'text/javascript' : 'text/html' });
+          response.end(body);
+        } catch (error) { response.writeHead(500); response.end('Unable to read generated test file'); }
+      });
+      await new Promise((resolve, reject) => {
+        bundleServer.once('error', reject);
+        bundleServer.listen(0, '127.0.0.1', resolve);
+      });
+      const origin = `http://127.0.0.1:${bundleServer.address().port}`;
+      await page.goto(`${origin}/home%20%23page.html`, { waitUntil: 'load' });
+      assert.equal(await page.title(), 'Compilation café 😀', 'UTF-8 bundle metadata survives a legacy source charset');
+      assert.equal(await page.locator('#app #count').textContent(), 'Count: 0');
+      await page.locator('#app #increment').click();
+      assert.equal(await page.locator('#app #count').textContent(), 'Count: 1');
+      assert.equal(await page.locator('#app #double').textContent(), 'Double: 2');
+      await page.locator('#app #tasks-view').click();
+      await page.locator('#app [data-task="1"] button').click();
+      assert.equal(await page.locator('#app [data-task="1"] button').textContent(), 'Undo');
+      assert.deepEqual(browserErrors, [], 'generated HTML and JS files mount automatically without a handwritten host');
+      fs.unlinkSync(jsFile);
+      const missingModule = await page.request.get(`${origin}/home%20%23page.js`);
+      assert.equal(missingModule.status(), 500, 'test file-serving errors are caught');
+    } finally {
+      if (bundleServer?.listening) await new Promise((resolve, reject) => bundleServer.close(error => error ? reject(error) : resolve()));
+      const relative = path.relative(fs.realpathSync(workspace), fs.realpathSync(bundleDir));
+      assert(relative && !relative.startsWith('..') && !path.isAbsolute(relative), 'bundle fixture cleanup stays in the repository');
+      fs.rmSync(bundleDir, { recursive: true, force: true });
+    }
+
+    console.log('Browser integration passed: bindings, lists, routing, lifecycle, CSP, compiled modules, signals, walkthrough, and automatic file bundles.');
   } finally {
     if (browser) await browser.close();
     await stopFixture(fixture);

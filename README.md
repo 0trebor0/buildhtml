@@ -77,7 +77,7 @@ A static page stays static. Add `.states()`, `.bind()`, or `.onClick()` and the 
 | Module formats | CommonJS and ESM, plus six subpath exports |
 | TypeScript | declarations bundled (`typescript/*.d.ts`) |
 | Node.js | 18+; CI runs 18, 20, 22, 24 |
-| Testing | 26 suites, 4 Playwright browser suites, 31 fuzz properties |
+| Testing | 27 suites, 4 Playwright browser suites, 31 fuzz properties |
 | Escaping | text, attributes, CSS values, and JSON context |
 | CSP | nonce support for generated `<script>`/`<style>`; no inline `on*` attributes |
 | Client runtime | generated per page; 0 bytes when no reactive API is used |
@@ -107,6 +107,8 @@ This is the part that surprises people, so here it is directly.
 
 - [Create pages and elements](#create-pages-and-elements)
 - [Compile HTML or a browser class](#compile-html-or-a-browser-class)
+- [Write HTML and JavaScript files automatically](#write-html-and-javascript-files-automatically)
+- [Run the new-feature walkthrough](#run-the-new-feature-walkthrough)
 - [Serve HTML with Express](#serve-html-with-express)
 - [Generate static files](#generate-static-files)
 - [Accessible form fields](#accessible-form-fields)
@@ -263,6 +265,129 @@ external head scripts/stylesheets/links, `rawHead`, native SVG/MathML trees, and
 arbitrary `:root` selectors in head CSS. HTML output retains the existing support
 for those features. Generated classes require modern browsers with Shadow DOM,
 Proxy, and abortable event listeners.
+
+#### Write HTML and JavaScript files automatically
+
+Use `saveBundle()` to create the HTML entry point and matching JavaScript file in
+one call:
+
+```javascript
+const { Document } = require('@trebor/buildhtml');
+
+const doc = new Document();
+doc.title('Home').states({ count: 0 });
+doc.h1('Hello world');
+doc.p().bind('count', count => `Count: ${count}`);
+doc.button('+1').onClick(function () { State.count++; });
+
+doc.saveBundle('public/index.html', { className: 'HomePage' });
+```
+
+This creates missing parent directories and writes:
+
+```text
+public/
+  index.html
+  index.js
+```
+
+The HTML includes `<script type="module" src="./index.js"></script>`. The module
+contains the generated class and mounts it automatically; no handwritten host or
+bootstrap is needed. Serve the folder over HTTP with a JavaScript MIME type for
+`.js` files. Browser module loading requires HTTP rather than opening `file://`.
+
+The filename must end in `.html`; the JavaScript file uses the same stem and
+directory. Both files use UTF-8, and the HTML host declares UTF-8 even if the
+source document uses another charset; the source setting remains unchanged.
+Serve the HTML as UTF-8 if your server sends an explicit charset header.
+`className` is optional and defaults to `GeneratedPage`. The method
+returns the document, preserves its tree, leaves `output()` unchanged, and
+overwrites existing output files. Both contents compile before files are written.
+Filesystem failures report the failed path and may leave partial output; fix the
+cause and run the export again.
+
+This HTML is a client-rendered host; generated class restrictions apply.
+`save(path)` remains the rendered-HTML writer. Static bundles refuse document
+response nonces because those cannot be safely reused across responses. Use the
+manual `compile()`/mount workflow for a host that supplies fresh CSP nonces.
+Title/meta, language and direction are copied to the HTML host; styles and other
+page attributes stay inside the generated instance.
+
+To generate both files from the walkthrough without writing your own Node script:
+
+```bash
+node example/compilation.js --build public/index.html
+```
+
+This command exports the files and exits; serve the resulting folder with your
+static HTTP server. It does not start the walkthrough server.
+
+#### Run the new-feature walkthrough
+
+From this repository's root, run:
+
+```bash
+node example/compilation.js
+```
+
+No dependency installation or generated files are needed for this example. These
+instructions describe the current checkout; publishing an npm release is a
+separate step. The complete source is [example/compilation.js](example/compilation.js).
+When copying it into an installed-package application, replace `require('..')`
+with `require('@trebor/buildhtml')` and use a package build containing `compile()`.
+
+1. Open [http://127.0.0.1:3006/](http://127.0.0.1:3006/). Node serves a small host
+   page and the generated `CounterPage` module with a JavaScript content type.
+2. Change **Your name**, then click **+1**. `bindInput()` synchronizes the name;
+   `bind()` displays state; `computed()` updates the doubled count.
+3. Open **Tasks** and click **Done**. `liveList(..., { key: 'id' })` updates the
+   existing row. `views()` switches panels inside the instance and retains state.
+4. Click **Destroy**, then **Mount**. Owned DOM, listeners and watchers are
+   removed, and remounting starts with the original state. Host controls remain.
+5. Open [http://127.0.0.1:3006/server](http://127.0.0.1:3006/server) to run the
+   same definition as a complete HTML document. Inspect
+   [the generated module](http://127.0.0.1:3006/counter-page.js) to see class output.
+
+`CounterDocument` is the Node class extending `Document`; `CounterPage` is its
+generated standalone browser class. The server calls both `compile()` targets
+before the source is consumed. The browser module imports no buildhtml package.
+To inspect the mounted example in the browser console:
+
+```javascript
+window.examplePage.state.count = 5;
+window.examplePage.root.querySelector('#count').textContent; // 'Count: 5'
+```
+
+The generated instance API is:
+
+| API | Use |
+|---|---|
+| `new CounterPage({ nonce? })` | Create an instance; provide the host response nonce when CSP requires it |
+| `instance.mount(target)` | Mount into an `Element` or `ShadowRoot`; returns the instance |
+| `instance.state` | Read or mutate reactive state after mounting; state values are browser-visible |
+| `instance.root` | Inspect the instance's open shadow root; becomes `null` on destroy |
+| `instance.createElement(tagNameOrNode)` | After mounting, create or reuse a native node; it is not appended automatically |
+| `parent.appendChild(node)` | Insert or move the returned native node |
+| `instance.destroy()` | Run lifecycle cleanup and remove owned DOM/styles/listeners; safe to repeat |
+
+Use `onMount()`'s returned cleanup for timers or manually managed resources.
+Scoped document/window listeners preserve caller-provided `AbortSignal`
+cancellation and are also removed when the instance is destroyed.
+This applies to native `document.addEventListener`/`window.addEventListener`
+inside generated callbacks; builder `on()` options are unchanged.
+
+**Routing:** `/server` is an ordinary Node HTTP endpoint in the example. For HTML
+output, existing [hash/history routing APIs](#spa-routing) remain available.
+Generated classes support panel `views()`, but reject those URL routers. The
+`Router.route()`/`Router.compile()` API discussed as a possible extension is not
+implemented or exported. A host application must currently own browser URLs and
+destroy/mount the appropriate class.
+
+If imports fail, use the HTTP example instead of opening files with `file://`,
+and check that the module response has a JavaScript content type. If host-page
+selectors cannot find generated content, query `instance.root` because the DOM
+is inside a shadow tree. Keep server variables out of serialized callbacks;
+call `doc.validate()` before compilation to check for captured identifiers.
 
 ### Document options
 
@@ -1442,7 +1567,7 @@ Document and body:
 
 ```text
 lang · htmlAttr · bodyId · bodyClass · bodyAttr · bodyCss
-compile · render · renderStream · validate · clear
+compile · saveBundle · render · renderStream · validate · clear
 ```
 
 CSS:
