@@ -301,28 +301,72 @@ contains the generated class and mounts it automatically; no handwritten host or
 bootstrap is needed. Serve the folder over HTTP with a JavaScript MIME type for
 `.js` files. Browser module loading requires HTTP rather than opening `file://`.
 
-To rename both output files while keeping the directory:
+To choose the directory and name both output files:
 
 ```javascript
-doc.saveBundle('public/index.html', { className: 'HomePage', filename: 'name' });
+doc.saveBundle('public', { className: 'HomePage', filename: 'name' });
 // Writes public/name.html and public/name.js.
 ```
 
 `filename` is an optional filename stem, without path components or a `.html` or
 `.js` extension. Invalid filename characters, trailing dots/spaces and reserved
 Windows device names are rejected before writing. It replaces both output names;
-`className` controls the JavaScript export name. Without `filename`, names come
-from `htmlPath`, which must end in `.html`. Both files stay in that directory.
+`className` controls the JavaScript export name. Without `filename`, a directory
+destination uses `index.html` and `index.js`. An explicit `.html` path uses its
+own stem unless `filename` is supplied. End a directory name containing a dot
+with a separator, as in `public.v2/`.
 Both files use UTF-8, and the HTML host declares UTF-8 even if the
 source document uses another charset; the source setting remains unchanged.
 Serve the HTML as UTF-8 if your server sends an explicit charset header.
 `className` is optional and defaults to `GeneratedPage`. The method
 returns the document, preserves its tree, leaves `output()` unchanged, and
-overwrites existing output files. Both contents compile before files are written.
-Filesystem failures report the failed path and may leave partial output; fix the
-cause and run the export again.
+replaces existing output files. Both files are staged in the destination before
+either output is replaced. If a replacement fails, the exporter restores the
+previous files and removes any newly published file that had no predecessor.
+Exports to the same stem cannot run concurrently. If rollback itself fails, the
+error reports the staging directory containing any remaining backups.
 
-This HTML is a client-rendered host; generated class restrictions apply.
+Publishing uses separate filesystem renames, so readers can observe an intermediate
+state during publication. If the process is interrupted, check for retained
+backups in the `.buildhtml-bundle-*` directory before removing it and retrying.
+An existing symbolic link at an output path is replaced by the new file.
+
+The exported HTML preserves stylesheets (`addLink()`), icons (`favicon()`),
+authored head CSS, head scripts (`addScript()`), and trusted `rawHead()` markup.
+Authored head CSS is available to head scripts, and later raw-head styles keep
+their cascade order. After the module mounts the page and
+initializes its bindings, each `inlineScript()` block runs as a separate classic
+script in registration order. These scripts use the real page globals and DOM.
+Serialized callbacks continue to use the instance's reactive `State`. Serve the
+referenced resources alongside the bundle or supply URLs that resolve from the
+exported document. A `<base href>` supplied through `rawHead()` also changes the
+browser URL for the generated module. For example, with `<base href="/assets/">`
+and an exported `index.js`, serve that file at `/assets/index.js`. Your CSP must
+allow any authored scripts and styles it uses.
+
+Bundles support `hashRouter()` and `historyRouter()`. Hash routes work from the
+exported page URL. For History routes, configure the host to serve the same
+exported HTML for application URLs after API and static asset routes have been
+handled. Use a stable base URL for assets so the generated module loads from
+nested routes. For example, serve `index.js` at `/assets/index.js` and add
+`doc.rawHead('<base href="/assets/">')`. Use application-absolute links such as
+`/app/users/42` for History navigation when the asset base differs from the app.
+
+Bundles support authored `:root` CSS and native SVG and MathML trees. Use the
+lowercase HTML spellings when building SVG names with uppercase letters in their
+DOM spelling, such as `viewbox`, `lineargradient`, and `foreignobject`. The
+browser restores the canonical names and namespaces.
+
+For executable body scripts, create an HTML element with `create('script')` and
+use `.text(source)` or `.attr('src', url)`. After mounting and initializing the
+page, the bundle activates the scripts at their authored positions in tree order.
+Lifecycle hooks and `load`/`error` listeners stay attached to the script element.
+Executable code comes from the authored script source rather than reactive text.
+It waits for external scripts without `async` before continuing to the next script
+or `inlineScript()` block. Inline modules and `async` external scripts can finish
+later. This runs after parsing, so parser-time behavior such as `document.write()`
+and parser-deferred scheduling is unavailable. Data blocks and scripts inside
+templates stay inert. Embedded scripts in raw HTML, SVG, and MathML are refused.
 `save(path)` remains the rendered-HTML writer. Static bundles refuse document
 response nonces because those cannot be safely reused across responses. Use the
 manual `compile()`/mount workflow for a host that supplies fresh CSP nonces.
@@ -393,9 +437,9 @@ cancellation and are also removed when the instance is destroyed.
 This applies to native `document.addEventListener`/`window.addEventListener`
 inside generated callbacks; builder `on()` options are unchanged.
 
-**Routing:** `/server` is an ordinary Node HTTP endpoint in the example. For HTML
-output, existing [hash/history routing APIs](#spa-routing) remain available.
-Generated classes support panel `views()`, but reject those URL routers. The
+**Routing:** `/server` is an ordinary Node HTTP endpoint in the example. HTML
+output and file bundles support the existing [hash/history routing APIs](#spa-routing).
+Standalone class compilation supports panel `views()`. The
 `Router.route()`/`Router.compile()` API discussed as a possible extension is not
 implemented or exported. A host application must currently own browser URLs and
 destroy/mount the appropriate class.

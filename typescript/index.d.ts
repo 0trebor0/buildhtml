@@ -1050,15 +1050,20 @@ export declare class Document<S extends StateShape = StateShape> implements Shar
   compile(options?: CompileOptions): string;
   /**
    * Create parent directories and write an HTML host plus a same-stem .js module
-   * that mounts authored nodes directly in #app. Both files are written in
-   * htmlPath's directory. filename optionally
-   * overrides both stems; omit paths and .html/.js extensions from that option.
+   * that mounts authored nodes directly in #app. Pass an HTML path or a directory
+   * (defaults to index.html and index.js). End dotted directory names with a slash.
+   * filename overrides both stems; omit paths and .html/.js extensions from it.
    * Both files and the host charset use UTF-8, without
    * changing the source charset. Preserves the source tree and output(). Existing
-   * output files are overwritten. Uses class-output restrictions; response nonces
-   * are refused for static bundles. Serve the files over HTTP with a JS MIME type.
+   * output files are replaced after staging, with rollback on replacement failure.
+   * Head CSS, resources and trusted raw head markup
+   * are emitted into the HTML. Authored inline scripts run after the module mounts.
+   * Supports hashRouter() and historyRouter(). History routes need an HTML fallback
+   * and a module URL that resolves from every route. HTML body scripts activate
+   * after mounting. Bundles support SVG, MathML and authored :root CSS. Static
+   * response nonces are refused. Serve the files over HTTP with a JS MIME type.
    */
-  saveBundle(htmlPath: string, options?: { className?: string; filename?: string }): this;
+  saveBundle(destination: string, options?: { className?: string; filename?: string }): this;
   /**
    * Renders the complete HTML document.
    *

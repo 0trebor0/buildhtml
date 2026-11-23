@@ -6,6 +6,7 @@ const path = require('path');
 const fs = require('node:fs');
 const { spawn } = require('child_process');
 const { chromium } = require('playwright');
+const { Document } = require('../index');
 const { CounterDocument, createCompilationServer } = require('../example/compilation');
 
 const PORT = Number(process.env.BUILDHTML_BROWSER_PORT) || 3417;
@@ -641,17 +642,81 @@ async function run() {
       const doc = new CounterDocument();
       doc.charset('windows-1252').title('Compilation café 😀');
       doc.htmlAttr('class', 'bundle-html').bodyClass('bundle-body');
+      doc.addLink('./theme.css').favicon('./icon.svg', 'image/svg+xml').addScript('./head.js');
+      doc.cssVars({ 'bundle-head-probe': 'ready' }).globalCss('main', { borderTopColor: 'red' });
+      doc.globalCss(':root', { colorScheme: 'dark' });
+      doc.inlineStyle(':root { --bundle-root-rule: loaded; }');
+      doc.inlineStyle('main::after { content: "</STYLE>"; }');
+      doc.inlineStyle(String.raw`main::before { content: "\</STYLE> \\</STYLE>"; }`);
+      doc.rawHead('<meta name="bundle-fixture" content="present">');
+      doc.rawHead('<base href="/bundle-assets/">');
+      doc.rawHead('<style>main { border-top-color: blue; }</style>');
+      doc.rawHead('<script>bundleOrder.push("raw head");</script>');
+      const scripts = doc.div().id('bundle-body-scripts');
+      scripts.create('script').id('bundle-body-first')
+        .text('bundleOrder.push(document.currentScript.parentNode.id && "body first");')
+        .bind('count', () => 'window.bundleBoundSourceRan = true;');
+      scripts.create('script').id('bundle-body-external').attr('src', './body.js')
+        .onMount(function () { this.dataset.mounted = 'true'; })
+        .on('load', function () { this.dataset.loaded = 'true'; });
+      scripts.create('script').attr('type', 'module').attr('src', './body-module.js');
+      scripts.create('script').attr('type', 'module').text('await Promise.resolve(); window.bundleOrder.push("body module");');
+      scripts.create('script').attr('type', 'application/json').id('bundle-data').text('{"answer":42}');
+      scripts.create('template').create('script').text('throw new Error("template script executed");');
+      doc.create('script').text('bundleOrder.push("body last");');
+      const svg = doc.create('svg').id('bundle-svg').attr('viewbox', '0 0 20 20');
+      svg.create('lineargradient').id('bundle-gradient');
+      svg.create('use').id('bundle-svg-link').attrs['XLINK:HREF'] = 'javascript:throw new Error("unsafe SVG URL")';
+      svg.create('foreignobject').create('div').id('bundle-foreign-html').text('HTML inside SVG');
+      svg.create('text').id('bundle-svg-count').bind('count');
+      doc.create('math').id('bundle-math').create('mi').text('x');
+      doc.inlineScript('const bundleInitialCount = document.querySelector("#app #count").textContent; bundleOrder.push(bundleInitialCount);');
+      doc.inlineScript('throw new Error("expected authored script error");');
+      doc.inlineScript('bundleOrder.push(bundleInitialCount + " again"); document.body.dataset.classicScript = String(this === window && !!document.currentScript);');
       const requestedFile = path.join(bundleDir, 'index.html');
-      doc.saveBundle(requestedFile, { className: 'CounterPage', filename: 'home #page' });
-      assert(!fs.existsSync(requestedFile), 'filename replaces the requested HTML stem');
-      const files = new Map([['/home #page.html', htmlFile], ['/home #page.js', jsFile]]);
+      doc.saveBundle(bundleDir, { className: 'CounterPage', filename: 'home #page' });
+      assert(!fs.existsSync(requestedFile), 'the directory export uses the requested filename instead of index.html');
+      const files = new Map([['/home #page.html', htmlFile], ['/bundle-assets/home #page.js', jsFile]]);
+      const hash = new Document();
+      hash.a('#inbox/hello%20world', 'Open inbox').id('hash-inbox');
+      hash.p().id('hash-view').bind('view');
+      hash.p().id('hash-param').bind('routeParams', params => params?.name || '');
+      hash.hashRouter({ default: 'home', routes: { home: 'Home', 'inbox/:name': 'Inbox', '*': 'Missing' } });
+      hash.saveBundle(path.join(bundleDir, 'bundle-hash.html'));
+      files.set('/bundle-hash.html', path.join(bundleDir, 'bundle-hash.html'));
+      files.set('/bundle-hash.js', path.join(bundleDir, 'bundle-hash.js'));
+
+      const history = new Document();
+      history.rawHead('<base href="/bundle-assets/">');
+      history.a('/bundle-history/item/Ada%20Lovelace', 'Open item').id('history-item').data({ route: 'true' });
+      history.a('/bundle-history/unknown', 'Open unknown').id('history-unknown').data({ route: 'true' });
+      history.p().id('history-view').bind('view');
+      history.p().id('history-param').bind('routeParams', params => params?.name || '');
+      history.historyRouter({ base: '/bundle-history', routes: { '/': 'Home', '/item/:name': 'Item', '*': 'Missing' } });
+      history.inlineScript('document.body.dataset.initialRoute = document.querySelector("#history-view").textContent;');
+      const historyHtml = path.join(bundleDir, 'bundle-history.html');
+      history.saveBundle(historyHtml);
+      files.set('/bundle-assets/bundle-history.js', path.join(bundleDir, 'bundle-history.js'));
+      const resources = new Map([
+        ['/theme.css', ['text/css', 'main { background-color: rgb(11, 22, 33); }']],
+        ['/head.js', ['text/javascript', 'var bundleOrder = ["external head"]; window.bundleHeadProbe = getComputedStyle(document.documentElement).getPropertyValue("--bundle-head-probe").trim();']],
+        ['/bundle-assets/body.js', ['text/javascript', 'bundleOrder.push("body external");']],
+        ['/bundle-assets/body-module.js', ['text/javascript', 'import { CounterPage } from "./home%20%23page.js"; window.bundleOrder.push(CounterPage.name);']],
+        ['/icon.svg', ['image/svg+xml', '<svg xmlns="http://www.w3.org/2000/svg"/>']],
+      ]);
       bundleServer = http.createServer((request, response) => {
         try {
           const pathname = decodeURIComponent(new URL(request.url, 'http://127.0.0.1').pathname);
-          const file = files.get(pathname);
+          const resource = resources.get(pathname);
+          if (resource) {
+            response.writeHead(200, { 'Content-Type': resource[0] });
+            response.end(resource[1]);
+            return;
+          }
+          const file = files.get(pathname) || (pathname.startsWith('/bundle-history/') ? historyHtml : null);
           if (!file) { response.writeHead(404); response.end('Not found'); return; }
           const body = fs.readFileSync(file);
-          response.writeHead(200, { 'Content-Type': file === jsFile ? 'text/javascript' : 'text/html' });
+          response.writeHead(200, { 'Content-Type': file.endsWith('.js') ? 'text/javascript' : 'text/html' });
           response.end(body);
         } catch (error) { response.writeHead(500); response.end('Unable to read generated test file'); }
       });
@@ -662,17 +727,79 @@ async function run() {
       const origin = `http://127.0.0.1:${bundleServer.address().port}`;
       await page.goto(`${origin}/home%20%23page.html`, { waitUntil: 'load' });
       assert.equal(await page.title(), 'Compilation café 😀', 'UTF-8 bundle metadata survives a legacy source charset');
+      assert.equal(await page.locator('body > script[type="module"][src]').evaluate(script => script.src), `${origin}/bundle-assets/home%20%23page.js`);
       assert.equal(await page.locator('html.bundle-html > body.bundle-body > #app > main').count(), 1);
+      assert.equal(await page.locator('head meta[name="bundle-fixture"]').getAttribute('content'), 'present');
+      assert.equal(await page.locator('head link[rel="icon"]').getAttribute('href'), './icon.svg');
+      assert.equal(await page.locator('#app main').evaluate(node => getComputedStyle(node).backgroundColor), 'rgb(11, 22, 33)');
+      assert.equal(await page.evaluate(() => window.bundleHeadProbe), 'ready', 'authored CSS is present when external head scripts run');
+      assert.equal(await page.locator('#app main').evaluate(node => getComputedStyle(node).borderTopColor), 'rgb(0, 0, 255)', 'raw-head styles retain precedence over earlier authored CSS');
+      assert.equal(await page.locator('#app main').evaluate(node => getComputedStyle(node, '::after').content), '"</STYLE>"', 'CSS text survives a literal style end tag');
+      assert.equal(await page.locator('#app main').evaluate(node => JSON.parse(getComputedStyle(node, '::before').content)), '</STYLE> \\</STYLE>', 'CSS escapes and literal backslashes survive style end tags');
+      await page.waitForFunction(() => document.body.dataset.classicScript === 'true');
+      await page.waitForFunction(() => window.bundleOrder.includes('body module'));
+      const bundleOrder = await page.evaluate(() => window.bundleOrder);
+      assert.equal(bundleOrder.filter(item => item === 'body module').length, 1);
+      assert.deepEqual(bundleOrder.filter(item => item !== 'body module'), ['external head', 'raw head', 'body first', 'body external', 'CounterPage', 'body last', 'Count: 0', 'Count: 0 again']);
+      assert.equal(await page.locator('body').getAttribute('data-classic-script'), 'true');
+      assert.equal(await page.locator('#bundle-body-scripts > #bundle-body-first').count(), 1);
+      assert.equal(await page.locator('#bundle-body-external').getAttribute('data-loaded'), 'true', 'body script load callbacks survive activation');
+      assert.equal(await page.locator('#bundle-body-external').getAttribute('data-mounted'), 'true');
+      assert.equal(await page.locator('#bundle-data').textContent(), '{"answer":42}');
+      assert.deepEqual(await page.evaluate(() => ({
+        colorScheme: getComputedStyle(document.documentElement).colorScheme,
+        authoredRule: getComputedStyle(document.documentElement).getPropertyValue('--bundle-root-rule').trim(),
+        svg: document.getElementById('bundle-svg').namespaceURI,
+        viewBox: document.getElementById('bundle-svg').getAttribute('viewBox'),
+        gradient: document.getElementById('bundle-gradient').localName,
+        svgHref: document.getElementById('bundle-svg-link').getAttributeNS('http://www.w3.org/1999/xlink', 'href'),
+        foreignHtml: document.getElementById('bundle-foreign-html').namespaceURI,
+        math: document.querySelector('#bundle-math mi').namespaceURI,
+      })), {
+        colorScheme: 'dark', authoredRule: 'loaded', svg: 'http://www.w3.org/2000/svg',
+        viewBox: '0 0 20 20', gradient: 'linearGradient', svgHref: '#', foreignHtml: 'http://www.w3.org/1999/xhtml',
+        math: 'http://www.w3.org/1998/Math/MathML',
+      });
       assert.equal(await page.locator('#app #count').textContent(), 'Count: 0');
       await page.locator('#app #increment').click();
       assert.equal(await page.locator('#app #count').textContent(), 'Count: 1');
       assert.equal(await page.locator('#app #double').textContent(), 'Double: 2');
+      assert.equal(await page.locator('#bundle-svg-count').textContent(), '1');
+      assert.equal(await page.evaluate(() => window.bundleBoundSourceRan), undefined, 'reactive text is not executable script source');
       await page.locator('#app #tasks-view').click();
       await page.locator('#app [data-task="1"] button').click();
       assert.equal(await page.locator('#app [data-task="1"] button').textContent(), 'Undo');
-      assert.deepEqual(browserErrors, [], 'generated HTML and JS files mount automatically without a handwritten host');
+      assert.deepEqual(browserErrors, ['expected authored script error'], 'a failing classic script reports its error and subsequent scripts still run');
+      browserErrors.length = 0;
+
+      await page.goto(`${origin}/bundle-hash.html`, { waitUntil: 'load' });
+      assert.equal(await page.locator('#hash-view').textContent(), 'Home');
+      await page.locator('#hash-inbox').click();
+      await page.waitForFunction(() => document.querySelector('#hash-param').textContent === 'hello world');
+      assert.equal(await page.locator('#hash-view').textContent(), 'Inbox');
+      await page.reload({ waitUntil: 'load' });
+      assert.equal(await page.locator('#hash-param').textContent(), 'hello world');
+
+      await page.goto(`${origin}/bundle-history/`, { waitUntil: 'load' });
+      assert.equal(await page.locator('#history-view').textContent(), 'Home');
+      const historyItemUrl = `${origin}/bundle-history/item/Ada%20Lovelace`;
+      await page.evaluate(() => { window.keptOnNavigation = true; });
+      await page.locator('#history-item').click();
+      assert.equal(page.url(), historyItemUrl);
+      assert.equal(await page.locator('#history-param').textContent(), 'Ada Lovelace');
+      assert.equal(await page.evaluate(() => window.keptOnNavigation), true, 'History links navigate without reloading');
+      await page.goBack();
+      await page.waitForFunction(() => document.querySelector('#history-view').textContent === 'Home');
+      await page.goForward();
+      await page.waitForFunction(() => document.querySelector('#history-param').textContent === 'Ada Lovelace');
+      await page.reload({ waitUntil: 'load' });
+      assert.equal(await page.locator('#history-param').textContent(), 'Ada Lovelace');
+      assert.equal(await page.locator('body').getAttribute('data-initial-route'), 'Item', 'authored scripts observe the initialized route');
+      await page.locator('#history-unknown').click();
+      assert.equal(await page.locator('#history-view').textContent(), 'Missing');
+      assert.deepEqual(browserErrors, [], 'exported routers run without browser errors');
       fs.unlinkSync(jsFile);
-      const missingModule = await page.request.get(`${origin}/home%20%23page.js`);
+      const missingModule = await page.request.get(`${origin}/bundle-assets/home%20%23page.js`);
       assert.equal(missingModule.status(), 500, 'test file-serving errors are caught');
     } finally {
       if (bundleServer?.listening) await new Promise((resolve, reject) => bundleServer.close(error => error ? reject(error) : resolve()));

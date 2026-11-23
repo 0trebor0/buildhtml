@@ -32,6 +32,23 @@ rather than complete records.
 
 ### Added
 
+- `saveBundle()` supports native SVG and MathML trees and authored `:root` CSS.
+  HTML body scripts activate in place after mounting, with ordered loading for
+  external scripts that omit `async`.
+
+- `saveBundle('public', { filename: 'name' })` accepts a directory directly and
+  writes `public/name.html` and `public/name.js`. Directory exports default to
+  `index.html` and `index.js` when `filename` is omitted.
+
+- `saveBundle()` supports the existing hash and History routers, including route
+  parameters and browser back/forward navigation. History routes require a host
+  fallback to the exported HTML and a stable URL for the module.
+
+- `saveBundle()` preserves stylesheet links, icons, head scripts and trusted
+  `rawHead()` markup in the exported HTML. It runs authored `inlineScript()`
+  blocks in registration order after mounting the generated page.
+  A base URL supplied through `rawHead()` applies to the generated module URL.
+
 - `Document.saveBundle(htmlPath, { filename: 'name' })` writes `name.html` and
   `name.js` in the requested directory. Omitting `filename` retains path-derived
   names; invalid stems are rejected before output is created.
@@ -78,6 +95,19 @@ rather than complete records.
   blocks it silently.
 
 ### Fixed
+
+- Body scripts in exported bundles retain lifecycle hooks and native load/error
+  listeners during activation. Reactive text stays separate from authored script source.
+
+- Bundle exports stage both outputs and restore prior files if replacement fails.
+  Competing exports to the same stem are refused, and failed rollback retains
+  backups for recovery.
+
+- Bundle head CSS is available to external head scripts and keeps its cascade
+  position before raw head markup. CSS generated for body elements still loads
+  when the page mounts.
+- Bundled head CSS preserves escaped characters and literal backslashes in
+  strings containing `</style>`.
 
 - Compiled browser classes append authored nodes directly to the mount target.
   Destroy removes the instance's nodes, listeners and styles and preserves the

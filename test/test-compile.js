@@ -89,6 +89,14 @@ try {
   bundle.charset('windows-1252');
   bundle.htmlAttr('id', 'app').lang('fr').htmlAttr('dir', 'ltr');
   bundle.bodyId('bundle-body').bodyClass('bundle-page');
+  bundle.addLink('./theme.css').favicon('./icon.ico').addScript('./head.js');
+  bundle.rawHead('<meta name="bundle-extra" content="yes">');
+  bundle.inlineStyle('.note::after{content:"</STYLE>"}');
+  bundle.globalCss(':root', { color: 'purple' });
+  bundle.create('script').text('window.bodyScript = true;');
+  bundle.create('svg').attr('viewbox', '0 0 10 10').create('circle').attr('r', 5);
+  bundle.create('math').create('mi').text('x');
+  bundle.inlineScript('window.first = "first";').inlineScript('window.second = window.first + " second";');
   bundle.h1('Saved bundle');
   const htmlFile = path.join(fixture, 'nested', 'home #page.html');
   const jsFile = path.join(fixture, 'nested', 'home #page.js');
@@ -98,12 +106,19 @@ try {
   assert.equal(bundle.head.charset, 'windows-1252', 'bundle generation leaves source charset unchanged');
   assert.match(fs.readFileSync(htmlFile, 'utf8'), /<html lang="fr" id="app" dir="ltr">/);
   assert.match(fs.readFileSync(htmlFile, 'utf8'), /<body id="bundle-body" class="bundle-page"><div id="app">/);
+  const savedHtml = fs.readFileSync(htmlFile, 'utf8');
+  assert.match(savedHtml, /<link rel="stylesheet" href="\.\/theme\.css"><link rel="icon" href="\.\/icon\.ico"><style>/);
+  assert.match(savedHtml, /:root\{color:purple;/);
+  assert.match(savedHtml, /\.note::after\{content:"\\3c \/STYLE>"\}<\/style><script src="\.\/head\.js"><\/script><meta name="bundle-extra" content="yes"><\/head>/);
   assert.match(fs.readFileSync(htmlFile, 'utf8'), /<script type="module" src="\.\/home%20%23page.js"><\/script>/);
   const savedJs = fs.readFileSync(jsFile, 'utf8');
   assert.match(savedJs, /export \{ __buildhtmlPage as SavedPage \}/);
   assert.match(savedJs, /__buildhtmlInstance.mount/);
-  new Script(savedJs.replace(/^export \{[^}]+\};$/m, ''));
-  assert.equal(bundle.body.length, 1, 'saving a bundle preserves the source tree');
+  assert(savedJs.indexOf('window.first =') > savedJs.indexOf('__buildhtmlInstance.mount'));
+  assert(savedJs.indexOf('window.second =') > savedJs.indexOf('window.first ='));
+  const bundleSyntax = spawnSync(process.execPath, ['--input-type=module', '--check'], { input: savedJs, encoding: 'utf8' });
+  assert.equal(bundleSyntax.status, 0, bundleSyntax.stderr);
+  assert.equal(bundle.body.length, 4, 'saving a bundle preserves the source tree');
   assert.equal(bundle.output(), '', 'saving a bundle leaves render output unchanged');
   bundle.h2('Updated bundle');
   bundle.saveBundle(htmlFile);
@@ -117,7 +132,19 @@ try {
   assert(!fs.existsSync(path.join(renamedDir, 'index.html')) && !fs.existsSync(path.join(renamedDir, 'index.js')));
   assert.match(fs.readFileSync(renamedHtml, 'utf8'), /src="\.\/name%20%231.js"/);
   assert.match(fs.readFileSync(renamedJs, 'utf8'), /export \{ __buildhtmlPage as HomePage \}/);
-  assert.equal(bundle.body.length, 2, 'renaming outputs preserves the document');
+  assert.equal(bundle.body.length, 5, 'renaming outputs preserves the document');
+
+  const directory = path.join(fixture, 'directory-output');
+  assert.equal(bundle.saveBundle(directory, { className: 'HomePage', filename: 'named' }), bundle);
+  assert.match(fs.readFileSync(path.join(directory, 'named.html'), 'utf8'), /src="\.\/named.js"/);
+  assert.match(fs.readFileSync(path.join(directory, 'named.js'), 'utf8'), /export \{ __buildhtmlPage as HomePage \}/);
+  bundle.saveBundle(directory);
+  assert.match(fs.readFileSync(path.join(directory, 'index.html'), 'utf8'), /src="\.\/index.js"/);
+  assert(fs.existsSync(path.join(directory, 'index.js')));
+
+  const dottedDirectory = path.join(fixture, 'nested.html');
+  bundle.saveBundle(dottedDirectory + path.sep, { filename: 'nested' });
+  assert(fs.existsSync(path.join(dottedDirectory, 'nested.html')));
 
   for (const filename of ['', null, 42, '.', '..', '../escape', '..\\escape', 'bad/name', 'name.html', 'name.js', 'bad:name', 'name.', 'name ', 'CON']) {
     const invalidDir = path.join(fixture, 'invalid-filename');
@@ -125,14 +152,20 @@ try {
     assert(!fs.existsSync(invalidDir), 'invalid filename is rejected before creating outputs');
   }
 
-  for (const invalidPath of [undefined, 42, '', path.join(fixture, 'invalid.js')]) {
-    assert.throws(() => bundle.saveBundle(invalidPath), /output path must end in .html/);
+  for (const invalidPath of [undefined, 42, '', '  ', path.join(fixture, 'invalid.js')]) {
+    assert.throws(() => bundle.saveBundle(invalidPath), /destination must be a directory or an HTML path/);
   }
   assert.throws(() => bundle.saveBundle(htmlFile, null), /Expected bundle options/);
-  const unsupported = new Document().rawHead('<meta name="unsupported">');
-  const unsupportedDir = path.join(fixture, 'unsupported');
-  assert.throws(() => unsupported.saveBundle(path.join(unsupportedDir, 'index.html')), /rawHead/);
-  assert(!fs.existsSync(unsupportedDir), 'compilation failures do not create output directories');
+  for (const router of ['hashRouter', 'historyRouter']) {
+    const routed = new Document()[router]();
+    const routeDir = path.join(fixture, router);
+    assert.throws(() => routed.compile({ output: 'class' }), /routers/);
+    routed.saveBundle(path.join(routeDir, 'index.html'));
+    const routeJs = fs.readFileSync(path.join(routeDir, 'index.js'), 'utf8');
+    const event = router === 'hashRouter' ? 'hashchange' : 'popstate';
+    assert(routeJs.indexOf(`addEventListener("${event}"`) > routeJs.indexOf('_initialize(){'));
+    assert(routeJs.indexOf(`addEventListener("${event}"`) < routeJs.indexOf('__buildhtmlInstance.mount'));
+  }
   assert.throws(() => new Document({ nonce: 'test-response-nonce' }).saveBundle(htmlFile), /cannot reuse a response nonce/);
   const headNonce = new Document();
   headNonce.head.setNonce('test-response-nonce');
@@ -152,8 +185,71 @@ try {
       assert.throws(() => bundle.saveBundle(target), error => error.code === 'EACCES'
         && error.cause === failure && error.message.includes('index' + extension));
     } finally { fs.writeFileSync = originalWrite; }
+    assert.deepEqual(fs.readdirSync(path.dirname(target)), [], 'staging failures leave no partial output');
   }
-  assert.equal(bundle.body.length, 2, 'write failures preserve the source tree');
+  const originalRename = fs.renameSync;
+  for (const existing of [false, true]) {
+    const directory = path.join(fixture, existing ? 'replace-existing' : 'replace-new');
+    const target = path.join(directory, 'index.html');
+    if (existing) {
+      fs.mkdirSync(directory);
+      fs.writeFileSync(target, 'previous HTML');
+      fs.writeFileSync(path.join(directory, 'index.js'), 'previous JS');
+    }
+    const failure = Object.assign(new Error('replacement denied'), { code: 'EACCES' });
+    try {
+      fs.renameSync = (from, to) => {
+        if (to === target && path.basename(from) === 'next.html') throw failure;
+        return originalRename(from, to);
+      };
+      assert.throws(() => bundle.saveBundle(target), error => error.code === 'EACCES' && error.cause === failure);
+    } finally { fs.renameSync = originalRename; }
+    assert.deepEqual(fs.readdirSync(directory).sort(), existing ? ['index.html', 'index.js'] : []);
+    if (existing) {
+      assert.equal(fs.readFileSync(target, 'utf8'), 'previous HTML');
+      assert.equal(fs.readFileSync(path.join(directory, 'index.js'), 'utf8'), 'previous JS');
+    }
+    bundle.saveBundle(target);
+    assert.deepEqual(fs.readdirSync(directory).sort(), ['index.html', 'index.js'], 'a retry publishes both files and removes staging');
+  }
+  const lockedDir = path.join(fixture, 'locked');
+  const lockedHtml = path.join(lockedDir, 'index.html');
+  let competingWriterChecked = false;
+  try {
+    fs.writeFileSync = (file, ...args) => {
+      if (!competingWriterChecked && path.basename(file) === 'next.js') {
+        competingWriterChecked = true;
+        assert.throws(() => bundle.saveBundle(lockedHtml), { code: 'EEXIST' });
+      }
+      return originalWrite(file, ...args);
+    };
+    bundle.saveBundle(lockedHtml);
+  } finally { fs.writeFileSync = originalWrite; }
+  assert(competingWriterChecked);
+  assert.deepEqual(fs.readdirSync(lockedDir).sort(), ['index.html', 'index.js']);
+
+  const recoveryDir = path.join(fixture, 'recovery');
+  fs.mkdirSync(recoveryDir);
+  const recoveryHtml = path.join(recoveryDir, 'index.html');
+  const recoveryJs = path.join(recoveryDir, 'index.js');
+  fs.writeFileSync(recoveryHtml, 'previous HTML');
+  fs.writeFileSync(recoveryJs, 'previous JS');
+  const inaccessible = Object.assign(new Error('file in use'), { code: 'EACCES' });
+  try {
+    fs.renameSync = (from, to) => {
+      if ((to === recoveryHtml && path.basename(from) === 'next.html')
+        || (to === recoveryJs && path.basename(from) === 'previous.js')) throw inaccessible;
+      return originalRename(from, to);
+    };
+    assert.throws(() => bundle.saveBundle(recoveryHtml), error => error.code === 'EACCES'
+      && error.cause.errors.length === 2 && error.message.includes('Recovery files remain'));
+  } finally { fs.renameSync = originalRename; }
+  const staging = fs.readdirSync(recoveryDir).find(name => name.startsWith('.buildhtml-bundle-'));
+  assert(staging, 'a failed rollback leaves its backup directory in place');
+  assert.equal(fs.readFileSync(path.join(recoveryDir, staging, 'previous.js'), 'utf8'), 'previous JS');
+  assert.equal(fs.readFileSync(recoveryHtml, 'utf8'), 'previous HTML', 'rollback still attempts to restore the other file');
+  assert.throws(() => bundle.saveBundle(recoveryHtml), { code: 'EEXIST' });
+  assert.equal(bundle.body.length, 5, 'write failures preserve the source tree');
 
   const originalDirection = Object.getOwnPropertyDescriptor(Object.prototype, 'dir');
   try {
@@ -172,7 +268,7 @@ try {
   assert(fs.existsSync(cliFile) && fs.existsSync(cliFile.replace(/\.html$/, '.js')));
   const invalidCli = spawnSync(process.execPath, ['example/compilation.js', '--build'], { cwd: workspace, encoding: 'utf8' });
   assert.equal(invalidCli.status, 1);
-  assert.match(invalidCli.stderr, /output path must end in .html/);
+  assert.match(invalidCli.stderr, /destination must be a directory or an HTML path/);
 } finally {
   const relative = path.relative(fs.realpathSync(workspace), fs.realpathSync(fixture));
   assert(relative && !relative.startsWith('..') && !path.isAbsolute(relative), 'fixture cleanup stays inside the repository');
