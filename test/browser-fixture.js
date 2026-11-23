@@ -256,7 +256,7 @@ const server = http.createServer((_req, res) => {
       this.dataset.class = String(document.getElementsByClassName('scoped-input')[0] === input);
       const inputs = document.getElementsByTagName('input');
       const extra = document.createElement('input');
-      document.body.appendChild(extra);
+      this.appendChild(extra);
       this.dataset.live = String(inputs.length === 2);
       extra.remove();
       const controller = new AbortController();
@@ -299,7 +299,7 @@ const server = http.createServer((_req, res) => {
       'Content-Type': 'text/html; charset=utf-8',
       'Content-Security-Policy': "script-src 'self' 'nonce-test-class-nonce'; style-src 'nonce-test-class-nonce'",
     });
-    return res.end('<!DOCTYPE html><title>Host title</title><div id="class-target"></div><p id="compiled-count">Host count</p><input class="scoped-input" name="scoped-name" value="Host input">');
+    return res.end('<!DOCTYPE html><title>Host title</title><div id="class-target"><p id="existing-child">Existing child</p></div><p id="compiled-count">Host count</p><input class="scoped-input" name="scoped-name" value="Host input">');
   }
   if (_req.url === '/csp') {
     const doc = new Document({ nonce: 'test-csp-nonce' });

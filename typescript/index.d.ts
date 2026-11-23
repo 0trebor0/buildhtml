@@ -1041,14 +1041,17 @@ export declare class Document<S extends StateShape = StateShape> implements Shar
    * Compile HTML (default) or a standalone named ES module class without
    * consuming the source tree, updating output(), or using the response cache.
    * Class instances expose mount(target), createElement(tagNameOrNode), destroy(),
-   * root (an isolated ShadowRoot), and state. Pass { nonce } to their constructor
+   * root (the supplied Element or ShadowRoot), and state. Authored nodes mount
+   * directly into the target and generated styles go into the owner document's head.
+   * Pass { nonce } to their constructor
    * for the host page's CSP. Routers, authored scripts, external head resources,
    * rawHead(), and native SVG/MathML trees are refused for class output.
    */
   compile(options?: CompileOptions): string;
   /**
    * Create parent directories and write an HTML host plus a same-stem .js module
-   * that mounts automatically in htmlPath's directory. filename optionally
+   * that mounts authored nodes directly in #app. Both files are written in
+   * htmlPath's directory. filename optionally
    * overrides both stems; omit paths and .html/.js extensions from that option.
    * Both files and the host charset use UTF-8, without
    * changing the source charset. Preserves the source tree and output(). Existing

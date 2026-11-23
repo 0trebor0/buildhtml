@@ -418,50 +418,58 @@ async function run() {
       window.hostState = { sentinel: true };
       window.State = window.hostState;
       const target = document.getElementById('class-target');
+      const existing = target.firstElementChild;
       window.firstPage = new CompiledPage({ nonce: 'test-class-nonce' }).mount(target);
+      const first = Array.from(target.children).slice(1);
       window.secondPage = new CompiledPage({ nonce: 'test-class-nonce' }).mount(target);
+      const second = Array.from(target.children).slice(1 + first.length);
+      window.firstNode = id => first.find(node => node.id === id);
+      window.secondNode = id => second.find(node => node.id === id);
+      const authoredTags = 'H1 SPAN SPAN BUTTON INPUT TEMPLATE DIV SPAN DIV BUTTON BUTTON SECTION SECTION DIV DIV';
+      window.directMount = window.firstPage.root === target && window.secondPage.root === target
+        && target.firstElementChild === existing
+        && [first, second].every(nodes => nodes.map(node => node.tagName).join(' ') === authoredTags)
+        && [...first, ...second].every(node => node.parentNode === target && !node.shadowRoot);
     });
     assert.deepEqual(await page.evaluate(() => ({
-      first: window.firstPage.root.getElementById('compiled-count').textContent,
-      second: window.secondPage.root.getElementById('compiled-count').textContent,
+      first: window.firstNode('compiled-count').textContent,
+      second: window.secondNode('compiled-count').textContent,
+      direct: window.directMount,
       ready: window.firstPage.state.ready && window.secondPage.state.ready,
       hostState: window.State === window.hostState,
       title: document.title,
-      hostCount: document.getElementById('compiled-count').textContent,
+      hostCount: document.querySelector('body > #compiled-count').textContent,
       color: getComputedStyle(window.firstPage.root.querySelector('h1')).color,
-    })), { first: '0', second: '0', ready: true, hostState: true, title: 'Host title', hostCount: 'Host count', color: 'rgb(0, 128, 0)' });
+    })), { first: '0', second: '0', direct: true, ready: true, hostState: true, title: 'Host title', hostCount: 'Host count', color: 'rgb(0, 128, 0)' });
     assert.deepEqual(await page.evaluate(() => {
-      const root = window.firstPage.root;
-      const probe = root.getElementById('compiled-platform');
-      return { ...probe.dataset, template: root.getElementById('compiled-template').content.textContent };
+      const probe = window.firstNode('compiled-platform');
+      return { ...probe.dataset, template: window.firstNode('compiled-template').content.textContent };
     }), { array: 'true', event: 'true', promise: 'true', view: 'true', contains: 'true', method: 'true', tag: 'true', class: 'true', live: 'true', signal: '0', invalidSignal: 'true', template: 'Template content' },
     'scoped browser APIs retain constructor properties, local live lookups and template content');
     assert.equal(await page.evaluate(() => {
-      const root = window.firstPage.root;
-      const template = root.getElementById('compiled-template');
+      const template = window.firstNode('compiled-template');
       const clone = template.content.cloneNode(true);
       const text = clone.textContent;
-      root.querySelector('body').appendChild(clone);
+      window.firstNode('compiled-platform').appendChild(clone);
       return template.childNodes.length === 0 && text === 'Template content';
     }), true, 'compiled template fragments can be cloned and inserted using native DOM APIs');
-    await page.evaluate(() => window.firstPage.root.getElementById('compiled-increment').click());
+    await page.evaluate(() => window.firstNode('compiled-increment').click());
     assert.deepEqual(await page.evaluate(() => [window.firstPage.state.count, window.secondPage.state.count,
-      window.firstPage.root.getElementById('compiled-double').textContent]), [1, 0, '2']);
+      window.firstNode('compiled-double').textContent]), [1, 0, '2']);
     await page.evaluate(() => {
-      const input = window.firstPage.root.getElementById('compiled-input');
+      const input = window.firstNode('compiled-input');
       input.value = 'Typed';
       input.dispatchEvent(new Event('input', { bubbles: true }));
     });
-    assert.equal(await page.evaluate(() => window.firstPage.root.getElementById('compiled-name').textContent), 'Typed');
-    assert.equal(await page.evaluate(() => window.firstPage.root.getElementById('compiled-portal').parentElement.id), 'compiled-portal-target');
+    assert.equal(await page.evaluate(() => window.firstNode('compiled-name').textContent), 'Typed');
+    assert.equal(await page.evaluate(() => window.firstNode('compiled-portal-target').firstElementChild.textContent), 'Local portal');
     assert.deepEqual(await page.evaluate(() => {
       window.firstPage.state.activeView = 'details';
-      return [window.firstPage.root.getElementById('compiled-details').hidden,
-        window.secondPage.root.getElementById('compiled-details').hidden];
+      return [window.firstNode('compiled-details').hidden, window.secondNode('compiled-details').hidden];
     }), [false, true], 'view switching stays within the instance');
     await page.evaluate(() => {
       window.firstPage.state.items.push({ id: 2, title: 'Two' });
-      window.classRow = window.firstPage.root.querySelector('#compiled-list button:last-child');
+      window.classRow = window.firstNode('compiled-list').querySelector('button:last-child');
       window.classRow.click();
     });
     assert.equal(await page.evaluate(() => window.firstPage.state.name), 'Two');
@@ -471,11 +479,12 @@ async function run() {
       const node = instance.createElement('aside');
       node.textContent = 'Native appended child';
       if (instance.createElement(node) !== node) throw new Error('Existing node was not reused');
-      instance.root.querySelector('body').appendChild(node);
-      window.savedLifecycle = instance.root.getElementById('compiled-lifecycle');
-      window.savedButton = instance.root.getElementById('compiled-increment');
+      window.firstNode('compiled-platform').appendChild(node);
+      window.savedLifecycle = window.firstNode('compiled-lifecycle');
+      window.savedButton = window.firstNode('compiled-increment');
       window.savedRoot = instance.root;
-      window.savedDetails = instance.root.getElementById('compiled-details');
+      window.savedDetails = window.firstNode('compiled-details');
+      window.firstStyles = document.head.querySelectorAll('style').length;
       instance.destroy();
       instance.state.activeView = 'overview';
       window.savedButton.click();
@@ -488,12 +497,33 @@ async function run() {
       name: window.firstPage.state.name,
       cleaned: window.savedLifecycle.dataset.cleaned,
       destroyed: window.savedLifecycle.dataset.destroyed,
-      hosts: document.getElementById('class-target').children.length,
+      existing: document.getElementById('class-target').firstElementChild.id,
+      remaining: window.secondNode('compiled-count').isConnected,
+      removed: !window.savedButton.isConnected && !window.savedLifecycle.isConnected,
+      stylesRemoved: window.firstStyles - document.head.querySelectorAll('style').length,
       root: window.firstPage.root,
       detailsHidden: window.savedDetails.hidden,
-    })), { count: 1, name: 'Two', cleaned: 'true', destroyed: 'true', hosts: 1, root: null, detailsHidden: false });
+    })), { count: 1, name: 'Two', cleaned: 'true', destroyed: 'true', existing: 'existing-child', remaining: true, removed: true, stylesRemoved: 2, root: null, detailsHidden: false });
     await page.evaluate(() => window.firstPage.mount(document.getElementById('class-target')));
     assert.equal(await page.evaluate(() => window.firstPage.state.count), 0, 'remount starts with independent initial state');
+    assert.equal(await page.evaluate(async () => {
+      const { CompiledPage } = await import('/compiled.js');
+      const target = document.getElementById('class-target');
+      const children = Array.from(target.childNodes);
+      const styles = document.head.querySelectorAll('style').length;
+      const instance = new CompiledPage({ nonce: 'test-class-nonce' });
+      const initialize = instance._initialize;
+      instance._initialize = function () {
+        initialize.call(this);
+        throw new Error('expected initialization failure');
+      };
+      try { instance.mount(target); } catch (error) {
+        return error.message.includes('expected initialization failure') && instance.root === null
+          && target.childNodes.length === children.length && children.every((node, index) => target.childNodes[index] === node)
+          && document.head.querySelectorAll('style').length === styles;
+      }
+      return false;
+    }), true, 'failed initialization removes only the attempted mount and its styles');
     assert.deepEqual(await page.evaluate(async () => {
       const { CompiledPage } = await import('/compiled.js');
       const instance = new CompiledPage({ nonce: 'test-class-nonce' });
@@ -518,18 +548,27 @@ async function run() {
     }), { invalidTarget: true, invalidNode: true, failedBuild: true, cleaned: true, duplicateMount: true, hostsRestored: true });
     assert.deepEqual(await page.evaluate(async () => {
       const { StatelessPage } = await import('/compiled-stateless.js');
-      const instance = new StatelessPage().mount(document.getElementById('class-target'));
-      instance.root.querySelector('button').click();
-      const count = instance.state.count;
-      instance.destroy();
-      return { count, hostUntouched: window.State === window.hostState && !('count' in window.hostState) };
-    }), { count: 1, hostUntouched: true });
+      const detached = document.createElement('div');
+      const shadow = document.createElement('div').attachShadow({ mode: 'open' });
+      const counts = [detached, shadow].map(target => {
+        const instance = new StatelessPage().mount(target);
+        if (instance.root !== target || target.firstElementChild.tagName !== 'BUTTON') throw new Error('Expected a direct child');
+        target.firstElementChild.click();
+        const count = instance.state.count;
+        instance.destroy();
+        if (target.hasChildNodes()) throw new Error('Expected an empty target after destroy');
+        return count;
+      });
+      return { counts, hostUntouched: window.State === window.hostState && !('count' in window.hostState) };
+    }), { counts: [1, 1], hostUntouched: true });
     assert.equal(await page.evaluate(async () => {
       const { Object: ObjectPage } = await import('/compiled-object.js');
-      const instance = new ObjectPage({ nonce: 'test-class-nonce' }).mount(document.getElementById('class-target'));
-      instance.root.getElementById('compiled-increment').click();
+      const target = document.body.appendChild(document.createElement('div'));
+      const instance = new ObjectPage({ nonce: 'test-class-nonce' }).mount(target);
+      target.querySelector('#compiled-increment').click();
       const valid = instance.state.count === 1 && instance.constructor.name === 'Object';
       instance.destroy();
+      target.remove();
       return valid;
     }), true, 'export names that match browser globals do not shadow runtime helpers');
     assert.deepEqual(browserErrors, [], 'compiled modules mount and update without CSP or runtime errors');
@@ -601,7 +640,7 @@ async function run() {
     try {
       const doc = new CounterDocument();
       doc.charset('windows-1252').title('Compilation café 😀');
-      doc.htmlAttr('id', 'app');
+      doc.htmlAttr('class', 'bundle-html').bodyClass('bundle-body');
       const requestedFile = path.join(bundleDir, 'index.html');
       doc.saveBundle(requestedFile, { className: 'CounterPage', filename: 'home #page' });
       assert(!fs.existsSync(requestedFile), 'filename replaces the requested HTML stem');
@@ -623,6 +662,7 @@ async function run() {
       const origin = `http://127.0.0.1:${bundleServer.address().port}`;
       await page.goto(`${origin}/home%20%23page.html`, { waitUntil: 'load' });
       assert.equal(await page.title(), 'Compilation café 😀', 'UTF-8 bundle metadata survives a legacy source charset');
+      assert.equal(await page.locator('html.bundle-html > body.bundle-body > #app > main').count(), 1);
       assert.equal(await page.locator('#app #count').textContent(), 'Count: 0');
       await page.locator('#app #increment').click();
       assert.equal(await page.locator('#app #count').textContent(), 'Count: 1');

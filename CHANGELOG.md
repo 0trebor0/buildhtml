@@ -47,10 +47,10 @@ rather than complete records.
 
 - `Document.compile()` produces HTML or a standalone browser ES module class
   without consuming the source tree or using response caching. Browser classes
-  mount native DOM into isolated shadow trees, keep independent reactive state,
+  mount native DOM into a supplied target, keep independent reactive state,
   and support explicit destruction/remounting with listener/lifecycle cleanup.
   Class output includes existing bindings, computed text, lists, views, local
-  portals, scoped CSS and CSP nonces, with clear errors for unsupported
+  portals, generated CSS and CSP nonces, with clear errors for unsupported
   document-wide features. Type declarations and browser regressions are included.
 
 - Optional `liveList(..., { key: 'id' })` updates reuse rows and compatible
@@ -78,6 +78,11 @@ rather than complete records.
   blocks it silently.
 
 ### Fixed
+
+- Compiled browser classes append authored nodes directly to the mount target.
+  Destroy removes the instance's nodes, listeners and styles and preserves the
+  target's existing children. Styles use the owner document's cascade, and
+  bundles keep the source HTML/body attributes on the outer document.
 
 - Bundle HTML now declares UTF-8 to match the files written, preventing corrupted
   accented characters and emoji when the source document specifies a legacy

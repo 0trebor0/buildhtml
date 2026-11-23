@@ -222,7 +222,7 @@ page.mount(document.getElementById('app'));
 
 const note = page.createElement('p');
 note.textContent = 'Created with native DOM methods.';
-page.root.querySelector('body').appendChild(note);
+page.root.appendChild(note);
 
 // page.createElement(note) returns that same DOM node.
 // Call page.destroy() when removing the page.
@@ -233,27 +233,32 @@ content uses `createElement`, `createTextNode`, `setAttribute`, and `appendChild
 Explicit raw HTML paths use a template fragment; script elements in those
 fragments are refused at mount time.
 
-Each instance owns an open shadow root (`page.root`), local HTML/head/body nodes,
-styles, and reactive `page.state`. Multiple instances can use the same IDs without
-sharing state. Bindings, events, computed text, live lists, views, portals within
-the instance, and lifecycle hooks use the existing runtime. `State`, `window.State`
-and supported document lookups in serialized callbacks refer to that instance; callback
-closure restrictions still apply. This is DOM/state isolation, not a JavaScript
-sandbox. Local title/meta nodes do not change the host page's title or metadata.
-CSS stays in the shadow tree; use `cssVars()` for root variables.
+Mounting appends the authored nodes directly to `page.root`, the supplied target,
+and preserves existing children. Standalone mounts leave host HTML/body attributes
+and metadata alone. Bindings, events, computed text, live lists, views, local portals
+and lifecycle hooks use independent `page.state`. `State`, `window.State` and
+supported document lookups in serialized callbacks refer to the instance. Callback
+closure restrictions still apply.
+
+Generated styles, including `cssVars()`, go into the owner document's head and
+follow its normal cascade. Use distinct IDs across instances when host selectors
+or ID references must distinguish them. For content mounted inside an existing
+shadow tree, provide its styling within that tree.
 
 Scoped lookups include `getElementById`, `querySelector(All)`,
 `getElementsByTagName(NS)`, `getElementsByClassName`, and `contains`.
 Tag/class collections remain live; `document.defaultView` returns the scoped
 window. Browser constructors retain their native identity, static methods and
 prototypes. Native `<template>` children are placed in the template's `.content`.
-The document facade is not a complete virtual Document; other APIs can still
-refer to the host document.
+The callback's `document.body` is the mount target. Document listeners attach to
+that target and can receive events from other content inside it. Other document APIs
+can refer to the host document.
 
 `destroy()` runs lifecycle cleanup, disposes watchers/listeners, and removes owned
 nodes and styles. It is safe to call twice. Call it before mounting that instance
-again; remounting resets its state. Timers and manually managed resources still
-need the cleanup function returned by `onMount()`.
+again; remounting resets its state. Use the cleanup function returned by `onMount()`
+for timers and manually managed resources, including nodes you append directly to
+the shared target.
 
 For a nonce-based host CSP, use `new HomePage({ nonce: 'host-response-nonce' })`.
 The generated class uses this nonce for its styles, including later list styles;
@@ -263,8 +268,8 @@ Class names default to `GeneratedPage` and must be valid ASCII JavaScript class
 identifiers. Class output currently rejects URL routers, authored `inlineScript`,
 external head scripts/stylesheets/links, `rawHead`, native SVG/MathML trees, and
 arbitrary `:root` selectors in head CSS. HTML output retains the existing support
-for those features. Generated classes require modern browsers with Shadow DOM,
-Proxy, and abortable event listeners.
+for those features. Generated classes require modern browsers with Proxy and
+abortable event listeners.
 
 #### Write HTML and JavaScript files automatically
 
@@ -321,8 +326,9 @@ This HTML is a client-rendered host; generated class restrictions apply.
 `save(path)` remains the rendered-HTML writer. Static bundles refuse document
 response nonces because those cannot be safely reused across responses. Use the
 manual `compile()`/mount workflow for a host that supplies fresh CSP nonces.
-Title/meta, language and direction are copied to the HTML host; styles and other
-page attributes stay inside the generated instance.
+The HTML host preserves the source HTML/body attributes, title and meta tags. The
+module mounts authored nodes directly in `#app`. Reserve `app` for the mount target
+when choosing IDs for the exported page.
 
 To generate both files from the walkthrough without writing your own Node script:
 
@@ -376,7 +382,7 @@ The generated instance API is:
 | `new CounterPage({ nonce? })` | Create an instance; provide the host response nonce when CSP requires it |
 | `instance.mount(target)` | Mount into an `Element` or `ShadowRoot`; returns the instance |
 | `instance.state` | Read or mutate reactive state after mounting; state values are browser-visible |
-| `instance.root` | Inspect the instance's open shadow root; becomes `null` on destroy |
+| `instance.root` | The supplied mount target; becomes `null` on destroy |
 | `instance.createElement(tagNameOrNode)` | After mounting, create or reuse a native node; it is not appended automatically |
 | `parent.appendChild(node)` | Insert or move the returned native node |
 | `instance.destroy()` | Run lifecycle cleanup and remove owned DOM/styles/listeners; safe to repeat |
@@ -395,9 +401,8 @@ implemented or exported. A host application must currently own browser URLs and
 destroy/mount the appropriate class.
 
 If imports fail, use the HTTP example instead of opening files with `file://`,
-and check that the module response has a JavaScript content type. If host-page
-selectors cannot find generated content, query `instance.root` because the DOM
-is inside a shadow tree. Keep server variables out of serialized callbacks;
+and check that the module response has a JavaScript content type. Query
+`instance.root` to inspect the target's children. Keep server variables out of serialized callbacks;
 call `doc.validate()` before compilation to check for captured identifiers.
 
 ### Document options
