@@ -32,13 +32,19 @@ rather than complete records.
 
 ### Added
 
+- `saveBundle()` exports a same-stem CSS file and links it from the HTML head.
+  Its rollback covers HTML, CSS, and JavaScript together.
+
+- Added three runnable hash-navigation bundle examples, from a basic nav through
+  route-driven panels to a responsive dashboard with linked project cards.
+
 - `saveBundle()` supports native SVG and MathML trees and authored `:root` CSS.
   HTML body scripts activate in place after mounting, with ordered loading for
   external scripts that omit `async`.
 
 - `saveBundle('public', { filename: 'name' })` accepts a directory directly and
-  writes `public/name.html` and `public/name.js`. Directory exports default to
-  `index.html` and `index.js` when `filename` is omitted.
+  writes `public/name.html`, `public/name.css`, and `public/name.js`. Directory
+  exports default to the stem `index` when `filename` is omitted.
 
 - `saveBundle()` supports the existing hash and History routers, including route
   parameters and browser back/forward navigation. History routes require a host
@@ -96,16 +102,17 @@ rather than complete records.
 
 ### Fixed
 
+- Exported stylesheets declare UTF-8, preserving Unicode when authored CSS
+  starts with a legacy charset declaration.
+
 - Body scripts in exported bundles retain lifecycle hooks and native load/error
   listeners during activation. Reactive text stays separate from authored script source.
 
-- Bundle exports stage both outputs and restore prior files if replacement fails.
+- Bundle exports stage all outputs and restore prior files if replacement fails.
   Competing exports to the same stem are refused, and failed rollback retains
   backups for recovery.
 
-- Bundle head CSS is available to external head scripts and keeps its cascade
-  position before raw head markup. CSS generated for body elements still loads
-  when the page mounts.
+- Bundle CSS is available to external head scripts and precedes raw head markup.
 - Bundled head CSS preserves escaped characters and literal backslashes in
   strings containing `</style>`.
 

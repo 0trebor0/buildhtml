@@ -1049,14 +1049,13 @@ export declare class Document<S extends StateShape = StateShape> implements Shar
    */
   compile(options?: CompileOptions): string;
   /**
-   * Create parent directories and write an HTML host plus a same-stem .js module
-   * that mounts authored nodes directly in #app. Pass an HTML path or a directory
-   * (defaults to index.html and index.js). End dotted directory names with a slash.
-   * filename overrides both stems; omit paths and .html/.js extensions from it.
-   * Both files and the host charset use UTF-8, without
+   * Create parent directories and write a same-stem HTML host, CSS stylesheet, and
+   * JS module. Pass an HTML path or a directory (defaults to the stem index).
+   * End dotted directory names with a slash. filename overrides all three stems.
+   * All files and the host charset use UTF-8, without
    * changing the source charset. Preserves the source tree and output(). Existing
    * output files are replaced after staging, with rollback on replacement failure.
-   * Head CSS, resources and trusted raw head markup
+   * Static CSS is linked from the HTML head. Resources and trusted raw head markup
    * are emitted into the HTML. Authored inline scripts run after the module mounts.
    * Supports hashRouter() and historyRouter(). History routes need an HTML fallback
    * and a module URL that resolves from every route. HTML body scripts activate

@@ -120,7 +120,7 @@ if (require.main === module) {
     if (process.argv[2] === '--build') {
       const outputPath = process.argv[3];
       new CounterDocument().saveBundle(outputPath, { className: 'CounterPage' });
-      console.log(`Wrote ${outputPath} and its matching JavaScript module.`);
+      console.log(`Exported HTML, CSS, and JavaScript to ${outputPath}.`);
     } else {
       const port = Number(process.env.PORT) || 3006;
       const server = createCompilationServer();

@@ -2,7 +2,9 @@
 
 **Server-rendered HTML for Node.js with optional compiled reactivity. No JSX, build step, or runtime dependencies.**
 
-You write JavaScript on the server; you get a complete HTML page. If the page needs browser behavior, you attach state and event callbacks to it, and buildhtml compiles them into the page as generated JavaScript. Pages that don't use those APIs ship no JavaScript at all.
+Build a page in Node.js, then render it as HTML, compile it to a browser class,
+or export it as an HTML, CSS, and JavaScript bundle. When a rendered page uses
+reactive state or browser callbacks, buildhtml generates the JavaScript it needs.
 
 [Tutorial](https://0trebor0.github.io/buildhtml/docs/#tut-the-mental-model) · [Complete guide and API reference](https://0trebor0.github.io/buildhtml/docs/) · [Examples](https://github.com/0trebor0/buildhtml/tree/main/example) · [Report an issue](https://github.com/0trebor0/buildhtml/issues)
 
@@ -59,11 +61,13 @@ There is no runtime library to load. Every byte of browser JavaScript is generat
 | The static page above | 461 B | **0 B** |
 | The counter above | ~5.0 KB | ~4.5 KB |
 
-A static page stays static. Add `.states()`, `.bind()`, or `.onClick()` and the page carries the code for exactly those bindings — nothing more, and nothing shared across pages to cache.
+With `render()` and HTML output from `compile()`, a static page stays static.
+Reactive APIs such as `.states()`, `.bind()`, or `.onClick()` add generated code.
+`saveBundle()` always emits a browser module because the module mounts the page.
 
 ## Why you might use it
 
-- **Static pages ship no JavaScript.** Not "a small runtime" — none.
+- **Static HTML can ship without JavaScript.** Use `render()` or HTML compilation for static pages that need no browser scripts.
 - **Reactive pages ship only what they use.** No framework bundle; the code is generated per page.
 - **No build step.** No JSX, no bundler, no transpiler. It's a Node library.
 - **Zero runtime dependencies.** One package, nothing transitive.
@@ -80,7 +84,7 @@ A static page stays static. Add `.states()`, `.bind()`, or `.onClick()` and the 
 | Testing | 27 suites, 4 Playwright browser suites, 31 fuzz properties |
 | Escaping | text, attributes, CSS values, and JSON context |
 | CSP | nonce support for generated `<script>`/`<style>`; no inline `on*` attributes |
-| Client runtime | generated per page; 0 bytes when no reactive API is used |
+| Client runtime | generated per page; static HTML rendering needs no generated JS |
 | npm provenance | 1.2.5 yes; 2.0.0 no (published manually) |
 
 ## How reactivity works
@@ -95,11 +99,10 @@ This is the part that surprises people, so here it is directly.
 
 **No `eval`, no `new Function`.** Neither appears in the generated output. A callback whose source contains `eval(`, `Function(`, `document.cookie`, `.innerHTML =`, or a `</script>` sequence is refused: the handler is dropped and an error logged rather than emitted, so the page renders without it. Every source is also parsed with `node:vm`, so invalid syntax is caught before it can reach a page. Text that merely *looks* like a script close is escaped, and generated `<script>` tags stay balanced.
 
-**The generated JavaScript is a plain IIFE** holding a state object and the bindings for that page, injected as one `<script>`. Pass `nonce` and it is applied to the generated `<script>` and `<style>` tags so a strict CSP works without `unsafe-inline`.
+**HTML rendering embeds the reactive runtime in a `<script>`** with the page's state and bindings. A response nonce can be applied to generated script and style tags. Bundle exports use an external module and stylesheet.
 
-**There is no permanent client runtime.** No shared bundle, no CDN, nothing cached across pages — which is the tradeoff: a site with many reactive pages repeats the core runtime on each one rather than caching it once.
-
-**If you use no reactive APIs, none of this happens** and you get plain HTML.
+Each page carries its own generated runtime. A static host can cache the
+exported assets with normal HTTP cache headers.
 
 → [Reactive state and events](#reactive-state-and-events) · [Security](#security) · [Full guide](https://0trebor0.github.io/buildhtml/docs/)
 
@@ -107,7 +110,7 @@ This is the part that surprises people, so here it is directly.
 
 - [Create pages and elements](#create-pages-and-elements)
 - [Compile HTML or a browser class](#compile-html-or-a-browser-class)
-- [Write HTML and JavaScript files automatically](#write-html-and-javascript-files-automatically)
+- [Write HTML, CSS, and JavaScript files automatically](#write-html-css-and-javascript-files-automatically)
 - [Run the new-feature walkthrough](#run-the-new-feature-walkthrough)
 - [Serve HTML with Express](#serve-html-with-express)
 - [Generate static files](#generate-static-files)
@@ -119,6 +122,7 @@ This is the part that surprises people, so here it is directly.
 - [Templates](#bhtml-templates)
 - [Reactive lists](#reactive-lists)
 - [SPA routing](#spa-routing)
+- [Export the navigation examples](#export-the-navigation-examples)
 - [Complete dashboard example](#complete-dashboard-example)
 - [Server-validated account form](#server-validated-account-form)
 - [Streaming and caching](#streaming-and-caching)
@@ -265,16 +269,15 @@ The generated class uses this nonce for its styles, including later list styles;
 it does not embed the server document's nonce. The host must allow the module URL.
 
 Class names default to `GeneratedPage` and must be valid ASCII JavaScript class
-identifiers. Class output currently rejects URL routers, authored `inlineScript`,
-external head scripts/stylesheets/links, `rawHead`, native SVG/MathML trees, and
-arbitrary `:root` selectors in head CSS. HTML output retains the existing support
-for those features. Generated classes require modern browsers with Proxy and
-abortable event listeners.
+identifiers. Standalone class output rejects URL routers, authored `inlineScript`,
+body script elements, external head resources, `rawHead`, native SVG/MathML trees,
+and arbitrary `:root` selectors. Use HTML compilation or `saveBundle()` for those
+features. Generated classes require Proxy and abortable event listeners.
 
-#### Write HTML and JavaScript files automatically
+#### Write HTML, CSS, and JavaScript files automatically
 
-Use `saveBundle()` to create the HTML entry point and matching JavaScript file in
-one call:
+Use `saveBundle()` to create the HTML entry point, stylesheet, and JavaScript
+module in one call:
 
 ```javascript
 const { Document } = require('@trebor/buildhtml');
@@ -293,35 +296,36 @@ This creates missing parent directories and writes:
 ```text
 public/
   index.html
+  index.css
   index.js
 ```
 
-The HTML includes `<script type="module" src="./index.js"></script>`. The module
+The HTML links `./index.css` in its head and loads `./index.js` as a module. The module
 contains the generated class and mounts it automatically; no handwritten host or
 bootstrap is needed. Serve the folder over HTTP with a JavaScript MIME type for
-`.js` files. Browser module loading requires HTTP rather than opening `file://`.
+`.js` files and `text/css` for `.css` files. Browser module loading requires HTTP.
 
-To choose the directory and name both output files:
+To choose the directory and name the output files:
 
 ```javascript
 doc.saveBundle('public', { className: 'HomePage', filename: 'name' });
-// Writes public/name.html and public/name.js.
+// Writes public/name.html, public/name.css, and public/name.js.
 ```
 
 `filename` is an optional filename stem, without path components or a `.html` or
 `.js` extension. Invalid filename characters, trailing dots/spaces and reserved
-Windows device names are rejected before writing. It replaces both output names;
+Windows device names are rejected before writing. It replaces all output stems;
 `className` controls the JavaScript export name. Without `filename`, a directory
-destination uses `index.html` and `index.js`. An explicit `.html` path uses its
+destination uses `index.html`, `index.css`, and `index.js`. An explicit `.html` path uses its
 own stem unless `filename` is supplied. End a directory name containing a dot
 with a separator, as in `public.v2/`.
-Both files use UTF-8, and the HTML host declares UTF-8 even if the
-source document uses another charset; the source setting remains unchanged.
-Serve the HTML as UTF-8 if your server sends an explicit charset header.
+All files use UTF-8, and the HTML and stylesheet declare UTF-8. The source
+document's charset stays unchanged. Use UTF-8 if your server sends an explicit
+charset header for either file.
 `className` is optional and defaults to `GeneratedPage`. The method
 returns the document, preserves its tree, leaves `output()` unchanged, and
-replaces existing output files. Both files are staged in the destination before
-either output is replaced. If a replacement fails, the exporter restores the
+replaces existing output files. All three files are staged in the destination before
+any output is replaced. If a replacement fails, the exporter restores the
 previous files and removes any newly published file that had no predecessor.
 Exports to the same stem cannot run concurrently. If rollback itself fails, the
 error reports the staging directory containing any remaining backups.
@@ -332,23 +336,25 @@ backups in the `.buildhtml-bundle-*` directory before removing it and retrying.
 An existing symbolic link at an output path is replaced by the new file.
 
 The exported HTML preserves stylesheets (`addLink()`), icons (`favicon()`),
-authored head CSS, head scripts (`addScript()`), and trusted `rawHead()` markup.
-Authored head CSS is available to head scripts, and later raw-head styles keep
-their cascade order. After the module mounts the page and
+head scripts (`addScript()`), and trusted `rawHead()` markup. Regular builder and
+authored CSS goes in the linked stylesheet, which precedes head scripts and
+raw-head styles. Explicit `<style>` tags passed through `rawHead()` keep their
+markup. Inline `style()` attributes stay on the element, and the browser runtime
+handles styles it creates after load. After the module mounts the page and
 initializes its bindings, each `inlineScript()` block runs as a separate classic
 script in registration order. These scripts use the real page globals and DOM.
 Serialized callbacks continue to use the instance's reactive `State`. Serve the
 referenced resources alongside the bundle or supply URLs that resolve from the
-exported document. A `<base href>` supplied through `rawHead()` also changes the
-browser URL for the generated module. For example, with `<base href="/assets/">`
-and an exported `index.js`, serve that file at `/assets/index.js`. Your CSP must
+exported document. Pass a `<base href>` in its own `rawHead()` call so it can be
+emitted before relative resource links. For example, with `<base href="/assets/">`,
+serve the generated assets at `/assets/index.css` and `/assets/index.js`. Your CSP must
 allow any authored scripts and styles it uses.
 
 Bundles support `hashRouter()` and `historyRouter()`. Hash routes work from the
 exported page URL. For History routes, configure the host to serve the same
 exported HTML for application URLs after API and static asset routes have been
 handled. Use a stable base URL for assets so the generated module loads from
-nested routes. For example, serve `index.js` at `/assets/index.js` and add
+nested routes. For example, serve `index.js` and `index.css` under `/assets/` and add
 `doc.rawHead('<base href="/assets/">')`. Use application-absolute links such as
 `/app/users/42` for History navigation when the asset base differs from the app.
 
@@ -374,7 +380,7 @@ The HTML host preserves the source HTML/body attributes, title and meta tags. Th
 module mounts authored nodes directly in `#app`. Reserve `app` for the mount target
 when choosing IDs for the exported page.
 
-To generate both files from the walkthrough without writing your own Node script:
+To generate the files from the walkthrough without writing your own Node script:
 
 ```bash
 node example/compilation.js --build public/index.html
@@ -441,8 +447,8 @@ inside generated callbacks; builder `on()` options are unchanged.
 output and file bundles support the existing [hash/history routing APIs](#spa-routing).
 Standalone class compilation supports panel `views()`. The
 `Router.route()`/`Router.compile()` API discussed as a possible extension is not
-implemented or exported. A host application must currently own browser URLs and
-destroy/mount the appropriate class.
+implemented or exported. When using standalone classes for multiple URLs, the
+host application owns navigation and switches between instances.
 
 If imports fail, use the HTTP example instead of opening files with `file://`,
 and check that the module response has a JavaScript content type. Query
@@ -1100,6 +1106,24 @@ array method moves its entries.
 A `NodeDef` treats `css` and `style` exactly as an element does: `css` compiles to a **scoped class** that every row with the same declarations shares, and `style` becomes an inline `style` attribute. The class name is derived from the declarations themselves and computed the same way on the server and in the browser, so a row keeps its class across a re-render. Rules minted in the browser during a rebuild are appended to a `<style id="_bh-live-css">` element.
 
 ## SPA routing
+
+### Export the navigation examples
+
+Run `node example/bundle-navigation.js` from the repository root and serve the
+`public` directory over HTTP. The [example source](example/bundle-navigation.js)
+builds three independent bundles:
+
+| Page | Shows |
+| --- | --- |
+| `/navigation/basic/index.html#about` | Hash links and a reactive heading |
+| `/navigation/panels/index.html#projects/42` | View panels, active link styling and a route parameter |
+| `/navigation/dashboard/index.html#projects` | Responsive sidebar, keyed project cards and linked detail views |
+
+Pass a directory argument to generate the examples somewhere else. Hash navigation
+updates the page's browser state without a server request. `saveBundle()` bypasses
+buildhtml's server response cache. Configure HTTP caching on the static host for
+the exported HTML, CSS, and JavaScript. For project data that changes independently
+of the export, fetch it in the browser and update the reactive state.
 
 ### Dashboard views without URL routing
 
@@ -1892,13 +1916,8 @@ The complete searchable guide contains detailed parameters, examples, and the co
 
 **[Open the complete HTML guide](https://github.com/0trebor0/buildhtml/blob/main/docs/index.html)**
 
-The guide is also shipped with the npm package:
-
-```text
-node_modules/@trebor/buildhtml/docs/index.html
-```
-
-Open that file directly in a browser. It is responsive, searchable, and has no external dependencies.
+In a repository checkout, open `docs/index.html` directly in a browser for an
+offline copy of the searchable guide. The npm package includes this README.
 
 ## Tests
 

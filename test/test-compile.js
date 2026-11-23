@@ -97,7 +97,7 @@ try {
   bundle.create('svg').attr('viewbox', '0 0 10 10').create('circle').attr('r', 5);
   bundle.create('math').create('mi').text('x');
   bundle.inlineScript('window.first = "first";').inlineScript('window.second = window.first + " second";');
-  bundle.h1('Saved bundle');
+  bundle.h1('Saved bundle').css({ letterSpacing: '3px' });
   const htmlFile = path.join(fixture, 'nested', 'home #page.html');
   const jsFile = path.join(fixture, 'nested', 'home #page.js');
   assert.equal(bundle.saveBundle(htmlFile, { className: 'SavedPage' }), bundle);
@@ -107,11 +107,17 @@ try {
   assert.match(fs.readFileSync(htmlFile, 'utf8'), /<html lang="fr" id="app" dir="ltr">/);
   assert.match(fs.readFileSync(htmlFile, 'utf8'), /<body id="bundle-body" class="bundle-page"><div id="app">/);
   const savedHtml = fs.readFileSync(htmlFile, 'utf8');
-  assert.match(savedHtml, /<link rel="stylesheet" href="\.\/theme\.css"><link rel="icon" href="\.\/icon\.ico"><style>/);
-  assert.match(savedHtml, /:root\{color:purple;/);
-  assert.match(savedHtml, /\.note::after\{content:"\\3c \/STYLE>"\}<\/style><script src="\.\/head\.js"><\/script><meta name="bundle-extra" content="yes"><\/head>/);
+  assert.match(savedHtml, /<link rel="stylesheet" href="\.\/theme\.css"><link rel="icon" href="\.\/icon\.ico"><link rel="stylesheet" href="\.\/home%20%23page.css"><script src="\.\/head\.js"><\/script><meta name="bundle-extra" content="yes"><\/head>/);
+  assert(!savedHtml.includes('<style>'));
+  const savedCss = fs.readFileSync(path.join(fixture, 'nested', 'home #page.css'), 'utf8');
+  assert(savedCss.startsWith('@charset "UTF-8";\n'));
+  assert.match(savedCss, /:root\{color:purple;/);
+  assert.match(savedCss, /\.note::after\{content:"<\/STYLE>"\}/);
+  assert.match(savedCss, /letter-spacing:3px;/);
   assert.match(fs.readFileSync(htmlFile, 'utf8'), /<script type="module" src="\.\/home%20%23page.js"><\/script>/);
   const savedJs = fs.readFileSync(jsFile, 'utf8');
+  assert(!savedJs.includes('.note::after'));
+  assert(!savedJs.includes('letter-spacing:3px;'));
   assert.match(savedJs, /export \{ __buildhtmlPage as SavedPage \}/);
   assert.match(savedJs, /__buildhtmlInstance.mount/);
   assert(savedJs.indexOf('window.first =') > savedJs.indexOf('__buildhtmlInstance.mount'));
@@ -174,7 +180,7 @@ try {
   assert(!fs.existsSync(path.join(fixture, 'invalid-class')));
 
   const originalWrite = fs.writeFileSync;
-  for (const extension of ['.js', '.html']) {
+  for (const extension of ['.css', '.js', '.html']) {
     const failure = Object.assign(new Error('permission denied'), { code: 'EACCES' });
     const target = path.join(fixture, 'failed-' + extension.slice(1), 'index.html');
     try {
@@ -195,6 +201,7 @@ try {
       fs.mkdirSync(directory);
       fs.writeFileSync(target, 'previous HTML');
       fs.writeFileSync(path.join(directory, 'index.js'), 'previous JS');
+      fs.writeFileSync(path.join(directory, 'index.css'), 'previous CSS');
     }
     const failure = Object.assign(new Error('replacement denied'), { code: 'EACCES' });
     try {
@@ -204,13 +211,14 @@ try {
       };
       assert.throws(() => bundle.saveBundle(target), error => error.code === 'EACCES' && error.cause === failure);
     } finally { fs.renameSync = originalRename; }
-    assert.deepEqual(fs.readdirSync(directory).sort(), existing ? ['index.html', 'index.js'] : []);
+    assert.deepEqual(fs.readdirSync(directory).sort(), existing ? ['index.css', 'index.html', 'index.js'] : []);
     if (existing) {
       assert.equal(fs.readFileSync(target, 'utf8'), 'previous HTML');
       assert.equal(fs.readFileSync(path.join(directory, 'index.js'), 'utf8'), 'previous JS');
+      assert.equal(fs.readFileSync(path.join(directory, 'index.css'), 'utf8'), 'previous CSS');
     }
     bundle.saveBundle(target);
-    assert.deepEqual(fs.readdirSync(directory).sort(), ['index.html', 'index.js'], 'a retry publishes both files and removes staging');
+    assert.deepEqual(fs.readdirSync(directory).sort(), ['index.css', 'index.html', 'index.js'], 'a retry publishes all files and removes staging');
   }
   const lockedDir = path.join(fixture, 'locked');
   const lockedHtml = path.join(lockedDir, 'index.html');
@@ -226,7 +234,7 @@ try {
     bundle.saveBundle(lockedHtml);
   } finally { fs.writeFileSync = originalWrite; }
   assert(competingWriterChecked);
-  assert.deepEqual(fs.readdirSync(lockedDir).sort(), ['index.html', 'index.js']);
+  assert.deepEqual(fs.readdirSync(lockedDir).sort(), ['index.css', 'index.html', 'index.js']);
 
   const recoveryDir = path.join(fixture, 'recovery');
   fs.mkdirSync(recoveryDir);
@@ -265,10 +273,16 @@ try {
   const cliFile = path.join(fixture, 'cli', 'index.html');
   const cli = spawnSync(process.execPath, ['example/compilation.js', '--build', cliFile], { cwd: workspace, encoding: 'utf8' });
   assert.equal(cli.status, 0, cli.stderr);
-  assert(fs.existsSync(cliFile) && fs.existsSync(cliFile.replace(/\.html$/, '.js')));
+  assert(fs.existsSync(cliFile) && fs.existsSync(cliFile.replace(/\.html$/, '.js')) && fs.existsSync(cliFile.replace(/\.html$/, '.css')));
   const invalidCli = spawnSync(process.execPath, ['example/compilation.js', '--build'], { cwd: workspace, encoding: 'utf8' });
   assert.equal(invalidCli.status, 1);
   assert.match(invalidCli.stderr, /destination must be a directory or an HTML path/);
+  const navigationDir = path.join(fixture, 'navigation');
+  const navCli = spawnSync(process.execPath, ['example/bundle-navigation.js', navigationDir], { cwd: workspace, encoding: 'utf8' });
+  assert.equal(navCli.status, 0, navCli.stderr);
+  for (const name of ['basic', 'panels', 'dashboard']) {
+    assert.deepEqual(fs.readdirSync(path.join(navigationDir, name)).sort(), ['index.css', 'index.html', 'index.js']);
+  }
 } finally {
   const relative = path.relative(fs.realpathSync(workspace), fs.realpathSync(fixture));
   assert(relative && !relative.startsWith('..') && !path.isAbsolute(relative), 'fixture cleanup stays inside the repository');

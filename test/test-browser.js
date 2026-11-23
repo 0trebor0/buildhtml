@@ -8,6 +8,7 @@ const { spawn } = require('child_process');
 const { chromium } = require('playwright');
 const { Document } = require('../index');
 const { CounterDocument, createCompilationServer } = require('../example/compilation');
+const navigationExamples = require('../example/bundle-navigation');
 
 const PORT = Number(process.env.BUILDHTML_BROWSER_PORT) || 3417;
 const ORIGIN = `http://127.0.0.1:${PORT}`;
@@ -676,7 +677,24 @@ async function run() {
       const requestedFile = path.join(bundleDir, 'index.html');
       doc.saveBundle(bundleDir, { className: 'CounterPage', filename: 'home #page' });
       assert(!fs.existsSync(requestedFile), 'the directory export uses the requested filename instead of index.html');
-      const files = new Map([['/home #page.html', htmlFile], ['/bundle-assets/home #page.js', jsFile]]);
+      const files = new Map([
+        ['/home #page.html', htmlFile], ['/bundle-assets/home #page.js', jsFile],
+        ['/bundle-assets/home #page.css', path.join(bundleDir, 'home #page.css')],
+      ]);
+      for (const [name, createNavigation] of Object.entries(navigationExamples)) {
+        const destination = path.join(bundleDir, 'navigation', name);
+        createNavigation().saveBundle(destination);
+        files.set(`/navigation/${name}/index.html`, path.join(destination, 'index.html'));
+        files.set(`/navigation/${name}/index.js`, path.join(destination, 'index.js'));
+        files.set(`/navigation/${name}/index.css`, path.join(destination, 'index.css'));
+      }
+      const encodedStyles = new Document();
+      encodedStyles.inlineStyle('@charset "windows-1252"; #encoding-probe::after { content: "café 😀"; }');
+      encodedStyles.p().id('encoding-probe');
+      encodedStyles.saveBundle(path.join(bundleDir, 'encoding.html'));
+      for (const extension of ['html', 'css', 'js']) {
+        files.set(`/encoding.${extension}`, path.join(bundleDir, `encoding.${extension}`));
+      }
       const hash = new Document();
       hash.a('#inbox/hello%20world', 'Open inbox').id('hash-inbox');
       hash.p().id('hash-view').bind('view');
@@ -685,9 +703,11 @@ async function run() {
       hash.saveBundle(path.join(bundleDir, 'bundle-hash.html'));
       files.set('/bundle-hash.html', path.join(bundleDir, 'bundle-hash.html'));
       files.set('/bundle-hash.js', path.join(bundleDir, 'bundle-hash.js'));
+      files.set('/bundle-hash.css', path.join(bundleDir, 'bundle-hash.css'));
 
       const history = new Document();
       history.rawHead('<base href="/bundle-assets/">');
+      history.globalCss(':root', { colorScheme: 'dark' });
       history.a('/bundle-history/item/Ada%20Lovelace', 'Open item').id('history-item').data({ route: 'true' });
       history.a('/bundle-history/unknown', 'Open unknown').id('history-unknown').data({ route: 'true' });
       history.p().id('history-view').bind('view');
@@ -697,12 +717,13 @@ async function run() {
       const historyHtml = path.join(bundleDir, 'bundle-history.html');
       history.saveBundle(historyHtml);
       files.set('/bundle-assets/bundle-history.js', path.join(bundleDir, 'bundle-history.js'));
+      files.set('/bundle-assets/bundle-history.css', path.join(bundleDir, 'bundle-history.css'));
       const resources = new Map([
-        ['/theme.css', ['text/css', 'main { background-color: rgb(11, 22, 33); }']],
-        ['/head.js', ['text/javascript', 'var bundleOrder = ["external head"]; window.bundleHeadProbe = getComputedStyle(document.documentElement).getPropertyValue("--bundle-head-probe").trim();']],
+        ['/bundle-assets/theme.css', ['text/css', 'main { background-color: rgb(11, 22, 33); }']],
+        ['/bundle-assets/head.js', ['text/javascript', 'var bundleOrder = ["external head"]; window.bundleHeadProbe = getComputedStyle(document.documentElement).getPropertyValue("--bundle-head-probe").trim();']],
         ['/bundle-assets/body.js', ['text/javascript', 'bundleOrder.push("body external");']],
         ['/bundle-assets/body-module.js', ['text/javascript', 'import { CounterPage } from "./home%20%23page.js"; window.bundleOrder.push(CounterPage.name);']],
-        ['/icon.svg', ['image/svg+xml', '<svg xmlns="http://www.w3.org/2000/svg"/>']],
+        ['/bundle-assets/icon.svg', ['image/svg+xml', '<svg xmlns="http://www.w3.org/2000/svg"/>']],
       ]);
       bundleServer = http.createServer((request, response) => {
         try {
@@ -716,7 +737,8 @@ async function run() {
           const file = files.get(pathname) || (pathname.startsWith('/bundle-history/') ? historyHtml : null);
           if (!file) { response.writeHead(404); response.end('Not found'); return; }
           const body = fs.readFileSync(file);
-          response.writeHead(200, { 'Content-Type': file.endsWith('.js') ? 'text/javascript' : 'text/html' });
+          const type = file.endsWith('.css') ? 'text/css' : file.endsWith('.js') ? 'text/javascript' : 'text/html';
+          response.writeHead(200, { 'Content-Type': type });
           response.end(body);
         } catch (error) { response.writeHead(500); response.end('Unable to read generated test file'); }
       });
@@ -794,10 +816,42 @@ async function run() {
       await page.waitForFunction(() => document.querySelector('#history-param').textContent === 'Ada Lovelace');
       await page.reload({ waitUntil: 'load' });
       assert.equal(await page.locator('#history-param').textContent(), 'Ada Lovelace');
+      assert.equal(await page.evaluate(() => getComputedStyle(document.documentElement).colorScheme), 'dark', 'the linked stylesheet loads on a nested History route');
       assert.equal(await page.locator('body').getAttribute('data-initial-route'), 'Item', 'authored scripts observe the initialized route');
       await page.locator('#history-unknown').click();
       assert.equal(await page.locator('#history-view').textContent(), 'Missing');
       assert.deepEqual(browserErrors, [], 'exported routers run without browser errors');
+
+      await page.goto(`${origin}/navigation/basic/index.html#about`, { waitUntil: 'load' });
+      assert.equal(await page.locator('main h1').textContent(), 'About');
+      await page.getByRole('link', { name: 'Contact' }).click();
+      await page.waitForFunction(() => document.querySelector('main h1').textContent === 'Contact');
+
+      await page.goto(`${origin}/navigation/panels/index.html#projects`, { waitUntil: 'load' });
+      assert.equal(await page.getByRole('link', { name: 'Projects', exact: true }).evaluate(link => getComputedStyle(link).fontWeight), '700');
+      await page.getByRole('link', { name: 'Open project 42' }).click();
+      await page.getByRole('heading', { name: 'Project 42' }).waitFor();
+      await page.goBack();
+      await page.getByRole('heading', { name: 'Projects', exact: true }).waitFor();
+
+      await page.setViewportSize({ width: 390, height: 844 });
+      await page.goto(`${origin}/navigation/dashboard/index.html#projects`, { waitUntil: 'load' });
+      assert.equal(await page.locator('head link[rel="stylesheet"]').evaluate(link => link.sheet?.href), `${origin}/navigation/dashboard/index.css`);
+      assert.equal(await page.locator('.cards > a').count(), 3);
+      assert.equal(await page.locator('.sidebar nav').evaluate(nav => getComputedStyle(nav).display), 'flex');
+      await page.getByRole('link', { name: /Atlas/ }).click();
+      await page.getByRole('heading', { name: 'Atlas', exact: true }).waitFor();
+      await page.reload({ waitUntil: 'load' });
+      assert.equal(await page.locator('.detail .status').textContent(), 'In progress');
+      await page.goto(`${origin}/navigation/dashboard/index.html#projects/unknown`);
+      await page.getByRole('heading', { name: 'Project not found' }).waitFor();
+      await page.goto(`${origin}/navigation/dashboard/index.html#unknown`);
+      await page.getByRole('heading', { name: 'Page not found' }).waitFor();
+      assert.deepEqual(browserErrors, [], 'all three navigation examples run from exported files');
+
+      await page.goto(`${origin}/encoding.html`, { waitUntil: 'load' });
+      assert.equal(await page.locator('#encoding-probe').evaluate(node => getComputedStyle(node, '::after').content), '"café 😀"');
+
       fs.unlinkSync(jsFile);
       const missingModule = await page.request.get(`${origin}/bundle-assets/home%20%23page.js`);
       assert.equal(missingModule.status(), 500, 'test file-serving errors are caught');
