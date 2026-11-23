@@ -654,12 +654,13 @@ test('hashRouter matches route parameters and handles not-found routes', () => {
   const context = {
     State: {},
     location: { hash: '' },
-    document: { querySelectorAll: () => [] },
+    document: { querySelectorAll: () => [], addEventListener: (event, fn) => { listeners[event] = fn; } },
     window: { addEventListener: (event, fn) => { listeners[event] = fn; } },
   };
   vm.runInNewContext(doc._inlineScripts[0], context);
 
   assert(context.State.view === 'home', 'empty hash matches the configured default route');
+  assert(typeof listeners.click === 'function', 'hash navigation observes fragment link clicks');
 
   context.location.hash = '#users/alice%20smith';
   listeners.hashchange();
@@ -682,12 +683,46 @@ test('hashRouter wildcard route overrides the default not-found value', () => {
   const context = {
     State: {},
     location: { hash: '#does-not-exist' },
-    document: { querySelectorAll: () => [] },
+    document: { querySelectorAll: () => [], addEventListener() {} },
     window: { addEventListener: () => {} },
   };
   vm.runInNewContext(doc._inlineScripts[0], context);
 
   assert(context.State.view === '404', 'wildcard route supplies unmatched state value');
+});
+
+test('HTML routers initialize state without bindings or initial state', () => {
+  for (const method of ['hashRouter', 'historyRouter']) {
+    const doc = new Document();
+    doc[method]({ default: 'home', routes: { home: 'Home', '/': 'Home' } });
+    const context = vm.createContext({
+      document: { readyState: 'complete', addEventListener() {} },
+      location: { pathname: '/', hash: '' },
+      addEventListener() {},
+    });
+    context.window = context;
+    const scripts = [...doc.compile().matchAll(/<script>([\s\S]*?)<\/script>/g)];
+    for (const [, script] of scripts) vm.runInContext(script, context);
+    assert(context.State.view === 'Home', `${method} initializes state on a static page`);
+  }
+});
+
+test('HTML live lists can subscribe before their initial state is set', () => {
+  const doc = new Document();
+  doc.liveList('items', item => ({ tag: 'p', text: item }));
+  let lookups = 0;
+  const context = vm.createContext({
+    document: {
+      readyState: 'complete',
+      getElementById() { lookups++; return { firstChild: null }; },
+    },
+  });
+  context.window = context;
+  const scripts = [...doc.compile().matchAll(/<script>([\s\S]*?)<\/script>/g)];
+  for (const [, script] of scripts) vm.runInContext(script, context);
+  const initialLookups = lookups;
+  context.State.items = [];
+  assert(lookups > initialLookups, 'a later state assignment re-renders an initially empty list');
 });
 
 test('historyRouter handles route parameters, links, base paths, and popstate', () => {

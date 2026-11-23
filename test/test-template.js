@@ -213,6 +213,37 @@ test('Loop with objects', () => {
   assert(html.includes('Bob (25)'), 'object loop 2');
 });
 
+test('Nested loops resolve items in their own scope', () => {
+  const tpl = `?each group in groups\n  ?each item, i in group.items\n    p "#{group.name} #{i}: #{item}"`;
+  const html = renderTemplate(tpl, { groups: [{ name: 'A', items: ['First', 'Second'] }, { name: 'B', items: ['Third'] }] });
+  assert(html.includes('<p>A 0: First</p><p>A 1: Second</p><p>B 0: Third</p>'), 'nested values, indices, and outer values are available');
+});
+
+test('Loop scope resolves link and data attributes without consuming unknown tokens', () => {
+  const tpl = `?each item in items\n  a[key="#{item.id}"](href="#{item.url}" title="#{unknown}") "#{item.label}"`;
+  const html = renderTemplate(tpl, { items: [{ id: 'docs', url: '/docs?a=1&b=2', label: 'Docs' }] });
+  assert(html.includes('href="/docs?a=1&amp;b=2"'), 'resolved URLs are escaped');
+  assert(html.includes('data-key="docs"'), 'data attributes use loop variables');
+  assert(html.includes('title="#{unknown}"'), 'unresolved attribute tokens are retained');
+});
+
+test('Loop item and index names shadow matching template globals', () => {
+  const tpl = `?each item, i in items\n  a[key="#{i}"](href="#{item.url}") "#{item.label}"\np "#{item.label} #{i}"`;
+  const html = renderTemplate(tpl, {
+    item: { label: 'Global', url: '/global' }, i: 9,
+    items: [{ label: 'Local', url: '/local' }],
+  });
+  assert(html.includes('<a href="/local" data-key="0">Local</a>'), 'loop values override template globals');
+  assert(html.includes('<p>Global 9</p>'), 'globals remain available outside the loop');
+});
+
+test('Loop interpolation treats inserted values as literal text', () => {
+  const tpl = `?each item in items\n  a[key="#{label}"](href="#{url}") "#{label}: #{item}"`;
+  const html = renderTemplate(tpl, { items: ['Docs'], label: '#{item}', url: '/docs/#{item}' });
+  assert(html.includes('<a href="/docs/#{item}" data-key="#{item}">#{item}: Docs</a>'),
+    'interpolated values cannot introduce a second interpolation pass');
+});
+
 /* ---- Components ---- */
 test('Component usage', () => {
   function Card(el, { title, body }) {

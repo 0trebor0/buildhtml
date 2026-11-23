@@ -908,6 +908,7 @@ test('keyed liveList rejects invalid server keys and accepts prototype-named key
     try { doc.liveList('items', item => ({ tag: 'p', text: 'row' }), { key: 'id' }); }
     catch (error) { rejected = error instanceof TypeError && error.message.includes('[liveList] Invalid key'); }
     assert(rejected, 'invalid or duplicate server key is rejected before rendering');
+    assert(doc.body.length === 0, 'a rejected list leaves no container');
   }
   const doc = new Document();
   doc.states({ items: [{ id: '__proto__' }, { id: 'constructor' }, { id: 0 }, { id: '0' }] });

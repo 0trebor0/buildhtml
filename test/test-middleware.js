@@ -222,6 +222,24 @@ const constructorNonces = test('Document-supplied nonces bypass caching for sequ
   assert(builds === 2, 'sequential nonce requests both build');
 });
 
+const headNonces = test('head-only nonces bypass both cache layers and coalescing', async () => {
+  resetCache();
+  const key = 'head-nonce';
+  let builds = 0;
+  const middleware = createCachedRenderer(req => {
+    builds++;
+    const doc = new Document({ cache: true, cacheKey: key });
+    doc.head.setNonce(req.nonce);
+    doc.globalCss('p', { color: 'red' });
+    return doc;
+  }, key);
+  const responses = [mockRes(), mockRes()];
+  await Promise.all(responses.map((res, index) => middleware({ nonce: 'head-' + index }, res, error => { throw error; })));
+  assert(builds === 2, 'each request renders its own head nonce');
+  assert(responses.every((res, index) => res._sent.includes('nonce="head-' + index + '"')), 'head CSS uses the matching response nonce');
+  assert(!responseCache.has(key), 'neither cache path stores the nonce-bearing output');
+});
+
 const concurrentNonces = test('concurrent requests do not share a Document-supplied nonce', async () => {
   resetCache();
   let builds = 0;
@@ -380,7 +398,7 @@ const p11 = test('concurrent requests sharing a failing render all receive the e
 
 Promise.all([
   p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, p11,
-  constructorNonces, concurrentNonces, nonceRebuildFailure,
+  constructorNonces, headNonces, concurrentNonces, nonceRebuildFailure,
 ]).then(() => test(
   'clearCache(pattern) invalidates a matching in-flight render',
   async () => {

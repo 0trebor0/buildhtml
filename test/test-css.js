@@ -106,6 +106,15 @@ test('unrelated families sort while related ones do not', () => {
     `families sorted, border order preserved (got ${text})`);
 });
 
+test('gap and its longhands and aliases keep author order in both compilers', () => {
+  const css = { rowGap: '4px', gridColumnGap: '6px', gap: '20px' };
+  const expected = 'row-gap:4px;grid-column-gap:6px;gap:20px;';
+  assert(compileDeclarationText(css) === expected, 'server gap shorthand stays last');
+  const sandbox = vm.createContext({ document: {}, css });
+  vm.runInContext(clientCssRuntimeSource(), sandbox);
+  assert(vm.runInContext('_bhDecls(css)', sandbox) === expected, 'client gap shorthand stays last');
+});
+
 test('a custom property keeps its exact case and its own family', () => {
   const text = compileDeclarationText({ '--brandColor': 'red', color: 'blue' });
   assert(text.includes('--brandColor:red'), 'custom property case preserved');

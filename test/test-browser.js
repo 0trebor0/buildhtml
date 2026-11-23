@@ -650,17 +650,29 @@ async function run() {
       doc.inlineStyle('main::after { content: "</STYLE>"; }');
       doc.inlineStyle(String.raw`main::before { content: "\</STYLE> \\</STYLE>"; }`);
       doc.rawHead('<meta name="bundle-fixture" content="present">');
+      doc.rawHead('<!-- relative assets use the following base -->');
       doc.rawHead('<base href="/bundle-assets/">');
       doc.rawHead('<style>main { border-top-color: blue; }</style>');
+      doc.rawHead('<style>.cascade-probe { color: blue; }</style>');
       doc.rawHead('<script>bundleOrder.push("raw head");</script>');
+      doc.p('Cascade probe').id('bundle-cascade').addClass('cascade-probe').css({ color: 'red' });
+      doc.states({ reviewItems: ['Before'] });
+      doc.build({ id: 'bundle-named-list', liveList: { stateKey: 'reviewItems', itemFn: item => ({ tag: 'p', text: item }) } });
+      doc.button('Change named list').id('change-named-list').onClick(function () { State.reviewItems.push('After'); });
       const scripts = doc.div().id('bundle-body-scripts');
       scripts.create('script').id('bundle-body-first')
         .text('bundleOrder.push(document.currentScript.parentNode.id && "body first");')
         .bind('count', () => 'window.bundleBoundSourceRan = true;');
       scripts.create('script').id('bundle-body-external').attr('src', './body.js')
         .onMount(function () { this.dataset.mounted = 'true'; })
-        .on('load', function () { this.dataset.loaded = 'true'; });
-      scripts.create('script').attr('type', 'module').attr('src', './body-module.js');
+        .on('load', function (event) { this.dataset.loaded = 'true'; event.stopImmediatePropagation(); });
+      const capture = scripts.div().id('bundle-script-capture').onMount(function () {
+        this.addEventListener('load', event => {
+          this.dataset.captured = 'true';
+          event.stopPropagation();
+        }, true);
+      });
+      capture.create('script').attr('type', 'module').attr('src', './body-module.js');
       scripts.create('script').attr('type', 'module').text('await Promise.resolve(); window.bundleOrder.push("body module");');
       scripts.create('script').attr('type', 'application/json').id('bundle-data').text('{"answer":42}');
       scripts.create('template').create('script').text('throw new Error("template script executed");');
@@ -680,7 +692,18 @@ async function run() {
       const files = new Map([
         ['/home #page.html', htmlFile], ['/bundle-assets/home #page.js', jsFile],
         ['/bundle-assets/home #page.css', path.join(bundleDir, 'home #page.css')],
+        ['/bundle-assets/home #page.buildhtml-elements.css', path.join(bundleDir, 'home #page.buildhtml-elements.css')],
       ]);
+      const policy = new Document();
+      policy.rawHead('<!-- CSP must keep its position before the base -->');
+      policy.rawHead('<meta http-equiv="Content-Security-Policy" content="base-uri \'none\'">');
+      policy.rawHead('<base href="/bundle-assets/">');
+      policy.p('Policy bundle');
+      policy.saveBundle(path.join(bundleDir, 'policy.html'));
+      for (const extension of ['html', 'css', 'js']) {
+        files.set(`/policy.${extension}`, path.join(bundleDir, `policy.${extension}`));
+        files.set(`/bundle-assets/policy.${extension}`, path.join(bundleDir, `policy.${extension}`));
+      }
       for (const [name, createNavigation] of Object.entries(navigationExamples)) {
         const destination = path.join(bundleDir, 'navigation', name);
         createNavigation().saveBundle(destination);
@@ -696,14 +719,15 @@ async function run() {
         files.set(`/encoding.${extension}`, path.join(bundleDir, `encoding.${extension}`));
       }
       const hash = new Document();
+      hash.rawHead('<base href="/bundle-assets/">');
       hash.a('#inbox/hello%20world', 'Open inbox').id('hash-inbox');
       hash.p().id('hash-view').bind('view');
       hash.p().id('hash-param').bind('routeParams', params => params?.name || '');
       hash.hashRouter({ default: 'home', routes: { home: 'Home', 'inbox/:name': 'Inbox', '*': 'Missing' } });
       hash.saveBundle(path.join(bundleDir, 'bundle-hash.html'));
       files.set('/bundle-hash.html', path.join(bundleDir, 'bundle-hash.html'));
-      files.set('/bundle-hash.js', path.join(bundleDir, 'bundle-hash.js'));
-      files.set('/bundle-hash.css', path.join(bundleDir, 'bundle-hash.css'));
+      files.set('/bundle-assets/bundle-hash.js', path.join(bundleDir, 'bundle-hash.js'));
+      files.set('/bundle-assets/bundle-hash.css', path.join(bundleDir, 'bundle-hash.css'));
 
       const history = new Document();
       history.rawHead('<base href="/bundle-assets/">');
@@ -756,6 +780,7 @@ async function run() {
       assert.equal(await page.locator('#app main').evaluate(node => getComputedStyle(node).backgroundColor), 'rgb(11, 22, 33)');
       assert.equal(await page.evaluate(() => window.bundleHeadProbe), 'ready', 'authored CSS is present when external head scripts run');
       assert.equal(await page.locator('#app main').evaluate(node => getComputedStyle(node).borderTopColor), 'rgb(0, 0, 255)', 'raw-head styles retain precedence over earlier authored CSS');
+      assert.equal(await page.locator('#bundle-cascade').evaluate(node => getComputedStyle(node).color), 'rgb(255, 0, 0)', 'element CSS comes after equally specific raw-head rules');
       assert.equal(await page.locator('#app main').evaluate(node => getComputedStyle(node, '::after').content), '"</STYLE>"', 'CSS text survives a literal style end tag');
       assert.equal(await page.locator('#app main').evaluate(node => JSON.parse(getComputedStyle(node, '::before').content)), '</STYLE> \\</STYLE>', 'CSS escapes and literal backslashes survive style end tags');
       await page.waitForFunction(() => document.body.dataset.classicScript === 'true');
@@ -767,6 +792,7 @@ async function run() {
       assert.equal(await page.locator('#bundle-body-scripts > #bundle-body-first').count(), 1);
       assert.equal(await page.locator('#bundle-body-external').getAttribute('data-loaded'), 'true', 'body script load callbacks survive activation');
       assert.equal(await page.locator('#bundle-body-external').getAttribute('data-mounted'), 'true');
+      assert.equal(await page.locator('#bundle-script-capture').getAttribute('data-captured'), 'true');
       assert.equal(await page.locator('#bundle-data').textContent(), '{"answer":42}');
       assert.deepEqual(await page.evaluate(() => ({
         colorScheme: getComputedStyle(document.documentElement).colorScheme,
@@ -787,6 +813,8 @@ async function run() {
       assert.equal(await page.locator('#app #count').textContent(), 'Count: 1');
       assert.equal(await page.locator('#app #double').textContent(), 'Double: 2');
       assert.equal(await page.locator('#bundle-svg-count').textContent(), '1');
+      await page.locator('#change-named-list').click();
+      assert.deepEqual(await page.locator('#bundle-named-list p').allTextContents(), ['Before', 'After']);
       assert.equal(await page.evaluate(() => window.bundleBoundSourceRan), undefined, 'reactive text is not executable script source');
       await page.locator('#app #tasks-view').click();
       await page.locator('#app [data-task="1"] button').click();
@@ -799,6 +827,7 @@ async function run() {
       await page.locator('#hash-inbox').click();
       await page.waitForFunction(() => document.querySelector('#hash-param').textContent === 'hello world');
       assert.equal(await page.locator('#hash-view').textContent(), 'Inbox');
+      assert.equal(new URL(page.url()).pathname, '/bundle-hash.html', 'hash links stay on the document even under an asset base');
       await page.reload({ waitUntil: 'load' });
       assert.equal(await page.locator('#hash-param').textContent(), 'hello world');
 
@@ -848,6 +877,9 @@ async function run() {
       await page.goto(`${origin}/navigation/dashboard/index.html#unknown`);
       await page.getByRole('heading', { name: 'Page not found' }).waitFor();
       assert.deepEqual(browserErrors, [], 'all three navigation examples run from exported files');
+      await page.goto(`${origin}/policy.html`, { waitUntil: 'load' });
+      assert.equal(await page.evaluate(() => document.baseURI), `${origin}/policy.html`, 'CSP is applied before the base tag');
+      assert.equal(await page.locator('#app p').textContent(), 'Policy bundle');
 
       await page.goto(`${origin}/encoding.html`, { waitUntil: 'load' });
       assert.equal(await page.locator('#encoding-probe').evaluate(node => getComputedStyle(node, '::after').content), '"café 😀"');

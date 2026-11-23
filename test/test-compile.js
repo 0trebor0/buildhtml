@@ -152,6 +152,42 @@ try {
   bundle.saveBundle(dottedDirectory + path.sep, { filename: 'nested' });
   assert(fs.existsSync(path.join(dottedDirectory, 'nested.html')));
 
+  const cascade = new Document();
+  cascade.globalCss('.probe', { color: 'green' });
+  cascade.rawHead('<link rel="stylesheet" href="./raw.css">');
+  cascade.p('Probe').addClass('probe').css({ color: 'red' });
+  const cascadeDir = path.join(fixture, 'cascade');
+  cascade.saveBundle(cascadeDir);
+  const cascadeHtml = fs.readFileSync(path.join(cascadeDir, 'index.html'), 'utf8');
+  assert.match(cascadeHtml, /<link rel="stylesheet" href="\.\/index.css"><link rel="stylesheet" href="\.\/raw.css"><link rel="stylesheet" href="\.\/index.buildhtml-elements.css">/);
+  assert.match(fs.readFileSync(path.join(cascadeDir, 'index.css'), 'utf8'), /color:green/);
+  assert.match(fs.readFileSync(path.join(cascadeDir, 'index.buildhtml-elements.css'), 'utf8'), /color:red/);
+  assert.throws(() => bundle.saveBundle(cascadeDir, { filename: 'index.BUILDHTML-ELEMENTS' }), /suffix .* is reserved/);
+  assert.throws(() => bundle.saveBundle(path.join(cascadeDir, 'index.buildhtml-elements.html')), /suffix .* is reserved/);
+  bundle.saveBundle(cascadeDir, { filename: 'index.elements' });
+  assert.match(fs.readFileSync(path.join(cascadeDir, 'index.buildhtml-elements.css'), 'utf8'), /color:red/);
+  const cascadeFiles = fs.readdirSync(cascadeDir).sort();
+  const cascadeBefore = cascadeFiles.map(name => fs.readFileSync(path.join(cascadeDir, name), 'utf8'));
+  cascade.p('New rule').css({ color: 'purple' });
+  const renameCascade = fs.renameSync;
+  try {
+    fs.renameSync = (from, to) => {
+      if (path.basename(from) === 'next.html') throw Object.assign(new Error('replacement denied'), { code: 'EACCES' });
+      return renameCascade(from, to);
+    };
+    assert.throws(() => cascade.saveBundle(cascadeDir), { code: 'EACCES' });
+  } finally { fs.renameSync = renameCascade; }
+  assert.deepEqual(fs.readdirSync(cascadeDir).sort(), cascadeFiles);
+  assert.deepEqual(cascadeFiles.map(name => fs.readFileSync(path.join(cascadeDir, name), 'utf8')), cascadeBefore);
+
+  const elementOnly = new Document();
+  elementOnly.rawHead('<style>.probe{color:blue}</style>');
+  elementOnly.p('Probe').addClass('probe').css({ color: 'red' });
+  const elementOnlyDir = path.join(fixture, 'element-only');
+  elementOnly.saveBundle(elementOnlyDir);
+  assert.deepEqual(fs.readdirSync(elementOnlyDir).sort(), ['index.css', 'index.html', 'index.js']);
+  assert.match(fs.readFileSync(path.join(elementOnlyDir, 'index.html'), 'utf8'), /<\/style><link rel="stylesheet" href="\.\/index.css">/);
+
   for (const filename of ['', null, 42, '.', '..', '../escape', '..\\escape', 'bad/name', 'name.html', 'name.js', 'bad:name', 'name.', 'name ', 'CON']) {
     const invalidDir = path.join(fixture, 'invalid-filename');
     assert.throws(() => bundle.saveBundle(path.join(invalidDir, 'index.html'), { filename }), /filename/);

@@ -261,7 +261,7 @@ const server = http.createServer((_req, res) => {
       extra.remove();
       const controller = new AbortController();
       let calls = 0;
-      document.addEventListener('caller-abort', function () { calls++; }, { signal: controller.signal });
+      document.addEventListener('caller-abort', function () { calls++; }, Object.create({ signal: controller.signal }));
       controller.abort();
       document.body.dispatchEvent(new Event('caller-abort', { bubbles: true }));
       this.dataset.signal = String(calls);

@@ -1133,6 +1133,13 @@ test('head styles never render inherited class names or declarations', () => {
   assert(html.includes('body{margin:0;}'), 'global rules still render');
 });
 
+test('ordinary HTML sanitizes direct mixed-case URL attributes', () => {
+  const doc = new Document();
+  doc.create('a').text('Link').attrs.HREF = 'javascript:void(0)';
+  assert(doc.compile().includes('HREF="#"'), 'HTML compilation neutralizes the URL');
+  assert(doc.render().includes('HREF="#"'), 'ordinary rendering neutralizes the URL');
+});
+
 test('live-list URL guards cover every attribute casing on server and client', () => {
   const { nodeDefToHtml, MK_EL_SRC } = require('../lib/live');
   const { URL_ATTRS, sanitizeUrl } = require('../lib/utils');

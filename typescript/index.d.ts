@@ -1057,6 +1057,8 @@ export declare class Document<S extends StateShape = StateShape> implements Shar
    * output files are replaced after staging, with rollback on replacement failure.
    * Static CSS is linked from the HTML head. Resources and trusted raw head markup
    * are emitted into the HTML. Authored inline scripts run after the module mounts.
+   * A second linked .buildhtml-elements.css asset may preserve raw-head stylesheet
+   * order. The .buildhtml-elements stem suffix is reserved.
    * Supports hashRouter() and historyRouter(). History routes need an HTML fallback
    * and a module URL that resolves from every route. HTML body scripts activate
    * after mounting. Bundles support SVG, MathML and authored :root CSS. Static

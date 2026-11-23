@@ -324,8 +324,8 @@ document's charset stays unchanged. Use UTF-8 if your server sends an explicit
 charset header for either file.
 `className` is optional and defaults to `GeneratedPage`. The method
 returns the document, preserves its tree, leaves `output()` unchanged, and
-replaces existing output files. All three files are staged in the destination before
-any output is replaced. If a replacement fails, the exporter restores the
+replaces existing output files. The exporter stages each file before replacing
+any output. If a replacement fails, the exporter restores the
 previous files and removes any newly published file that had no predecessor.
 Exports to the same stem cannot run concurrently. If rollback itself fails, the
 error reports the staging directory containing any remaining backups.
@@ -336,22 +336,28 @@ backups in the `.buildhtml-bundle-*` directory before removing it and retrying.
 An existing symbolic link at an output path is replaced by the new file.
 
 The exported HTML preserves stylesheets (`addLink()`), icons (`favicon()`),
-head scripts (`addScript()`), and trusted `rawHead()` markup. Regular builder and
-authored CSS goes in the linked stylesheet, which precedes head scripts and
-raw-head styles. Explicit `<style>` tags passed through `rawHead()` keep their
+head scripts (`addScript()`), and trusted `rawHead()` markup. Head CSS precedes
+raw-head style markup, and generated element rules follow it. When both sets of
+rules need to sit on opposite sides of a raw-head stylesheet, the export adds
+a same-stem `.buildhtml-elements.css` file and links it after the raw markup.
+The `.buildhtml-elements` stem suffix is reserved. Serve this stylesheet with
+the other assets. Explicit `<style>` tags passed through `rawHead()` keep their
 markup. Inline `style()` attributes stay on the element, and the browser runtime
 handles styles it creates after load. After the module mounts the page and
 initializes its bindings, each `inlineScript()` block runs as a separate classic
 script in registration order. These scripts use the real page globals and DOM.
 Serialized callbacks continue to use the instance's reactive `State`. Serve the
 referenced resources alongside the bundle or supply URLs that resolve from the
-exported document. Pass a `<base href>` in its own `rawHead()` call so it can be
-emitted before relative resource links. For example, with `<base href="/assets/">`,
-serve the generated assets at `/assets/index.css` and `/assets/index.js`. Your CSP must
+exported document. Put `<base href>` in its own `rawHead()` call before raw scripts
+or styles. Leading comments and metadata, including any preceding CSP meta tag, keep their
+order when the base is emitted before relative resource links. For example, with
+`<base href="/assets/">`, serve the generated assets under `/assets/`. Your CSP must
 allow any authored scripts and styles it uses.
 
 Bundles support `hashRouter()` and `historyRouter()`. Hash routes work from the
-exported page URL. For History routes, configure the host to serve the same
+exported page URL. Both routers initialize their route state, including on HTML
+pages with no declared state or bindings. Same-tab fragment links stay on the
+current page when it has an asset base. For History routes, configure the host to serve the same
 exported HTML for application URLs after API and static asset routes have been
 handled. Use a stable base URL for assets so the generated module loads from
 nested routes. For example, serve `index.js` and `index.css` under `/assets/` and add
@@ -1032,11 +1038,15 @@ The direct file helpers are synchronous.
 
 The parser recovers from a malformed line rather than throwing, so a mistake still produces output. In development it reports what it dropped as `W_TEMPLATE_SYNTAX` — an unclosed `(`, an invalid `?each`, an unrecognised `?` directive, a `:global`/`:class` rule without braces, an invalid tag name, or content it could not parse after a tag. Production stays quiet.
 
-`#{}` interpolation works in quoted text, attribute values, and data attributes. A token with no matching variable is left in place rather than emptied, so an unresolved `#{name}` is visible in the output instead of silently becoming a blank attribute.
+`#{}` interpolation works in quoted text, attribute values, and data attributes.
+Inside `?each`, item and index names take precedence over template variables of
+the same name. Values are interpolated once per iteration, so text inserted from
+a variable stays literal. An unresolved token in an attribute stays visible.
 
 ## Reactive lists
 
-`liveList()` server-renders an array and updates it in the browser when watched state changes:
+`liveList()` server-renders an array and updates it in the browser when watched state changes.
+A list can start empty and update when its state key is assigned in the browser.
 
 ```javascript
 doc.states({
@@ -1329,8 +1339,8 @@ app.get('/dashboard', createCachedRenderer(
 
 Concurrent misses for the same key share one build. Include every value that changes the response in the cache key—especially identity, permissions, and locale.
 
-Nonce-enabled responses are deliberately rendered for every request, including
-when the builder supplies `new Document({ nonce })` rather than `options.nonce`.
+Nonce-enabled responses are rendered for every request, including when the
+builder supplies `new Document({ nonce })` or `doc.head.setNonce()`.
 Concurrent requests rebuild separately once a builder-supplied nonce is detected.
 Reusing cached HTML would reuse its nonce and break the per-response CSP guarantee.
 

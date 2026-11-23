@@ -15,6 +15,9 @@ rather than complete records.
 
 ### Security
 
+- Head-only CSP nonces bypass document and middleware caches, and ordinary HTML
+  sanitizes URL attributes even when their names use mixed case.
+
 - Restored attribute bindings now reject markup and inline-event attributes,
   record refusals in validation, and sanitize URL values regardless of name
   casing. The compiler also checks names independently of restoration.
@@ -101,6 +104,25 @@ rather than complete records.
   blocks it silently.
 
 ### Fixed
+
+- HTML routers and live lists initialize the reactive runtime even when the
+  document has no initial state or bindings.
+
+- Reserved the optional bundle stylesheet suffix to avoid cross-bundle overwrites.
+  Comments before a base tag preserve asset resolution, and same-tab hash links
+  stay on the current page under an asset base.
+- External body scripts continue the bundle queue when a mounted ancestor stops
+  a load event. Compiled listeners honor inherited native listener options.
+- Gap declarations retain author order, loop-local attributes interpolate, and
+  invalid keyed lists leave the document tree unchanged.
+- Template loops give item and index variables precedence over same-named template
+  globals. Interpolation runs once per iteration and leaves inserted values literal.
+
+- Bundle exports preserve CSP metadata before a relocated base tag and keep
+  generated element CSS after raw-head styles. Authored body script listeners
+  can stop event propagation without stalling the rest of the export's scripts.
+- Declarative live lists retain their configured IDs during state updates, and
+  nested template loops resolve values in the correct iteration scope.
 
 - Exported stylesheets declare UTF-8, preserving Unicode when authored CSS
   starts with a legacy charset declaration.
