@@ -108,6 +108,9 @@ console.log(compiledHtml.length, browserClass.length);
 if (false) {
   doc.saveBundle('public/index.html', { className: 'HomePage' });
   doc.saveBundle('public', { className: 'HomePage', filename: 'name' });
+  const controller = { module: './status-panel.js', export: 'StatusPanel', elements: [doc.p('Waiting')] };
+  doc.saveBundle('public', { controller });
+  doc.compile({ output: 'class', controller });
   // @ts-expect-error filename must be a string
   doc.saveBundle('public/index.html', { filename: 123 });
   // @ts-expect-error bundle paths must be strings

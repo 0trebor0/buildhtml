@@ -65,6 +65,33 @@ With `render()` and HTML output from `compile()`, a static page stays static.
 Reactive APIs such as `.states()`, `.bind()`, or `.onClick()` add generated code.
 `saveBundle()` always emits a browser module because the module mounts the page.
 
+To pass mounted elements directly to an external class, keep the BuildHTML
+elements and supply them in constructor argument order:
+
+```javascript
+const message = doc.p('Waiting');
+const button = doc.button('Mark ready');
+doc.saveBundle('public', {
+  controller: {
+    module: './status-panel.js',
+    export: 'StatusPanel',
+    elements: [message, button],
+  },
+});
+```
+
+The generated module imports `StatusPanel` and constructs it with the two DOM
+elements after mount. The class can add a listener to `button` and update
+`message.textContent` directly. No element IDs are needed. The same option works
+with `compile({ output: 'class', controller })`. Omit `export` for a default
+export. Serve the external module separately, with relative imports resolved
+from the generated JavaScript file. Pass authored HTML elements mounted by the
+page. If initialization removes a requested element from the mount target,
+mount fails and cleans up the page. Template contents, raw HTML and foreign
+trees do not supply controller references.
+Destroying the page also removes controller elements moved elsewhere within
+the mount target.
+
 ## Why you might use it
 
 - **Static HTML can ship without JavaScript.** Use `render()` or HTML compilation for static pages that need no browser scripts.
@@ -1090,7 +1117,9 @@ list.addClass('task-list');
 | `options.sortKeys` | string[] | Extra state keys that change ordering |
 | `options.empty` | `NodeDef` or string | Declarative content shown when no items remain |
 
-The method returns the list container `Element`.
+The method returns the list container `Element`. Set its ID with
+`list.id('task-list')` before rendering or compiling and browser updates will
+target that ID.
 
 Pass `{ key: 'id' }` when each item has a stable `id`. Keyed lists adopt the
 server-rendered rows and reuse matching rows during edits and sorting. Their
@@ -1431,6 +1460,17 @@ byte-stable, so it caches and diffs cleanly.
 Ordering is canonical *between* property families and preserved *within* one.
 `{ marginTop: '5px', margin: 0 }` keeps its order, because reordering it would
 invert which declaration wins the cascade.
+This also applies to `font` and `lineHeight`, and to `inset` and its physical
+offsets `top`, `right`, `bottom`, and `left`.
+Physical and logical sizing declarations also keep their relative order,
+including their `min-` and `max-` variants.
+The `word-wrap` and `overflow-wrap` aliases keep their written order.
+Rules that include `all` preserve declaration order because it can reset
+properties from multiple families. CSS custom property names are case-sensitive,
+including in `.bhtml` templates.
+When a template repeats a CSS property, its final value keeps its position
+relative to other declarations. An important declaration wins over a later
+normal declaration.
 
 **Identical rules are emitted once.** A rule is stored under its class name, so
 a thousand components sharing a rule emit it once:

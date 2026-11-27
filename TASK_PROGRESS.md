@@ -671,3 +671,72 @@ P1 = address promptly. P2 = correctness, contract, documentation, or verificatio
 - Added focused HTML startup regressions that initially failed with `State is not defined` for routers and `watchState is not defined` for an initially unset live list. The render context now requests the reactive runtime when a router or list is registered. Both startup cases passed after the fix (`201 passed, 0 failed` in `test/test.js`).
 - This pass changed `lib/document.js`, `lib/renderer.js`, `test/test.js`, `README.md`, `docs/index.html`, `CHANGELOG.md` and this file. No files created or deleted. No declared dependency changes. Full final run on Node 26.13.1 and Chromium 151 passed all 27 automated suites, all four Chromium suites, TypeScript, syntax for all 17 changed JS files, package dry run and `git diff --check`. Extended fuzzing at 20,000 inputs per configurable property with seed 1304699241 passed all 31 properties.
 - The reviewed changes are ready to commit based on these checks. No manual browser pass or other Node/browser versions were run. Left the worktree uncommitted and did not push.
+
+## Review committed project at 7e86595 (2026-11-27)
+
+- Started clean on `main` matching local `origin/main`; no overlapping local branches. Remote PR status unverified. Reviewed the latest commit summary and focused paths in `lib/{live,css,template}.js`, plus test and package commands.
+- Node probes confirmed three outstanding findings: renaming a fluent live-list container leaves a stale compiled ID; canonical ordering moves `all:unset` before an earlier `color:red`; `.bhtml` renames `--brandColor` to `--brand-color` while preserving the original reference. The latter two are related to older CSS review notes.
+- On Node 26.13.1, all 27 automated suites, four Chromium suites, TypeScript, `git show --check`, and `git diff --check` passed. Only this log changed. No runtime or test edits, changelog entry, commits, or pushes. Other runtime versions were not tested.
+
+## Fix the live-list and CSS review findings (2026-11-27)
+
+- Resolved the final live-list container ID when emitting scripts for HTML, streams, and compiled classes or bundles. Preserved author declaration order for rules containing CSS `all` in both CSS compilers and preserved custom property case in `.bhtml` parsing.
+- Inspected and modified `lib/{compiler,css,document,live,template}.js`, `test/test-{browser,compile,css,stream,template}.js`, `README.md`, `docs/index.html`, `CHANGELOG.md`, and this log. Also inspected `lib/{builder,element,pools,utils}.js`, `test/{run-all,test-readme-examples}.js`, and `package.json`. No new or deleted files, dependencies, or public API changes. No overlapping local branches. Remote PR status remains unverified.
+- Regressions cover fluent list IDs in HTML, streaming, generated classes, and a bundle that updates in Chromium. CSS tests cover both reset orders in both compilers. The template test checks the emitted custom property and its reference.
+- On Node 26.13.1, all 27 automated suites, four Chromium suites, TypeScript, `node --check` on all ten changed JavaScript files, package dry run, and `git diff --check` passed. After the guide edit, the documentation check passed 129 JavaScript blocks, two quick starts, 17 links, and 49 documented shortcuts. Manual browser testing and additional runtime versions were outside verification. Work remains uncommitted and unpushed.
+
+## Follow-up CSS ordering review (2026-11-27)
+
+
+- Reviewed live-list script registration and emission in `lib/{builder,compiler,document,element,live}.js` and declaration ordering and parsing in `lib/{css,template}.js`. Inspected the CSS tests, README, changelog, and existing progress log. Local `main` matches local `origin/main`. No overlapping local branches. Remote PR status unverified.
+- Before the fix, probes emitted `font:16px serif;line-height:2;` and `inset:0;top:10px;` for inputs written in the opposite order. Grouped `line-height` with `font` and physical offsets with `inset` in both compilers. Added assertions for shorthand-first and longhand-first order in server and browser compiler output.
+- This pass modified `lib/css.js`, `test/test-css.js`, `README.md`, `CHANGELOG.md`, and this file. Prior pending changes remain packaged with the same worktree. No files created or deleted and no API or dependency changes.
+- Node 26.13.1: focused CSS suite returned 157 passed, 0 failed. Both JavaScript syntax checks, all 27 automated suites, all four Chromium suites, TypeScript, documentation examples, and `git diff --check` passed. Manual browser testing and other Node versions were outside this pass. Work remains uncommitted and unpushed.
+
+## Compiler requirement for external JavaScript classes
+
+- A separate browser JavaScript class must receive direct references to the BuildHTML elements it uses after the page mounts. The generated integration should use the nodes the compiler already creates, so neither the generated handoff nor the external class needs `document.getElementById()` or a selector lookup for those elements.
+- Inspected `lib/compiler.js` and `README.md`. The compiler already generates local node references, and automatic bundles mount before activating authored body scripts. The API for declaring which nodes to pass, compiler-managed initialization, and regression coverage remain open.
+- Updated only this progress log. No runtime, test, or changelog changes for this requirement note.
+
+## Review direct element references
+
+- Reviewed `lib/compiler.js`, `lib/document.js`, `lib/renderer.js`, `typescript/index.d.ts`, `test/test-browser.js`, and `README.md`. Local `main` matches the local remote-tracking branch, with no overlapping local branches. Remote PR status remains unverified.
+- Compiled HTML elements are created as local variables inside `_build()`. Mounting appends the fragment and calls `_initialize()`, which has no access to those locals. Bundles activate authored body scripts after mount but have no declaration or handoff for external classes. The bundle host lookup and existing reactive runtime lookups are separate uses to account for if selector removal applies beyond the external-class handoff. Raw, template, foreign, and dynamic nodes have distinct creation or attachment paths.
+- Updated only this log. `node --check lib/compiler.js` and `git diff --check` passed. No behavior or test changes. Browser suites were not rerun for this review.
+
+## Implement compiler-managed external classes
+
+- Added the optional `controller` setting to `compile({ output: 'class' })` and `saveBundle()`. The generated module imports the class and invokes its constructor after mount with the requested nodes in array order. The handoff uses the generated DOM references without IDs or selectors. The existing host and reactive runtime lookups remain separate.
+- Inspected `lib/{compiler,document,renderer}.js`, `test/test-{browser,compile,readme-examples}.js`, `typescript/{index.d.ts,example.ts}`, `README.md`, `docs/index.html`, and the changelog. This pass modified `lib/compiler.js`, `test/test-browser.js`, `test/test-compile.js`, `typescript/index.d.ts`, `typescript/example.ts`, `README.md`, `docs/index.html`, `CHANGELOG.md`, and this log. No files added or deleted and no dependency changes. Remote PR status unverified.
+- Added compiler regressions for argument order, default exports, HTML-output refusal, empty element lists, and foreign document elements. The Chromium bundle fixture verifies a named export receives two mounted elements without IDs and handles a click. The TypeScript example exercises both public entry points.
+- Node 26.13.1: all 27 automated suites, four Chromium suites, TypeScript, syntax for the three touched JavaScript files, and `git diff --check` passed. Documentation validation parsed 130 blocks and resolved 17 links. Standalone class output was checked by the compiler suite. No manual browser testing or additional runtime versions. The module must be served separately, and references are limited to mounted authored HTML nodes.
+
+## Line-by-line review of pending changes
+
+- Reviewed the diff in all 16 changed files: `lib/{compiler,css,document,live,template}.js`, `test/test-{browser,compile,css,stream,template}.js`, `typescript/{example.ts,index.d.ts}`, `README.md`, `docs/index.html`, `CHANGELOG.md`, and this log. Cross-checked `lib/{builder,element}.js`. Local `main` matches local `origin/main`; remote PR status is unverified. Unchanged repository lines were outside this pass.
+- Node and Chromium probes reproduced four findings: identical live-list script source resolves both renamed lists to the second ID; CSS sorting turns an authored 40px width into 20px when `inline-size` overrides `width`; repeated template declarations overwrite earlier object values without moving their position, so `color:red;all:unset;color:blue` becomes `color:blue;all:unset`; and an `onMount()` hook that removes an authored node causes the external controller to receive a detached reference.
+- Review only. This log changed, with no implementation, persisted test, or changelog changes.
+- On Node 26.13.1, all 27 automated suites, four Chromium suites, TypeScript, syntax checks on all ten changed JavaScript files, and `git diff --check` passed. The four review probes remain open despite the green suites. No commit or push.
+
+## Fix the four line-by-line review findings
+
+- Reviewed the affected paths in `lib/{compiler,css,document,live,template}.js`, live-list registration in `lib/builder.js`, lifecycle callbacks in `lib/renderer.js`, related tests and documentation. Local `main` matches local `origin/main`; no overlapping local branches. Remote PR status remains unverified.
+- Live-list script metadata now follows registration order instead of script text. Physical and logical sizing properties retain author order within each of the regular, minimum, and maximum sizing groups in both compilers. Repeated template declarations keep their last position across CSS blocks. Controller construction rejects requested nodes removed from the mount target during initialization and uses the mount failure cleanup.
+- This pass modified `lib/{compiler,css,document,live,template}.js`, `test/test-{browser,compile,css,template}.js`, `README.md`, `docs/index.html`, `CHANGELOG.md`, and this log. No added or deleted files or dependencies. Prior work preserved.
+- Added regressions for matching list scripts with distinct final IDs in HTML and class output, CSS sizing order in both compilers, repeated declarations in single and multiple template CSS blocks, and Chromium mount rollback before construction when a controller element is removed.
+- Node 26.13.1: focused compiler checks passed and templates reported 184 passed, 0 failed. All 27 automated suites, four Chromium suites, TypeScript, syntax checks of all ten pending JavaScript files, documentation examples, and `git diff --check` passed. Other Node and browser versions and manual UI verification were outside this pass. Work remains uncommitted and unpushed.
+
+## Review the four latest fixes
+
+- Inspected `lib/{compiler,css,document,live,template}.js` and `test/test-{browser,compile,css,template}.js` around registration, declaration ordering, and controller mount cleanup. Local `main` matches local `origin/main`; remote PR status remains unverified.
+- Reproduced three adjacent cases in Chromium. Sorting `word-wrap:normal;overflow-wrap:anywhere` reverses the alias declarations and computes `normal` instead of `anywhere`. Repeated `.bhtml` declarations discard an earlier important value, computing blue instead of red for `color:red !important;color:blue`. A controller node moved by a mount hook under an existing host child passes the containment check and remains connected after `destroy()`.
+- Review only. Updated this log, with no runtime changes, persisted test changes, or changelog entry.
+- All 27 automated suites, four Chromium suites, TypeScript, syntax checks of all ten pending JavaScript files, documentation examples, and `git diff --check` passed. The three targeted probes above expose behavior the existing tests miss.
+
+## Fix the wrapping, template priority, and controller cleanup findings
+
+- Reviewed `lib/{compiler,css,template}.js`, focused tests, README, guide, and changelog. Local `main` matches local `origin/main`; no overlapping local branches. Remote PR status remains unverified.
+- Grouped `word-wrap` with `overflow-wrap` in both CSS compilers. Template CSS preserves the winning important declaration and the position of any later important replacement. Compiled controllers register cleanup for referenced elements before lifecycle initialization. Cleanup removes reparented nodes outside the original page subtrees, while existing teardown handles nodes still in those subtrees.
+- Modified `lib/{compiler,css,template}.js`, `test/test-{browser,css,template}.js`, `README.md`, `docs/index.html`, `CHANGELOG.md`, and this log. No added or deleted files or dependencies. Added assertions for both alias orders, template priority and reset ordering, and a Chromium controller whose node moves into existing host content before destruction.
+- On Node 26.13.1, the focused template suite reported 186 passed, 0 failed. All 27 automated suites, four Chromium suites, TypeScript, documentation checks, changed JavaScript syntax checks, and `git diff --check` passed. After the final cleanup refinement, compiler syntax and focused compiler and Chromium integration checks passed again. No manual UI testing or additional runtime versions. Work remains uncommitted and unpushed.

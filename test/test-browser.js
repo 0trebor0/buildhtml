@@ -658,6 +658,7 @@ async function run() {
       doc.p('Cascade probe').id('bundle-cascade').addClass('cascade-probe').css({ color: 'red' });
       doc.states({ reviewItems: ['Before'] });
       doc.build({ id: 'bundle-named-list', liveList: { stateKey: 'reviewItems', itemFn: item => ({ tag: 'p', text: item }) } });
+      doc.liveList('reviewItems', item => ({ tag: 'p', text: item })).id('bundle-fluent-list');
       doc.button('Change named list').id('change-named-list').onClick(function () { State.reviewItems.push('After'); });
       const scripts = doc.div().id('bundle-body-scripts');
       scripts.create('script').id('bundle-body-first')
@@ -687,7 +688,13 @@ async function run() {
       doc.inlineScript('throw new Error("expected authored script error");');
       doc.inlineScript('bundleOrder.push(bundleInitialCount + " again"); document.body.dataset.classicScript = String(this === window && !!document.currentScript);');
       const requestedFile = path.join(bundleDir, 'index.html');
-      doc.saveBundle(bundleDir, { className: 'CounterPage', filename: 'home #page' });
+      const message = doc.p('Controller waiting');
+      const trigger = doc.button('Run controller');
+      doc.saveBundle(bundleDir, {
+        className: 'CounterPage',
+        filename: 'home #page',
+        controller: { module: './status-panel.js', export: 'StatusPanel', elements: [message, trigger] },
+      });
       assert(!fs.existsSync(requestedFile), 'the directory export uses the requested filename instead of index.html');
       const files = new Map([
         ['/home #page.html', htmlFile], ['/bundle-assets/home #page.js', jsFile],
@@ -743,6 +750,12 @@ async function run() {
       files.set('/bundle-assets/bundle-history.js', path.join(bundleDir, 'bundle-history.js'));
       files.set('/bundle-assets/bundle-history.css', path.join(bundleDir, 'bundle-history.css'));
       const resources = new Map([
+        ['/bundle-assets/status-panel.js', ['text/javascript', `export class StatusPanel {
+          constructor(message, trigger) {
+            if (!message.isConnected || !trigger.isConnected || message.id || trigger.id) throw new Error('Expected mounted elements without IDs');
+            trigger.addEventListener('click', () => { message.textContent = 'Controller ready'; });
+          }
+        }`]],
         ['/bundle-assets/theme.css', ['text/css', 'main { background-color: rgb(11, 22, 33); }']],
         ['/bundle-assets/head.js', ['text/javascript', 'var bundleOrder = ["external head"]; window.bundleHeadProbe = getComputedStyle(document.documentElement).getPropertyValue("--bundle-head-probe").trim();']],
         ['/bundle-assets/body.js', ['text/javascript', 'bundleOrder.push("body external");']],
@@ -772,6 +785,8 @@ async function run() {
       });
       const origin = `http://127.0.0.1:${bundleServer.address().port}`;
       await page.goto(`${origin}/home%20%23page.html`, { waitUntil: 'load' });
+      await page.getByRole('button', { name: 'Run controller' }).click();
+      assert.equal(await page.getByText('Controller ready', { exact: true }).count(), 1);
       assert.equal(await page.title(), 'Compilation café 😀', 'UTF-8 bundle metadata survives a legacy source charset');
       assert.equal(await page.locator('body > script[type="module"][src]').evaluate(script => script.src), `${origin}/bundle-assets/home%20%23page.js`);
       assert.equal(await page.locator('html.bundle-html > body.bundle-body > #app > main').count(), 1);
@@ -815,6 +830,7 @@ async function run() {
       assert.equal(await page.locator('#bundle-svg-count').textContent(), '1');
       await page.locator('#change-named-list').click();
       assert.deepEqual(await page.locator('#bundle-named-list p').allTextContents(), ['Before', 'After']);
+      assert.deepEqual(await page.locator('#bundle-fluent-list p').allTextContents(), ['Before', 'After']);
       assert.equal(await page.evaluate(() => window.bundleBoundSourceRan), undefined, 'reactive text is not executable script source');
       await page.locator('#app #tasks-view').click();
       await page.locator('#app [data-task="1"] button').click();
@@ -893,6 +909,55 @@ async function run() {
       assert(relative && !relative.startsWith('..') && !path.isAbsolute(relative), 'bundle fixture cleanup stays in the repository');
       fs.rmSync(bundleDir, { recursive: true, force: true });
     }
+
+    const detached = new Document();
+    const removedButton = detached.button('Remove on mount').onMount(function () { this.remove(); });
+    const detachedSource = detached.compile({ output: 'class', controller: {
+      module: 'data:text/javascript,export default class { constructor() { throw new Error("Controller was invoked"); } }',
+      elements: [removedButton],
+    } });
+    await page.goto('about:blank');
+    const failedMount = await page.evaluate(async (source) => {
+      const url = URL.createObjectURL(new Blob([source], { type: 'text/javascript' }));
+      try {
+        const { GeneratedPage } = await import(url);
+        const view = new GeneratedPage();
+        try { view.mount(document.body); } catch (error) {
+          return { message: error.message, rootCleared: view.root === null, bodyEmpty: !document.body.childNodes.length };
+        }
+      } finally {
+        URL.revokeObjectURL(url);
+      }
+    }, detachedSource);
+    assert.deepEqual(failedMount, {
+      message: 'Unable to mount page: Controller elements must remain within the mounted page after initialization.',
+      rootCleared: true,
+      bodyEmpty: true,
+    });
+
+    const moved = new Document();
+    const movedButton = moved.div().button('Move on mount').onMount(function () {
+      this.parentNode.parentNode.firstElementChild.appendChild(this);
+    });
+    const movedSource = moved.compile({ output: 'class', controller: {
+      module: 'data:text/javascript,export default class { constructor(node) { node.dataset.controller = "ready"; } }',
+      elements: [movedButton, movedButton],
+    } });
+    const movedMount = await page.evaluate(async (source) => {
+      const host = document.body.appendChild(document.createElement('main'));
+      const existing = host.appendChild(document.createElement('aside'));
+      const url = URL.createObjectURL(new Blob([source], { type: 'text/javascript' }));
+      try {
+        const { GeneratedPage } = await import(url);
+        const view = new GeneratedPage().mount(host);
+        const controllerReady = existing.firstElementChild?.dataset.controller === 'ready';
+        view.destroy();
+        return { controllerReady, hostPreserved: host.firstElementChild === existing, existingEmpty: !existing.childNodes.length };
+      } finally {
+        URL.revokeObjectURL(url);
+      }
+    }, movedSource);
+    assert.deepEqual(movedMount, { controllerReady: true, hostPreserved: true, existingEmpty: true });
 
     console.log('Browser integration passed: bindings, lists, routing, lifecycle, CSP, compiled modules, signals, walkthrough, and automatic file bundles.');
   } finally {

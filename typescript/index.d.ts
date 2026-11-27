@@ -875,9 +875,15 @@ export interface PageDef {
   body?: NodeDef | NodeDef[];
 }
 
-export type CompileOptions =
+export interface CompileController<S extends StateShape = StateShape> {
+  module: string;
+  export?: string;
+  elements: readonly Element<S>[];
+}
+
+export type CompileOptions<S extends StateShape = StateShape> =
   | { output?: 'html' }
-  | { output: 'class'; className?: string };
+  | { output: 'class'; className?: string; controller?: CompileController<S> };
 
 export declare class Document<S extends StateShape = StateShape> implements SharedShortcuts<Document<S>, S> {
   body: Array<Element<S> | string>;
@@ -1047,7 +1053,7 @@ export declare class Document<S extends StateShape = StateShape> implements Shar
    * for the host page's CSP. Routers, authored scripts, external head resources,
    * rawHead(), and native SVG/MathML trees are refused for class output.
    */
-  compile(options?: CompileOptions): string;
+  compile(options?: CompileOptions<S>): string;
   /**
    * Create parent directories and write a same-stem HTML host, CSS stylesheet, and
    * JS module. Pass an HTML path or a directory (defaults to the stem index).
@@ -1064,7 +1070,7 @@ export declare class Document<S extends StateShape = StateShape> implements Shar
    * after mounting. Bundles support SVG, MathML and authored :root CSS. Static
    * response nonces are refused. Serve the files over HTTP with a JS MIME type.
    */
-  saveBundle(destination: string, options?: { className?: string; filename?: string }): this;
+  saveBundle(destination: string, options?: { className?: string; filename?: string; controller?: CompileController<S> }): this;
   /**
    * Renders the complete HTML document.
    *

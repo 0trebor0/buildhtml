@@ -36,6 +36,19 @@ try {
 } finally { responseCache.delete('compile-cache-test'); }
 
 const reusable = page('Reusable');
+const wired = new Document();
+const message = wired.p('Waiting');
+const trigger = wired.button('Ready');
+const controller = { module: './status-panel.js', elements: [trigger, message] };
+const wiredSource = wired.compile({ output: 'class', controller });
+assert.match(wiredSource, /^import \* as __buildhtmlController from "\.\/status-panel\.js";/);
+assert.match(wiredSource, /const elements = \[node\d+,node0\];/);
+assert.match(wiredSource, /new __buildhtmlController\["default"\]\(\.\.\.elements\)/);
+assert.throws(() => wired.compile({ controller }), /controller requires class output/);
+assert.throws(() => wired.compile({ output: 'class', controller: { ...controller, elements: [] } }), /nonempty array/);
+assert.throws(() => wired.compile({
+  output: 'class', controller: { ...controller, elements: [new Document().p()] },
+}), /mounted by this page/);
 reusable.h1('Native DOM');
 reusable.input('text', { value: 'a & b' });
 reusable.a('javascript:alert(1)', 'Blocked link');
@@ -326,6 +339,17 @@ try {
 }
 
 const live = new Document();
+const repeatedLists = new Document();
+repeatedLists.states({ items: ['One'] });
+const listDef = { id: 'initial', liveList: { stateKey: 'items', itemFn: item => ({ tag: 'p', text: item }) } };
+for (const id of ['first-list', 'second-list']) {
+  repeatedLists.build(listDef);
+  repeatedLists.body.at(-1).id(id);
+}
+for (const output of ['html', 'class']) {
+  const ids = Array.from(repeatedLists.compile({ output }).matchAll(/var _cid="([^"]+)";/g), match => match[1]);
+  assert.deepEqual(ids, ['first-list', 'second-list'], `${output} preserves both list registrations`);
+}
 const templateDoc = new Document();
 templateDoc.create('template').span('Reusable template');
 const templateSource = templateDoc.compile({ output: 'class' });
@@ -333,9 +357,12 @@ assert(templateSource.includes('.content.appendChild('), 'native template childr
 assert(templateDoc.compile().includes('<template><span>Reusable template</span></template>'));
 
 live.states({ items: [{ id: 1, title: 'One' }] });
-live.liveList('items', item => ({ tag: 'p', text: item.title }), { key: 'id' });
+live.liveList('items', item => ({ tag: 'p', text: item.title }), { key: 'id' }).id('compiled-list');
 live.views();
-new Script(live.compile({ output: 'class' }).replace(/export \{[^}]+\};\s*$/, ''));
+const liveClass = live.compile({ output: 'class' });
+new Script(liveClass.replace(/export \{[^}]+\};\s*$/, ''));
+assert.match(liveClass, /var _cid="compiled-list";/);
+assert.match(live.compile(), /var _cid="compiled-list";/);
 assert(live.compile().includes('<p>One</p>'), 'HTML compilation retains generated inline scripts');
 assert(live._classScripts.size > 0);
 live.clear();

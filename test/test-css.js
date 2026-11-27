@@ -115,6 +115,40 @@ test('gap and its longhands and aliases keep author order in both compilers', ()
   assert(vm.runInContext('_bhDecls(css)', sandbox) === expected, 'client gap shorthand stays last');
 });
 
+test('cross-prefix shorthands keep declaration order in both compilers', () => {
+  const sandbox = vm.createContext({ document: {} });
+  vm.runInContext(clientCssRuntimeSource(), sandbox);
+  for (const [css, expected] of [
+    [{ lineHeight: 2, font: '16px serif' }, 'line-height:2;font:16px serif;'],
+    [{ font: '16px serif', lineHeight: 2 }, 'font:16px serif;line-height:2;'],
+    [{ top: '10px', inset: '0' }, 'top:10px;inset:0;'],
+    [{ inset: '0', left: '10px' }, 'inset:0;left:10px;'],
+    [{ width: '20px', inlineSize: '40px' }, 'width:20px;inline-size:40px;'],
+    [{ blockSize: '40px', height: '20px' }, 'block-size:40px;height:20px;'],
+    [{ minWidth: '20px', minBlockSize: '40px' }, 'min-width:20px;min-block-size:40px;'],
+    [{ maxInlineSize: '40px', maxHeight: '20px' }, 'max-inline-size:40px;max-height:20px;'],
+    [{ wordWrap: 'normal', overflowWrap: 'anywhere' }, 'word-wrap:normal;overflow-wrap:anywhere;'],
+    [{ overflowWrap: 'anywhere', wordWrap: 'normal' }, 'overflow-wrap:anywhere;word-wrap:normal;'],
+  ]) {
+    assert(compileDeclarationText(css) === expected, `server emits ${expected}`);
+    sandbox.css = css;
+    assert(vm.runInContext('_bhDecls(css)', sandbox) === expected, `client emits ${expected}`);
+  }
+});
+
+test('all keeps declaration order in both compilers', () => {
+  const sandbox = vm.createContext({ document: {} });
+  vm.runInContext(clientCssRuntimeSource(), sandbox);
+  for (const [css, expected] of [
+    [{ color: 'red', all: 'unset' }, 'color:red;all:unset;'],
+    [{ all: 'unset', color: 'red' }, 'all:unset;color:red;'],
+  ]) {
+    assert(compileDeclarationText(css) === expected, `server emits ${expected}`);
+    sandbox.css = css;
+    assert(vm.runInContext('_bhDecls(css)', sandbox) === expected, `client emits ${expected}`);
+  }
+});
+
 test('a custom property keeps its exact case and its own family', () => {
   const text = compileDeclarationText({ '--brandColor': 'red', color: 'blue' });
   assert(text.includes('--brandColor:red'), 'custom property case preserved');

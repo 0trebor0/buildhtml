@@ -110,11 +110,12 @@ const p7 = testAsync('renderStream includes inline scripts', async () => {
   const { compileLiveList } = require('../lib/live');
   const doc = new Document();
   doc.states({ items: ['a', 'b'] });
-  compileLiveList(doc, doc, 'items', (i) => ({ tag: 'li', text: i }));
+  compileLiveList(doc, doc, 'items', (i) => ({ tag: 'li', text: i })).id('streamed-list');
   const html = await collectStream(doc.renderStream());
   assert(html.includes('<li>a</li>'), 'SSR list item a');
   assert(html.includes('<li>b</li>'), 'SSR list item b');
   assert(html.includes('_mkEl'), '_mkEl runtime included');
+  assert(html.includes('var _cid="streamed-list";'), 'list runtime uses the streamed container ID');
 });
 
 /* ---- renderStream: clear() called after stream ends ---- */

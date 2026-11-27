@@ -35,6 +35,9 @@ rather than complete records.
 
 ### Added
 
+- Class compilation and `saveBundle()` can initialize an external controller
+  with direct references to authored DOM elements after mount.
+
 - `saveBundle()` exports a same-stem CSS file and links it from the HTML head.
   Its rollback covers HTML, CSS, and JavaScript together.
 
@@ -104,6 +107,25 @@ rather than complete records.
   blocks it silently.
 
 ### Fixed
+
+- Reactive lists keep updating when their container ID is set through `.id()`
+  before rendering or compiling.
+- Live lists that start with identical generated scripts retain their individual
+  targets when renamed.
+- Physical and logical sizing declarations retain cascade order in both CSS
+  compilers.
+- Repeated `.bhtml` CSS properties keep their final position relative to resets.
+- Compiled pages clean up and reject mount if initialization removes a requested
+  controller element from the mount target.
+- Destroying a compiled page removes controller elements moved into existing
+  host content.
+- Both CSS compilers preserve declaration order for `word-wrap` and
+  `overflow-wrap`.
+- Repeated template CSS declarations preserve `!important` precedence.
+- Server and browser CSS preserve declaration order in rules containing `all`.
+- Both CSS compilers preserve cascade order when `font` is mixed with
+  `line-height` or `inset` with physical offsets.
+- `.bhtml` styles preserve the exact case of CSS custom property names.
 
 - HTML routers and live lists initialize the reactive runtime even when the
   document has no initial state or bindings.

@@ -102,6 +102,25 @@ test('CSS lines with braces', () => {
   assert(html.includes('Styled'), 'child after css');
 });
 
+test('CSS custom property names keep their exact case', () => {
+  const html = renderTemplate(`div { --brandColor: red; color: var(--brandColor) }`);
+  assert(html.includes('--brandColor:red;color:var(--brandColor);'), 'declaration and reference agree');
+});
+
+test('Repeated CSS declarations keep their final position', () => {
+  const inline = renderTemplate('div { color: red; all: unset; color: blue }');
+  assert(inline.includes('all:unset;color:blue;'), 'last color follows the reset in one block');
+  const multiline = renderTemplate('div { color: red }\n  { all: unset }\n  { color: blue }');
+  assert(multiline.includes('all:unset;color:blue;'), 'last color follows the reset across blocks');
+});
+
+test('Repeated CSS declarations respect importance', () => {
+  const normalOverride = renderTemplate('div { color: red !important; color: blue }');
+  assert(normalOverride.includes('color:red !important;'), 'normal value cannot replace an important value');
+  const importantOverride = renderTemplate('div { color: red !important }\n  { all: unset !important }\n  { color: blue !IMPORTANT }');
+  assert(importantOverride.includes('all:unset !important;color:blue !IMPORTANT;'), 'later important value wins and keeps its position');
+});
+
 /* ---- Text ---- */
 test('Pipe text (multiline)', () => {
   const tpl = `p\n  | This is line one\n  | and this is line two`;
