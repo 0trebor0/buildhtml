@@ -85,7 +85,8 @@ elements after mount. The class can add a listener to `button` and update
 `message.textContent` directly. No element IDs are needed. The same option works
 with `compile({ output: 'class', controller })`. Omit `export` for a default
 export. Serve the external module separately, with relative imports resolved
-from the generated JavaScript file. Pass authored HTML elements mounted by the
+from the generated JavaScript file. Use a different path from the generated
+bundle files. Pass authored HTML elements mounted by the
 page. If initialization removes a requested element from the mount target,
 mount fails and cleans up the page. Template contents, raw HTML and foreign
 trees do not supply controller references.
@@ -344,8 +345,9 @@ doc.saveBundle('public', { className: 'HomePage', filename: 'name' });
 Windows device names are rejected before writing. It replaces all output stems;
 `className` controls the JavaScript export name. Without `filename`, a directory
 destination uses `index.html`, `index.css`, and `index.js`. An explicit `.html` path uses its
-own stem unless `filename` is supplied. End a directory name containing a dot
-with a separator, as in `public.v2/`.
+own stem unless `filename` is supplied. Existing directories can contain dots.
+When creating a new dotted directory, end its name with a separator, as in
+`public.v2/`.
 All files use UTF-8, and the HTML and stylesheet declare UTF-8. The source
 document's charset stays unchanged. Use UTF-8 if your server sends an explicit
 charset header for either file.
@@ -367,6 +369,8 @@ head scripts (`addScript()`), and trusted `rawHead()` markup. Head CSS precedes
 raw-head style markup, and generated element rules follow it. When both sets of
 rules need to sit on opposite sides of a raw-head stylesheet, the export adds
 a same-stem `.buildhtml-elements.css` file and links it after the raw markup.
+When a later build no longer needs that stylesheet, it removes the previous
+bundle's generated linked copy. A commented-out link leaves the file in place.
 The `.buildhtml-elements` stem suffix is reserved. Serve this stylesheet with
 the other assets. Explicit `<style>` tags passed through `rawHead()` keep their
 markup. Inline `style()` attributes stay on the element, and the browser runtime

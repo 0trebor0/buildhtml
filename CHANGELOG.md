@@ -108,6 +108,12 @@ rather than complete records.
 
 ### Fixed
 
+- `saveBundle()` rejects relative controller imports that resolve to generated
+  output paths, accepts existing dotted directories, and retires a previously
+  linked optional stylesheet when it becomes obsolete.
+- Optional stylesheet cleanup ignores commented-out links and handles case-only
+  rebuilds on case-insensitive filesystems.
+
 - Reactive lists keep updating when their container ID is set through `.id()`
   before rendering or compiling.
 - Live lists that start with identical generated scripts retain their individual

@@ -164,6 +164,22 @@ try {
   const dottedDirectory = path.join(fixture, 'nested.html');
   bundle.saveBundle(dottedDirectory + path.sep, { filename: 'nested' });
   assert(fs.existsSync(path.join(dottedDirectory, 'nested.html')));
+  bundle.saveBundle(dottedDirectory);
+  assert(fs.existsSync(path.join(dottedDirectory, 'index.html')));
+  const versionedDirectory = path.join(fixture, 'site.v2');
+  fs.mkdirSync(versionedDirectory);
+  bundle.saveBundle(versionedDirectory);
+  assert(fs.existsSync(path.join(versionedDirectory, 'index.js')));
+
+  const collisionDir = path.join(fixture, 'controller-collision');
+  fs.mkdirSync(collisionDir);
+  const authoredModule = 'export default class Controller {}';
+  fs.writeFileSync(path.join(collisionDir, 'index.js'), authoredModule);
+  for (const module of ['./index.js', '../controller-collision/%69ndex.js?version=1']) {
+    assert.throws(() => wired.saveBundle(collisionDir, { controller: { ...controller, module } }), /different path/);
+    assert.equal(fs.readFileSync(path.join(collisionDir, 'index.js'), 'utf8'), authoredModule);
+    assert.deepEqual(fs.readdirSync(collisionDir), ['index.js']);
+  }
 
   const cascade = new Document();
   cascade.globalCss('.probe', { color: 'green' });
@@ -189,9 +205,28 @@ try {
       return renameCascade(from, to);
     };
     assert.throws(() => cascade.saveBundle(cascadeDir), { code: 'EACCES' });
+    assert.throws(() => bundle.saveBundle(cascadeDir), { code: 'EACCES' });
   } finally { fs.renameSync = renameCascade; }
   assert.deepEqual(fs.readdirSync(cascadeDir).sort(), cascadeFiles);
   assert.deepEqual(cascadeFiles.map(name => fs.readFileSync(path.join(cascadeDir, name), 'utf8')), cascadeBefore);
+  bundle.saveBundle(cascadeDir);
+  const obsoleteCss = path.join(cascadeDir, 'index.buildhtml-elements.css');
+  assert(!fs.existsSync(obsoleteCss), 'successful rebuild retires the previous optional stylesheet');
+  fs.writeFileSync(obsoleteCss, 'unlinked file');
+  bundle.saveBundle(cascadeDir);
+  assert.equal(fs.readFileSync(obsoleteCss, 'utf8'), 'unlinked file', 'rebuild preserves unlinked files');
+  const cascadeOutput = path.join(cascadeDir, 'index.html');
+  fs.writeFileSync(cascadeOutput, '<!DOCTYPE html><html><head><!-- <link rel="stylesheet" href="./index.buildhtml-elements.css"> --></head><body><div id="app"></div><script type="module" src="./index.js"></script></body></html>');
+  bundle.saveBundle(cascadeDir);
+  assert.equal(fs.readFileSync(obsoleteCss, 'utf8'), 'unlinked file', 'a commented link does not authorize stylesheet removal');
+
+  const caseDirectory = path.join(fixture, 'case-only-rebuild');
+  cascade.saveBundle(caseDirectory, { filename: 'Index' });
+  const mixedCaseCss = path.join(caseDirectory, 'Index.buildhtml-elements.css');
+  const caseInsensitive = fs.existsSync(path.join(caseDirectory, 'index.buildhtml-elements.css'));
+  bundle.saveBundle(caseDirectory, { filename: 'index' });
+  assert.equal(fs.existsSync(mixedCaseCss), !caseInsensitive,
+    'case-only rebuild retires CSS only when both names refer to the same path');
 
   const elementOnly = new Document();
   elementOnly.rawHead('<style>.probe{color:blue}</style>');

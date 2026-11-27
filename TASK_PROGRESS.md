@@ -740,3 +740,30 @@ P1 = address promptly. P2 = correctness, contract, documentation, or verificatio
 - Grouped `word-wrap` with `overflow-wrap` in both CSS compilers. Template CSS preserves the winning important declaration and the position of any later important replacement. Compiled controllers register cleanup for referenced elements before lifecycle initialization. Cleanup removes reparented nodes outside the original page subtrees, while existing teardown handles nodes still in those subtrees.
 - Modified `lib/{compiler,css,template}.js`, `test/test-{browser,css,template}.js`, `README.md`, `docs/index.html`, `CHANGELOG.md`, and this log. No added or deleted files or dependencies. Added assertions for both alias orders, template priority and reset ordering, and a Chromium controller whose node moves into existing host content before destruction.
 - On Node 26.13.1, the focused template suite reported 186 passed, 0 failed. All 27 automated suites, four Chromium suites, TypeScript, documentation checks, changed JavaScript syntax checks, and `git diff --check` passed. After the final cleanup refinement, compiler syntax and focused compiler and Chromium integration checks passed again. No manual UI testing or additional runtime versions. Work remains uncommitted and unpushed.
+
+## Review saveBundle output and controller options
+
+- Reviewed `lib/compiler.js` and the compiler tests for destination validation, controller imports, startup, staged publishing, and rollback. Started clean at `c2bf0b4`, matching local `origin/main`. No other local branches. Remote PR status unverified.
+- Reproduced three findings with repository-local fixtures: an external `./index.js` controller is replaced with the generated module that imports itself; an existing `site.v2` directory is rejected without a trailing separator; and rebuilding a bundle that no longer needs split CSS leaves its previous optional stylesheet behind.
+- Confirmed `elements: []` is rejected by the current contract before publishing. Existing compiler tests assert the requirement. No behavior change or new persisted tests.
+- Compiler syntax, focused compiler suite, TypeScript, and `git diff --check` passed on Node 26.13.1. Browser and full automated suites were not rerun for this review. Only this log changed. No changelog entry, commit, or push.
+
+## Fix the saveBundle review findings
+
+- Reviewed `lib/compiler.js`, `test/test-compile.js`, `README.md`, `docs/index.html`, and `CHANGELOG.md`. Started with only the prior review log pending on `main`, matching local `origin/main`. Remote PR status unverified.
+- Relative controller imports are resolved against the generated module path and rejected before writes if they collide with a bundle output. Existing dotted directories are accepted. A previous regular optional stylesheet is retired through the existing backup and rollback flow when the previous HTML links it and the new bundle does not need it. Unlinked files are preserved.
+- Modified `lib/compiler.js`, `test/test-compile.js`, `README.md`, `docs/index.html`, `CHANGELOG.md`, and this log. Added regressions for direct and normalized controller collisions, dotted directories, successful retirement, rollback restoration, and preservation of unlinked CSS. The empty controller array contract remains as reviewed. No new dependencies or files.
+- On Node 26.13.1, compiler syntax and focused compiler checks passed, as did all 27 automated suites, four Chromium suites, TypeScript, the documentation examples, and `git diff --check`. Focused compiler and syntax checks were repeated after narrowing the previous-file check. Deployment-specific URL mappings and other operating systems were not tested. No commit or push.
+
+## Review saveBundle stylesheet retirement
+
+- Reviewed the pending diff in `lib/compiler.js`, `test/test-compile.js`, `README.md`, `docs/index.html`, and `CHANGELOG.md`, focusing on controller path protection, directory classification, and stylesheet rollback. Local `main` matches local `origin/main`; remote PR status unverified.
+- Repository-local probes reproduced two retirement findings. A link-shaped string inside an old HTML comment deletes an authored stylesheet that was never linked. On the Windows workspace, rebuilding `Index` as `index` leaves the optional stylesheet because the case-insensitive filesystem resolves the files but the exact HTML comparison misses the old link spelling.
+- Compiler and test syntax checks, the focused compiler suite, and `git diff --check` passed. Full automated and browser suites were not rerun. Only this log changed, with no implementation, persisted tests, or changelog changes. No commit or push.
+
+## Fix stylesheet retirement ownership and case matching
+
+- Reviewed `lib/compiler.js`, body attribute generation in `lib/document.js`, `test/test-compile.js`, README, and changelog. The previous pending changes remain on `main`, matching local `origin/main`. Remote PR status unverified.
+- Stylesheet retirement now ignores commented links and requires the previous generated bundle structure, including a terminal stylesheet link whose stem matches the module. A case-only difference is accepted when both stylesheet paths identify the same regular file. The check conservatively preserves output if the previous markup does not match the generated structure.
+- This pass changed `lib/compiler.js`, `test/test-compile.js`, `README.md`, `CHANGELOG.md`, and this log. Added regressions for a commented-out link with a generated-shaped body, and a case-only rebuild. No files added or deleted and no dependency changes.
+- Node 26.13.1: both JavaScript syntax checks, the focused compiler suite, all 27 automated suites, four Chromium suites, TypeScript, documentation examples, and `git diff --check` passed. The case-only regression ran on Windows. Other operating systems and manually reformatted generated HTML were outside verification. No commit or push.
